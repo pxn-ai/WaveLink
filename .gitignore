@@ -1,0 +1,13 @@
+# Ignore GNU Radio auto-generated compilation scripts
+*.py
+*.pyc
+
+# Ignore transmission payload and output logs
+*.jpg
+*.png
+*.txt
+*.iq
+*.bin
+
+# OS generated files
+.DS_Store
