@@ -1,5 +1,4 @@
 # Ignore GNU Radio auto-generated compilation scripts
-*.py
 *.pyc
 
 # Ignore transmission payload and output logs
