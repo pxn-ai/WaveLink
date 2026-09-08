@@ -2,6 +2,7 @@ import sys
 import socket
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QLineEdit, QVBoxLayout, QWidget
 from PyQt5.QtCore import QThread, pyqtSignal
+import subprocess
 
 # Background thread to listen for incoming UDP packets from the GNU Radio RX chain
 class ReceiverThread(QThread):
@@ -43,6 +44,9 @@ class WaveLinkApp(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+        # Start GNU Radio Flowgraph
+        self.engine_process = subprocess.Popen([sys.executable, '-u', 'bpskrxtx.py'])
+
         # Start Receiver Thread
         self.rx_thread = ReceiverThread()
         self.rx_thread.message_received.connect(self.display_message)
@@ -66,6 +70,11 @@ class WaveLinkApp(QMainWindow):
     def display_message(self, text):
         # Append left-aligned black text style to UI
         self.chat_history.append(f"<div style='text-align: left; color: #333333;'><b>RX:</b> {text}</div><br>")
+
+    def closeEvent(self, event):
+        self.engine_process.terminate()
+        self.engine_process.wait()
+        super().closeEvent(event)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
