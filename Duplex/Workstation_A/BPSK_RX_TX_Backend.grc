@@ -808,7 +808,7 @@ blocks:
     alias: ''
     comment: ''
     header: '0'
-    payloadsize: '1472'
+    payloadsize: int(payload_size)
     port: '5002'
     send_eof: 'False'
     type: byte
@@ -831,7 +831,7 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     notify_missed: 'False'
-    payloadsize: '1472'
+    payloadsize: int(payload_size)
     port: '5001'
     src_zeros: 'False'
     type: byte

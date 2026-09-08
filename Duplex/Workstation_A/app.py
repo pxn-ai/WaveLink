@@ -13,7 +13,8 @@ class ReceiverThread(QThread):
         sock.bind(("127.0.0.1", 5002))
         while True:
             data, _ = sock.recvfrom(2048)
-            text = data.decode('utf-8', errors='ignore').strip()
+            # Strip null bytes AND whitespace
+            text = data.decode('utf-8', errors='ignore').replace('\x00', '').strip()
             if text:
                 self.message_received.emit(text)
 
@@ -55,21 +56,40 @@ class WaveLinkApp(QMainWindow):
     def send_message(self):
         text = self.input_field.text()
         if text:
-            # 1. Pad the real message to 1024 bytes
+            # Pad to 1024 to match GNU Radio's default UDP MTU
             padded_text = (text + '\n').ljust(1024, ' ')
             self.tx_socket.sendto(padded_text.encode('utf-8'), ("127.0.0.1", 5001))
             
-            # 2. Send the dummy flush packet to push it through the DSP filters
             dummy = " ".ljust(1024, ' ')
             self.tx_socket.sendto(dummy.encode('utf-8'), ("127.0.0.1", 5001))
             
-            # 3. Append right-aligned green bubble style to UI
-            self.chat_history.append(f"<p align='right' style='color: #075E54;'><b>You:</b> {text}</p>")
+            bubble = f"""
+            <div align='right'>
+                <span style='background-color: #DCF8C6; color: black; font-size: 16px; padding: 5px 10px;'>
+                    {text}
+                </span>
+            </div><br>
+            """
+            self.chat_history.append(bubble)
             self.input_field.clear()
+            
+            # Force auto-scroll to bottom
+            scrollbar = self.chat_history.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
 
     def display_message(self, text):
-        # Append left-aligned black text style to UI
-        self.chat_history.append(f"<p align='left' style='color: #333333;'><b>RX:</b> {text}</p>")
+        bubble = f"""
+        <div align='left'>
+            <span style='background-color: #FFFFFF; color: black; font-size: 16px; padding: 5px 10px;'>
+                {text}
+            </span>
+        </div><br>
+        """
+        self.chat_history.append(bubble)
+        
+        # Force auto-scroll to bottom
+        scrollbar = self.chat_history.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
     def closeEvent(self, event):
         self.engine_process.terminate()
