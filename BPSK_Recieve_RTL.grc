@@ -636,7 +636,7 @@ blocks:
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://172.20.10.2:5000"'
+    address: '"tcp://10.172.238.13:5000"'
     affinity: ''
     alias: ''
     bind: 'False'
