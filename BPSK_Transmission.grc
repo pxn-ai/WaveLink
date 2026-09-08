@@ -663,7 +663,7 @@ blocks:
 - name: zeromq_pub_sink_0
   id: zeromq_pub_sink
   parameters:
-    address: '"tcp://172.20.10.2:5000"'
+    address: '"tcp://*:5000"'
     affinity: ''
     alias: ''
     bind: 'True'
