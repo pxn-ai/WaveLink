@@ -405,11 +405,17 @@ blocks:
       \            msg = pmt.cdr(msg)\n        \n        text = \"\"\n        if pmt.is_symbol(msg):\n\
       \            text = pmt.symbol_to_string(msg)\n        elif pmt.is_string(msg):\n\
       \            text = pmt.string_to_python(msg)\n        else:\n            return\n\
-      \n        text += '\\n' # Optional: adds a newline for cleaner reading on the\
-      \ receiver side\n        bytes_list = list(text.encode('utf-8'))\n        \n\
-      \        # Package the bytes into a Protocol Data Unit (PDU)\n        pdu =\
-      \ pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(bytes_list), bytes_list))\n\
-      \        self.message_port_pub(pmt.intern('pdu_out'), pdu)\n"
+      \n        text += '\\n'\n        \n        # --- PACKET 1: The Real Message\
+      \ ---\n        bytes_list = list(text.encode('utf-8'))\n        if len(bytes_list)\
+      \ < 1024:\n            bytes_list.extend([32] * (1024 - len(bytes_list)))\n\
+      \        \n        pdu_real = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(bytes_list),\
+      \ bytes_list))\n        self.message_port_pub(pmt.intern('pdu_out'), pdu_real)\n\
+      \        \n        # --- PACKET 2: The Dummy Flush Packet ---\n        # Fires\
+      \ immediately after to push the real packet through the DSP filters.\n     \
+      \   # The receiver's .strip() logic automatically ignores this packet.\n   \
+      \     flush_list = [32] * 1024 \n        pdu_flush = pmt.cons(pmt.make_dict(),\
+      \ pmt.init_u8vector(len(flush_list), flush_list))\n        self.message_port_pub(pmt.intern('pdu_out'),\
+      \ pdu_flush)\n"
     affinity: ''
     alias: ''
     comment: ''
