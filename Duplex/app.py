@@ -64,12 +64,12 @@ class WaveLinkApp(QMainWindow):
             self.tx_socket.sendto(dummy.encode('utf-8'), ("127.0.0.1", 5001))
             
             # 3. Append right-aligned green bubble style to UI
-            self.chat_history.append(f"<div style='text-align: right; color: #075E54;'><b>You:</b> {text}</div><br>")
+            self.chat_history.append(f"<p align='right' style='color: #075E54;'><b>You:</b> {text}</p>")
             self.input_field.clear()
 
     def display_message(self, text):
         # Append left-aligned black text style to UI
-        self.chat_history.append(f"<div style='text-align: left; color: #333333;'><b>RX:</b> {text}</div><br>")
+        self.chat_history.append(f"<p align='left' style='color: #333333;'><b>RX:</b> {text}</p>")
 
     def closeEvent(self, event):
         self.engine_process.terminate()
