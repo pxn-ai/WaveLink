@@ -290,36 +290,31 @@ blocks:
 - name: epy_block_0
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nEmbedded Python Blocks:\n\nEach time this file is saved,\
-      \ GRC will instantiate the first class it finds\nto get ports and parameters\
-      \ of your block. The arguments to __init__  will\nbe the parameters. All of\
-      \ them are required to have default values!\n\"\"\"\n\nimport numpy as np\n\
-      from gnuradio import gr\n\n\nclass blk(gr.sync_block):  # other base classes\
-      \ are basic_block, decim_block, interp_block\n    \"\"\"Embedded Python Block\
-      \ example - a simple multiply const\"\"\"\n\n    def __init__(self, example_param=1.0):\
-      \  # only default arguments here\n        \"\"\"arguments to this function show\
-      \ up as parameters in GRC\"\"\"\n        gr.sync_block.__init__(\n         \
-      \   self,\n            name='Embedded Python Block',   # will show up in GRC\n\
-      \            in_sig=[np.complex64],\n            out_sig=[np.complex64]\n  \
-      \      )\n        # if an attribute with the same name as a parameter is found,\n\
-      \        # a callback is registered (properties work, too).\n        self.example_param\
-      \ = example_param\n\n    def work(self, input_items, output_items):\n      \
-      \  \"\"\"example: multiply with constant\"\"\"\n        output_items[0][:] =\
-      \ input_items[0] * self.example_param\n        return len(output_items[0])\n"
+    _source_code: "import numpy as np\nfrom gnuradio import gr\nimport pmt\n\nclass\
+      \ blk(gr.sync_block):\n    def __init__(self):\n        gr.sync_block.__init__(self,\
+      \ name='PDU to Chat Log', in_sig=None, out_sig=None)\n        self.message_port_register_in(pmt.intern('pdu_in'))\n\
+      \        self.message_port_register_out(pmt.intern('msg_out'))\n        self.set_msg_handler(pmt.intern('pdu_in'),\
+      \ self.handle_msg)\n        self.chat_history = []\n\n    def handle_msg(self,\
+      \ msg):\n        if pmt.is_pair(msg):\n            data = pmt.cdr(msg)\n   \
+      \         if pmt.is_u8vector(data):\n                bytes_data = bytes(pmt.u8vector_elements(data))\n\
+      \                new_text = bytes_data.decode('utf-8', errors='ignore').strip()\n\
+      \                \n                if new_text:\n                    self.chat_history.append(f\"\
+      Received: {new_text}\")\n                    if len(self.chat_history) > 10:\n\
+      \                        self.chat_history.pop(0)\n                    \n  \
+      \                  display_text = \"\\n\".join(self.chat_history)\n        \
+      \            self.message_port_pub(pmt.intern('msg_out'), pmt.intern(display_text))\n"
     affinity: ''
     alias: ''
     comment: ''
-    example_param: ''
     maxoutbuf: '0'
     minoutbuf: '0'
   states:
-    _io_cache: ('Embedded Python Block', 'blk', [('example_param', '1.0')], [('0',
-      'complex', 1)], [('0', 'complex', 1)], 'Embedded Python Block example - a simple
-      multiply const', ['example_param'])
+    _io_cache: ('PDU to Chat Log', 'blk', [], [('pdu_in', 'message', 1)], [('msg_out',
+      'message', 1)], '', [])
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [704, 132.0]
+    coordinate: [1120, 896.0]
     rotation: 0
     state: enabled
 - name: filter_fft_rrc_filter_0
@@ -359,7 +354,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [912, 744.0]
+    coordinate: [960, 744.0]
     rotation: 0
     state: enabled
 - name: qtgui_edit_box_msg_0
@@ -370,7 +365,7 @@ blocks:
     comment: ''
     gui_hint: ''
     is_pair: 'False'
-    is_static: 'True'
+    is_static: 'False'
     key: ''
     label: Received Message
     maxoutbuf: '0'
@@ -381,7 +376,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [944, 176.0]
+    coordinate: [1336, 872.0]
     rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
@@ -672,9 +667,11 @@ connections:
 - [digital_crc32_bb_1, '0', pdu_tagged_stream_to_pdu_0, '0']
 - [digital_diff_decoder_bb_0, '0', digital_correlate_access_code_xx_ts_0, '0']
 - [digital_symbol_sync_xx_0, '0', digital_costas_loop_cc_0, '0']
+- [epy_block_0, msg_out, qtgui_edit_box_msg_0, val]
 - [filter_fft_rrc_filter_0, '0', digital_symbol_sync_xx_0, '0']
 - [filter_fft_rrc_filter_0, '0', qtgui_freq_sink_x_0, '0']
 - [pdu_tagged_stream_to_pdu_0, pdus, blocks_message_debug_0, print]
+- [pdu_tagged_stream_to_pdu_0, pdus, epy_block_0, pdu_in]
 - [soapy_rtlsdr_source_0, '0', filter_fft_rrc_filter_0, '0']
 - [virtual_source_2, '0', digital_constellation_decoder_cb_1, '0']
 - [virtual_source_3, '0', blocks_repack_bits_bb_1, '0']
