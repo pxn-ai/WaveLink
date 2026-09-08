@@ -51,10 +51,10 @@ class bpskrxtx(gr.top_block):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.104:5555", 100, False, (-1), '', False)
+        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.100:5555", 100, False, (-1), '', False)
         self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5555", 100, False, (-1), '', True, True)
-        self.network_udp_source_0 = network.udp_source(gr.sizeof_char, 1, 5001, 0, 1472, False, False, False)
-        self.network_udp_sink_0 = network.udp_sink(gr.sizeof_char, 1, '127.0.0.1', 5002, 0, 1472, False)
+        self.network_udp_source_0 = network.udp_source(gr.sizeof_char, 1, 5004, 0, int(payload_size), False, False, False)
+        self.network_udp_sink_0 = network.udp_sink(gr.sizeof_char, 1, '127.0.0.1', 5003, 0, int(payload_size), False)
         self.filter_fft_rrc_filter_0 = filter.fft_filter_ccc(1, firdes.root_raised_cosine(1, samp_rate, (samp_rate/sps), 0.35, (11*sps)), 1)
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
             digital.TED_SIGNAL_TIMES_SLOPE_ML,

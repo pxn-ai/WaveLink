@@ -808,8 +808,8 @@ blocks:
     alias: ''
     comment: ''
     header: '0'
-    payloadsize: '1472'
-    port: '5002'
+    payloadsize: int(payload_size)
+    port: '5003'
     send_eof: 'False'
     type: byte
     vlen: '1'
@@ -831,8 +831,8 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     notify_missed: 'False'
-    payloadsize: '1472'
-    port: '5001'
+    payloadsize: int(payload_size)
+    port: '5004'
     src_zeros: 'False'
     type: byte
     vlen: '1'
@@ -840,7 +840,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [400, 136.0]
+    coordinate: [480, 120.0]
     rotation: 0
     state: enabled
 - name: note_0
@@ -1368,7 +1368,7 @@ blocks:
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://192.168.1.104:5555"'
+    address: '"tcp://192.168.1.100:5555"'
     affinity: ''
     alias: ''
     bind: 'False'
