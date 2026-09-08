@@ -63,13 +63,7 @@ class WaveLinkApp(QMainWindow):
             dummy = " ".ljust(1024, ' ')
             self.tx_socket.sendto(dummy.encode('utf-8'), ("127.0.0.1", 5004))
             
-            bubble = f"""
-            <div align='right'>
-                <span style='background-color: #DCF8C6; color: black; font-size: 16px; padding: 5px 10px;'>
-                    {text}
-                </span>
-            </div><br>
-            """
+            bubble = f"<table width='100%'><tr><td align='right'><span style='background-color:#DCF8C6; color:black; font-size:16px;'>&nbsp;&nbsp;{text}&nbsp;&nbsp;</span></td></tr></table>"
             self.chat_history.append(bubble)
             self.input_field.clear()
             
@@ -78,13 +72,7 @@ class WaveLinkApp(QMainWindow):
             scrollbar.setValue(scrollbar.maximum())
 
     def display_message(self, text):
-        bubble = f"""
-        <div align='left'>
-            <span style='background-color: #FFFFFF; color: black; font-size: 16px; padding: 5px 10px;'>
-                {text}
-            </span>
-        </div><br>
-        """
+        bubble = f"<table width='100%'><tr><td align='left'><span style='background-color:#FFFFFF; color:black; font-size:16px;'>&nbsp;&nbsp;{text}&nbsp;&nbsp;</span></td></tr></table>"
         self.chat_history.append(bubble)
         
         # Force auto-scroll to bottom
