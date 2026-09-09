@@ -71,9 +71,10 @@ class WaveLinkApp(QMainWindow):
             scrollbar = self.chat_history.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
 
-            bubble = f"<table width='100%'><tr><td align='left'><span style='background-color:#FFFFFF; color:black; font-size:16px;'>&nbsp;&nbsp;{text}&nbsp;&nbsp;</span></td></tr></table>"
-            self.chat_history.append(bubble)
-            
+    def display_message(self, text):
+        bubble = f"<table width='100%'><tr><td align='left'><span style='background-color:#FFFFFF; color:black; font-size:16px;'>&nbsp;&nbsp;{text}&nbsp;&nbsp;</span></td></tr></table>"
+        self.chat_history.append(bubble)
+        
         # Force auto-scroll to bottom
         scrollbar = self.chat_history.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
