@@ -36,10 +36,10 @@ class bpskrxtx(gr.top_block):
         ##################################################
         # Variables
         ##################################################
-        self.tx_freq = tx_freq = 915e6
+        self.tx_freq = tx_freq = 925e6
         self.sps = sps = 4
         self.samp_rate = samp_rate = 200e3
-        self.rx_freq = rx_freq = 925e6
+        self.rx_freq = rx_freq = 915e6
         self.preamble_size = preamble_size = 250
         self.postamble_size = postamble_size = 10000
         self.payload_size = payload_size = 1024
@@ -51,7 +51,7 @@ class bpskrxtx(gr.top_block):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.100:5555", 100, False, (-1), '', False)
+        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.102:5555", 100, False, (-1), '', False)
         self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5555", 100, False, (-1), '', True, True)
         self.network_udp_source_0 = network.udp_source(gr.sizeof_char, 1, 5004, 0, int(payload_size), False, False, False)
         self.network_udp_sink_0 = network.udp_sink(gr.sizeof_char, 1, '127.0.0.1', 5003, 0, int(payload_size), False)

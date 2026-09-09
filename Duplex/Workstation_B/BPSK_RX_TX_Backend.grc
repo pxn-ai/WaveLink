@@ -148,7 +148,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 925e6
+    value: 915e6
   states:
     bus_sink: false
     bus_source: false
@@ -205,7 +205,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 915e6
+    value: 925e6
   states:
     bus_sink: false
     bus_source: false
@@ -1368,7 +1368,7 @@ blocks:
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://192.168.1.100:5555"'
+    address: '"tcp://192.168.1.102:5555"'
     affinity: ''
     alias: ''
     bind: 'False'

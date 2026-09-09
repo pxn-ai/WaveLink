@@ -80,7 +80,7 @@ class bpsk_file_transfer_receive_rtlsdr(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://10.172.238.13:5000", 100, False, (-1), '', False)
+        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.102:5555", 100, False, (-1), '', False)
         # Create the options list
         self._rfGain_options = [0.0, 12.5, 20.7, 29.7, 36.4, 40.2, 44.5, 49.6]
         # Create the labels list
