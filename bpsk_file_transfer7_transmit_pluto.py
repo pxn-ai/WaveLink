@@ -90,7 +90,7 @@ class bpsk_file_transfer7_transmit_pluto(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
         snippets_init_before_blocks(self)
-        self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5000", 100, False, (-1), '', True, True)
+        self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5555", 100, False, (-1), '', True, True)
         self._tx_atten_range = qtgui.Range(0, 30, 1, 10, 200)
         self._tx_atten_win = qtgui.RangeWidget(self._tx_atten_range, self.set_tx_atten, "Tx Attenuation", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._tx_atten_win)

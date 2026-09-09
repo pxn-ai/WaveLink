@@ -51,7 +51,7 @@ class bpskrxtx(gr.top_block):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.104:5555", 100, False, (-1), '', False)
+        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.100:5555", 100, False, (-1), '', False)
         self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5555", 100, False, (-1), '', True, True)
         self.network_udp_source_0 = network.udp_source(gr.sizeof_char, 1, 5001, 0, int(payload_size), False, False, False)
         self.network_udp_sink_0 = network.udp_sink(gr.sizeof_char, 1, '127.0.0.1', 5002, 0, int(payload_size), False)
@@ -70,11 +70,10 @@ class bpskrxtx(gr.top_block):
             [])
         self.digital_protocol_formatter_bb_0 = digital.protocol_formatter_bb(hdr, 'packet_len')
         self.digital_diff_decoder_bb_0 = digital.diff_decoder_bb(len(constel.points()), digital.DIFF_DIFFERENTIAL)
-        self.digital_crc32_bb_1 = digital.crc32_bb(True, 'packet_len', True)
         self.digital_crc32_bb_0 = digital.crc32_bb(False, "packet_len", True)
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc((2*3.14/100), len(constel.points()), False)
         self.digital_correlate_access_code_xx_ts_0 = digital.correlate_access_code_bb_ts(digital.packet_utils.default_access_code,
-          0, 'packet_len')
+          4, 'packet_len')
         self.digital_constellation_modulator_0 = digital.generic_mod(
             constellation=constel,
             differential=True,
@@ -102,7 +101,7 @@ class bpskrxtx(gr.top_block):
         # Connections
         ##################################################
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.blocks_tag_gate_0, 0))
-        self.connect((self.blocks_repack_bits_bb_1, 0), (self.digital_crc32_bb_1, 0))
+        self.connect((self.blocks_repack_bits_bb_1, 0), (self.network_udp_sink_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.digital_crc32_bb_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0_0, 0), (self.blocks_tagged_stream_mux_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0_0_0, 0), (self.blocks_tagged_stream_mux_0, 3))
@@ -117,7 +116,6 @@ class bpskrxtx(gr.top_block):
         self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_constellation_decoder_cb_1, 0))
         self.connect((self.digital_crc32_bb_0, 0), (self.blocks_tagged_stream_mux_0, 2))
         self.connect((self.digital_crc32_bb_0, 0), (self.digital_protocol_formatter_bb_0, 0))
-        self.connect((self.digital_crc32_bb_1, 0), (self.network_udp_sink_0, 0))
         self.connect((self.digital_diff_decoder_bb_0, 0), (self.digital_correlate_access_code_xx_ts_0, 0))
         self.connect((self.digital_protocol_formatter_bb_0, 0), (self.blocks_tagged_stream_mux_0, 1))
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_costas_loop_cc_0, 0))
