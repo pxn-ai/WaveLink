@@ -10,20 +10,15 @@ class blk(gr.sync_block):
         self.set_msg_handler(pmt.intern('msg_in'), self.handle_msg)
 
     def handle_msg(self, msg):
-        text = ""
-        
-        # Extract text from the PMT dictionary sent by tx_server.py
         if pmt.is_pair(msg):
-            meta = pmt.car(msg)
-            if pmt.is_dict(meta) and pmt.dict_has_key(meta, pmt.intern("text")):
-                text_pmt = pmt.dict_ref(meta, pmt.intern("text"), pmt.PMT_NIL)
-                if pmt.is_symbol(text_pmt):
-                    text = pmt.symbol_to_string(text_pmt)
-        # Fallback if raw symbol is sent directly
-        elif pmt.is_symbol(msg):
+            msg = pmt.cdr(msg)
+        
+        text = ""
+        if pmt.is_symbol(msg):
             text = pmt.symbol_to_string(msg)
-
-        if not text:
+        elif pmt.is_string(msg):
+            text = pmt.string_to_python(msg)
+        else:
             return
 
         text += '\n'
@@ -37,6 +32,8 @@ class blk(gr.sync_block):
         self.message_port_pub(pmt.intern('pdu_out'), pdu_real)
         
         # --- PACKET 2: The Dummy Flush Packet ---
+        # Fires immediately after to push the real packet through the DSP filters.
+        # The receiver's .strip() logic automatically ignores this packet.
         flush_list = [32] * 1024 
         pdu_flush = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(flush_list), flush_list))
         self.message_port_pub(pmt.intern('pdu_out'), pdu_flush)

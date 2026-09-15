@@ -296,7 +296,7 @@ blocks:
     bus_structure: null
     coordinate: [1072, 880.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: blocks_vector_source_x_0
   id: blocks_vector_source_x
   parameters:
@@ -448,14 +448,14 @@ blocks:
     len_tag_key: ''
     samplerate: int(samp_rate)
     type: fc32
-    uri: '"ip:192.168.1.11"'
+    uri: '"ip:192.168.1.10"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [1048, 644.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: pdu_pdu_to_tagged_stream_0
   id: pdu_pdu_to_tagged_stream
   parameters:
@@ -681,7 +681,7 @@ blocks:
     bus_structure: null
     coordinate: [1232, 856.0]
     rotation: 0
-    state: enabled
+    state: disabled
 
 connections:
 - [blocks_file_source_0, '0', blocks_stream_to_tagged_stream_0_0_0, '0']

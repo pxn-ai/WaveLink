@@ -1,5 +1,4 @@
 import sys
-sys.path.append("/opt/homebrew/lib/python3.14/site-packages")
 
 import asyncio
 import subprocess
@@ -33,7 +32,7 @@ processes = []
 @app.on_event("startup")
 async def startup_event():
     env = os.environ.copy()
-    p_tx = subprocess.Popen(["/opt/homebrew/bin/python3.14", "BPSK_Transmission_Headless.py"], env=env)
+    p_tx = subprocess.Popen([sys.executable, "BPSK_Transmission_Headless.py"], env=env)
     processes.append(p_tx)
     asyncio.create_task(poll_tx_iq())
 
