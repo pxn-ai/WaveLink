@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WaveLink Web UI</title>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h2 {
+            margin-top: 0;
+            color: #64ffda;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        .plot-container {
+            height: 250px;
+            margin-bottom: 20px;
+        }
+        .chat-box {
+            height: 300px;
+            overflow-y: auto;
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background: #222;
+            color: white;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #64ffda;
+            color: #121212;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #52e0c4;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>WaveLink BPSK Dashboard</h1>
+
+    <div class="container">
+        <!-- TX Panel -->
+        <div class="panel">
+            <h2>Transmitter (TX)</h2>
+            
+            <div class="control-group">
+                <label for="tx_atten">TX Attenuation (dB): <span id="tx_atten_val">10</span></label>
+                <input type="range" id="tx_atten" min="0" max="89.75" step="0.25" value="10">
+            </div>
+
+            <div class="chat-input">
+                <input type="text" id="tx_msg" placeholder="Type message to send...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+
+            <h3>TX Signals</h3>
+            <div id="tx_time" class="plot-container"></div>
+            <div id="tx_freq" class="plot-container"></div>
+            <div id="tx_const" class="plot-container"></div>
+        </div>
+
+        <!-- RX Panel -->
+        <div class="panel">
+            <h2>Receiver (RX)</h2>
+            
+            <div class="control-group">
+                <label for="rf_gain">RX Gain (dB): <span id="rf_gain_val">10</span></label>
+                <input type="range" id="rf_gain" min="0" max="70" step="1" value="10">
+            </div>
+
+            <h3>Received Messages</h3>
+            <div id="rx_chat" class="chat-box"></div>
+
+            <h3>RX Signals</h3>
+            <div id="rx_time" class="plot-container"></div>
+            <div id="rx_freq" class="plot-container"></div>
+            <div id="rx_const" class="plot-container"></div>
+        </div>
+    </div>
+
+    <script>
+        // Setup WebSockets
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        ws.onopen = () => {
+            console.log("Connected to WaveLink Backend");
+        };
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'rx_chat') {
+                const chat = document.getElementById('rx_chat');
+                chat.innerHTML += `<div>> ${msg.text}</div>`;
+                chat.scrollTop = chat.scrollHeight;
+            } else if (msg.type === 'tx_iq') {
+                updatePlots('tx', msg);
+            } else if (msg.type === 'rx_iq') {
+                updatePlots('rx', msg);
+            }
+        };
+
+        function sendMessage() {
+            const input = document.getElementById('tx_msg');
+            if (input.value.trim() !== '') {
+                ws.send(JSON.stringify({type: 'chat', text: input.value}));
+                input.value = '';
+            }
+        }
+
+        // Handle enter key in tx input
+        document.getElementById('tx_msg').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Controls
+        document.getElementById('tx_atten').addEventListener('input', function(e) {
+            document.getElementById('tx_atten_val').innerText = e.target.value;
+            ws.send(JSON.stringify({type: 'control', param: 'tx_atten', value: e.target.value}));
+        });
+
+        document.getElementById('rf_gain').addEventListener('input', function(e) {
+            document.getElementById('rf_gain_val').innerText = e.target.value;
+            ws.send(JSON.stringify({type: 'control', param: 'rfGain', value: e.target.value}));
+        });
+
+        // Plotly Defaults
+        const layout_dark = {
+            plot_bgcolor: "#1e1e1e",
+            paper_bgcolor: "#1e1e1e",
+            font: { color: "#ffffff" },
+            margin: { l: 40, r: 10, t: 30, b: 30 }
+        };
+
+        // Initialize Plots
+        const initPlot = (id, title, ytitle) => {
+            Plotly.newPlot(id, [{y: [], type: 'scatter', mode: 'lines', line: {color: '#64ffda'}}], 
+                {...layout_dark, title: title, yaxis: {title: ytitle}});
+        };
+
+        const initScatter = (id, title) => {
+            Plotly.newPlot(id, [{x: [], y: [], type: 'scatter', mode: 'markers', marker: {color: '#ff6464', size: 3}}], 
+                {...layout_dark, title: title, xaxis: {range: [-2, 2]}, yaxis: {range: [-2, 2]}});
+        };
+
+        initPlot('tx_time', 'Waveform', 'Amplitude');
+        initPlot('tx_freq', 'Spectrum', 'Magnitude (dB)');
+        initScatter('tx_const', 'Constellation');
+
+        initPlot('rx_time', 'Waveform', 'Amplitude');
+        initPlot('rx_freq', 'Spectrum', 'Magnitude (dB)');
+        initScatter('rx_const', 'Constellation');
+
+        function updatePlots(prefix, data) {
+            // Update Time
+            Plotly.update(`${prefix}_time`, {y: [data.time_real]}, {}, 0);
+            // Update Freq
+            Plotly.update(`${prefix}_freq`, {y: [data.fft]}, {}, 0);
+            // Update Constellation
+            Plotly.update(`${prefix}_const`, {x: [data.time_real], y: [data.time_imag]}, {}, 0);
+        }
+    </script>
+</body>
+</html>

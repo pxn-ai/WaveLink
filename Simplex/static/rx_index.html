@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WaveLink RX Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
+        .panel {
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h2 {
+            margin-top: 0;
+            color: #64ffda;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        .plot-container {
+            height: 250px;
+            margin-bottom: 20px;
+        }
+        .chat-box {
+            height: 300px;
+            overflow-y: auto;
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-family: monospace;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- RX Panel -->
+        <div class="panel">
+            <h2>Receiver (RX)</h2>
+            
+            <div class="control-group">
+                <label for="rf_gain">RX Gain (dB): <span id="rf_gain_val">10</span></label>
+                <input type="range" id="rf_gain" min="0" max="70" step="1" value="10">
+            </div>
+
+            <h3>Received Messages</h3>
+            <div id="rx_chat" class="chat-box"></div>
+
+            <h3>RX Signals</h3>
+            <div id="rx_time" class="plot-container"></div>
+            <div id="rx_freq" class="plot-container"></div>
+            <div id="rx_const" class="plot-container"></div>
+        </div>
+    </div>
+
+    <script>
+        // Setup WebSockets
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        ws.onopen = () => {
+            console.log("Connected to RX Backend");
+        };
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'rx_chat') {
+                const chat = document.getElementById('rx_chat');
+                chat.innerHTML += `<div>> ${msg.text}</div>`;
+                chat.scrollTop = chat.scrollHeight;
+            } else if (msg.type === 'rx_iq') {
+                updatePlots('rx', msg);
+            }
+        };
+
+        // Controls
+        document.getElementById('rf_gain').addEventListener('input', function(e) {
+            document.getElementById('rf_gain_val').innerText = e.target.value;
+            ws.send(JSON.stringify({type: 'control', param: 'rfGain', value: e.target.value}));
+        });
+
+        // Plotly Defaults
+        const layout_dark = {
+            plot_bgcolor: "#1e1e1e",
+            paper_bgcolor: "#1e1e1e",
+            font: { color: "#ffffff" },
+            margin: { l: 40, r: 10, t: 30, b: 30 }
+        };
+
+        const initPlot = (id, title, ytitle) => {
+            Plotly.newPlot(id, [{y: [], type: 'scatter', mode: 'lines', line: {color: '#64ffda'}}], 
+                {...layout_dark, title: title, yaxis: {title: ytitle}});
+        };
+
+        const initScatter = (id, title) => {
+            Plotly.newPlot(id, [{x: [], y: [], type: 'scatter', mode: 'markers', marker: {color: '#ff6464', size: 3}}], 
+                {...layout_dark, title: title, xaxis: {range: [-2, 2]}, yaxis: {range: [-2, 2]}});
+        };
+
+        initPlot('rx_time', 'Waveform', 'Amplitude');
+        initPlot('rx_freq', 'Spectrum', 'Magnitude (dB)');
+        initScatter('rx_const', 'Constellation');
+
+        function updatePlots(prefix, data) {
+            Plotly.update(`${prefix}_time`, {y: [data.time_real]}, {}, 0);
+            Plotly.update(`${prefix}_freq`, {y: [data.fft]}, {}, 0);
+            Plotly.update(`${prefix}_const`, {x: [data.time_real], y: [data.time_imag]}, {}, 0);
+        }
+    </script>
+</body>
+</html>

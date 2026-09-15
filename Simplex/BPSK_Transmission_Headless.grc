@@ -1,0 +1,640 @@
+options:
+  parameters:
+    author: Barry Duggan
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: ''
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: no_gui
+    hier_block_src_path: '.:'
+    id: BPSK_Transmission_Headless
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: BPSK_Transmission_Headless
+    window_size: (1000,1000)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure:
+    coordinate: [16, 8.0]
+    rotation: 0
+    state: enabled
+
+blocks:
+  - name: constel
+    id: variable_constellation
+    parameters:
+      comment: ''
+      const_points: '[-1-1j, -1+1j, 1+1j, 1-1j]'
+      dims: '1'
+      normalization: digital.constellation.AMPLITUDE_NORMALIZATION
+      npwr: '1.0'
+      precision: '8'
+      rot_sym: '4'
+      soft_dec_lut: None
+      sym_map: '[0, 1, 3, 2]'
+      type: bpsk
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [280, 12.0]
+      rotation: 0
+      state: enabled
+  - name: frequency
+    id: variable
+    parameters:
+      comment: ''
+      value: 905.2e6
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [728, 176.0]
+      rotation: 0
+      state: true
+  - name: hdr
+    id: variable
+    parameters:
+      comment: ''
+      value: 
+        digital.header_format_default(digital.packet_utils.default_access_code, 
+        0)
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [448, 12.0]
+      rotation: 0
+      state: true
+  - name: payload_size
+    id: variable
+    parameters:
+      comment: ''
+      value: '1024'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [16, 152.0]
+      rotation: 0
+      state: enabled
+  - name: postamble_size
+    id: variable
+    parameters:
+      comment: ''
+      value: '10000'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [224, 152.0]
+      rotation: 0
+      state: true
+  - name: preamble_size
+    id: variable
+    parameters:
+      comment: ''
+      value: '384'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [120, 152.0]
+      rotation: 0
+      state: enabled
+  - name: samp_rate
+    id: variable
+    parameters:
+      comment: ''
+      value: '2000000'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [624, 176.0]
+      rotation: 0
+      state: enabled
+  - name: sps
+    id: variable
+    parameters:
+      comment: ''
+      value: '4'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [200, 12.0]
+      rotation: 0
+      state: enabled
+  - name: tx_atten
+    id: variable
+    parameters:
+      comment: 'NOTE: attenuation!'
+      value: '10'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [760, 16.0]
+      rotation: 0
+      state: true
+  - name: blocks_file_source_0
+    id: blocks_file_source
+    parameters:
+      affinity: ''
+      alias: ''
+      begin_tag: pmt.PMT_NIL
+      comment: ''
+      file: /home/pxn-ai/Downloads/color_test_800x600_118kb.jpg
+      length: '0'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      offset: '0'
+      repeat: 'False'
+      type: byte
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [16, 396.0]
+      rotation: 0
+      state: disabled
+  - name: blocks_multiply_const_vxx_0
+    id: blocks_multiply_const_vxx
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      const: '0.5'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      type: complex
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [856, 704.0]
+      rotation: 0
+      state: true
+  - name: blocks_stream_to_tagged_stream_0_0_0
+    id: blocks_stream_to_tagged_stream
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      len_tag_key: '"packet_len"'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      packet_len: payload_size
+      type: byte
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [272, 424.0]
+      rotation: 0
+      state: disabled
+  - name: blocks_stream_to_tagged_stream_0_0_0_0
+    id: blocks_stream_to_tagged_stream
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      len_tag_key: '"packet_len"'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      packet_len: preamble_size
+      type: byte
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [160, 556.0]
+      rotation: 0
+      state: enabled
+  - name: blocks_stream_to_tagged_stream_0_0_0_0_0
+    id: blocks_stream_to_tagged_stream
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      len_tag_key: '"packet_len"'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      packet_len: postamble_size
+      type: byte
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [224, 832.0]
+      rotation: 0
+      state: disabled
+  - name: blocks_tagged_stream_mux_0
+    id: blocks_tagged_stream_mux
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      lengthtagname: packet_len
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      ninputs: '3'
+      tag_preserve_head_pos: '0'
+      type: byte
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [408, 664.0]
+      rotation: 0
+      state: enabled
+  - name: blocks_throttle2_0
+    id: blocks_throttle2
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      ignoretag: 'True'
+      limit: auto
+      maximum: '0.1'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      samples_per_second: samp_rate
+      type: complex
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [1072, 880.0]
+      rotation: 0
+      state: enabled
+  - name: blocks_vector_source_x_0
+    id: blocks_vector_source_x
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: Preamble
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      repeat: 'True'
+      tags: '[]'
+      type: byte
+      vector: '[0xc0, 0xaf]'
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [16, 548.0]
+      rotation: 0
+      state: enabled
+  - name: blocks_vector_source_x_0_0
+    id: blocks_vector_source_x
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: Postamble
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      repeat: 'True'
+      tags: '[]'
+      type: byte
+      vector: '[0xc0, 0xaf]'
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [32, 824.0]
+      rotation: 0
+      state: disabled
+  - name: digital_constellation_modulator_0
+    id: digital_constellation_modulator
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      constellation: constel
+      differential: 'True'
+      excess_bw: '0.35'
+      log: 'False'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      samples_per_symbol: sps
+      truncate: 'False'
+      verbose: 'False'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [632, 680.0]
+      rotation: 0
+      state: enabled
+  - name: digital_crc32_bb_0
+    id: digital_crc32_bb
+    parameters:
+      affinity: ''
+      alias: ''
+      check: 'False'
+      comment: ''
+      lengthtagname: '"packet_len"'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      packed: 'True'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [512, 416.0]
+      rotation: 0
+      state: enabled
+  - name: digital_protocol_formatter_bb_0
+    id: digital_protocol_formatter_bb
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      format: hdr
+      len_tag_key: packet_len
+      maxoutbuf: '0'
+      minoutbuf: '0'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [776, 424.0]
+      rotation: 0
+      state: enabled
+  - name: epy_block_0
+    id: epy_block
+    parameters:
+      _source_code: "import numpy as np\nfrom gnuradio import gr\nimport pmt\n\nclass
+        blk(gr.sync_block):\n    def __init__(self):\n        gr.sync_block.__init__(self,
+        name='Text to PDU', in_sig=None, out_sig=None)\n        self.message_port_register_in(pmt.intern('msg_in'))\n\
+        \        self.message_port_register_out(pmt.intern('pdu_out'))\n        self.set_msg_handler(pmt.intern('msg_in'),
+        self.handle_msg)\n\n    def handle_msg(self, msg):\n        if pmt.is_pair(msg):\n\
+        \            msg = pmt.cdr(msg)\n        \n        text = \"\"\n        if
+        pmt.is_symbol(msg):\n            text = pmt.symbol_to_string(msg)\n      \
+        \  elif pmt.is_string(msg):\n            text = pmt.string_to_python(msg)\n\
+        \        else:\n            return\n\n        text += '\\n'\n        \n  \
+        \      # --- PACKET 1: The Real Message ---\n        bytes_list = list(text.encode('utf-8'))\n\
+        \        if len(bytes_list) < 1024:\n            bytes_list.extend([32] *
+        (1024 - len(bytes_list)))\n        \n        pdu_real = pmt.cons(pmt.make_dict(),
+        pmt.init_u8vector(len(bytes_list), bytes_list))\n        self.message_port_pub(pmt.intern('pdu_out'),
+        pdu_real)\n        \n        # --- PACKET 2: The Dummy Flush Packet ---\n\
+        \        # Fires immediately after to push the real packet through the DSP
+        filters.\n        # The receiver's .strip() logic automatically ignores this
+        packet.\n        flush_list = [32] * 1024 \n        pdu_flush = pmt.cons(pmt.make_dict(),
+        pmt.init_u8vector(len(flush_list), flush_list))\n        self.message_port_pub(pmt.intern('pdu_out'),
+        pdu_flush)\n"
+      affinity: ''
+      alias: ''
+      comment: ''
+      maxoutbuf: '0'
+      minoutbuf: '0'
+    states:
+      _io_cache: ('Text to PDU', 'blk', [], [('msg_in', 'message', 1)], 
+        [('pdu_out', 'message', 1)], '', [])
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [272, 328.0]
+      rotation: 0
+      state: enabled
+  - name: iio_pluto_sink_0
+    id: iio_pluto_sink
+    parameters:
+      affinity: ''
+      alias: ''
+      attenuation1: tx_atten
+      bandwidth: samp_rate
+      buffer_size: '32768'
+      comment: ''
+      cyclic: 'False'
+      filter: ''
+      filter_source: '''Auto'''
+      fpass: '0'
+      frequency: int(frequency)
+      fstop: '0'
+      len_tag_key: ''
+      samplerate: int(samp_rate)
+      type: fc32
+      uri: '"ip:192.168.1.11"'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [1048, 644.0]
+      rotation: 0
+      state: disabled
+  - name: pdu_pdu_to_tagged_stream_0
+    id: pdu_pdu_to_tagged_stream
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      tag: packet_len
+      type: byte
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [464, 320.0]
+      rotation: 0
+      state: enabled
+  - name: zeromq_pull_msg_source_0
+    id: zeromq_pull_msg_source
+    parameters:
+      address: '"tcp://127.0.0.1:5001"'
+      affinity: ''
+      alias: ''
+      bind: 'False'
+      comment: ''
+      timeout: '100'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [48, 240.0]
+      rotation: 0
+      state: enabled
+  - name: snippet_0
+    id: snippet
+    parameters:
+      alias: ''
+      code: "with open(\"bpsk_transmit.txt\", \"w\") as f:\n\tpayload = \"Hello World!
+        \\n \\t - from WaveLink\"\n\tf.write(payload)"
+      comment: Create transmit file
+      priority: '0'
+      section: init_before_blocks
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [368, 152.0]
+      rotation: 0
+      state: enabled
+  - name: virtual_sink_0_0
+    id: virtual_sink
+    parameters:
+      alias: ''
+      comment: ''
+      stream_id: header
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [1040, 432.0]
+      rotation: 0
+      state: true
+  - name: virtual_sink_2_0
+    id: virtual_sink
+    parameters:
+      alias: ''
+      comment: ''
+      stream_id: payload
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [784, 512.0]
+      rotation: 0
+      state: true
+  - name: virtual_source_5
+    id: virtual_source
+    parameters:
+      alias: ''
+      comment: ''
+      stream_id: header
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [16, 688.0]
+      rotation: 0
+      state: true
+  - name: virtual_source_6
+    id: virtual_source
+    parameters:
+      alias: ''
+      comment: ''
+      stream_id: payload
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [200, 720.0]
+      rotation: 0
+      state: true
+  - name: zeromq_pub_sink_0
+    id: zeromq_pub_sink
+    parameters:
+      address: '"tcp://*:5555"'
+      affinity: ''
+      alias: ''
+      bind: 'True'
+      comment: ''
+      drop_on_hwm: 'True'
+      hwm: '-1'
+      key: ''
+      pass_tags: 'False'
+      timeout: '100'
+      type: complex
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate: [1232, 856.0]
+      rotation: 0
+      state: enabled
+
+  - name: xmlrpc_server_0
+    id: xmlrpc_server
+    parameters:
+      addr: 127.0.0.1
+      alias: ''
+      comment: ''
+      port: '8081'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate:
+        - 200
+        - 200.0
+      rotation: 0
+      state: enabled
+  - name: zeromq_pub_sink_iq
+    id: zeromq_pub_sink
+    parameters:
+      address: '"tcp://127.0.0.1:5003"'
+      affinity: ''
+      alias: ''
+      bind: 'True'
+      comment: ''
+      drop_on_hwm: 'True'
+      hwm: '-1'
+      key: ''
+      pass_tags: 'False'
+      timeout: '100'
+      type: complex
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure:
+      coordinate:
+        - 200
+        - 300.0
+      rotation: 0
+      state: enabled
+connections:
+  - [blocks_file_source_0, '0', blocks_stream_to_tagged_stream_0_0_0, '0']
+  - [blocks_multiply_const_vxx_0, '0', blocks_throttle2_0, '0']
+  - [blocks_multiply_const_vxx_0, '0', iio_pluto_sink_0, '0']
+  - [blocks_stream_to_tagged_stream_0_0_0, '0', digital_crc32_bb_0, '0']
+  - [blocks_stream_to_tagged_stream_0_0_0_0, '0', blocks_tagged_stream_mux_0, '0']
+  - [blocks_tagged_stream_mux_0, '0', digital_constellation_modulator_0, '0']
+  - [blocks_throttle2_0, '0', zeromq_pub_sink_0, '0']
+  - [blocks_vector_source_x_0, '0', blocks_stream_to_tagged_stream_0_0_0_0, '0']
+  - [blocks_vector_source_x_0_0, '0', blocks_stream_to_tagged_stream_0_0_0_0_0, '0']
+  - [digital_constellation_modulator_0, '0', blocks_multiply_const_vxx_0, '0']
+  - [digital_crc32_bb_0, '0', digital_protocol_formatter_bb_0, '0']
+  - [digital_crc32_bb_0, '0', virtual_sink_2_0, '0']
+  - [digital_protocol_formatter_bb_0, '0', virtual_sink_0_0, '0']
+  - [epy_block_0, pdu_out, pdu_pdu_to_tagged_stream_0, pdus]
+  - [pdu_pdu_to_tagged_stream_0, '0', digital_crc32_bb_0, '0']
+  - [zeromq_pull_msg_source_0, out, epy_block_0, msg_in]
+  - [virtual_source_5, '0', blocks_tagged_stream_mux_0, '1']
+  - [virtual_source_6, '0', blocks_tagged_stream_mux_0, '2']
+  -   - blocks_multiply_const_vxx_0
+      - '0'
+      - zeromq_pub_sink_iq
+      - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0
