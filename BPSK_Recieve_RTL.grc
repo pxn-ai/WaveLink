@@ -580,7 +580,7 @@ blocks:
     bus_structure: null
     coordinate: [72, 328.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: virtual_sink_3
   id: virtual_sink
   parameters:
@@ -655,7 +655,7 @@ blocks:
     bus_structure: null
     coordinate: [64, 176.0]
     rotation: 0
-    state: enabled
+    state: disabled
 
 connections:
 - [blocks_repack_bits_bb_1, '0', digital_crc32_bb_1, '0']

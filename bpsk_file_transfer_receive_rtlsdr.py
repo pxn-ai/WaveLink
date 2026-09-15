@@ -26,7 +26,7 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import gr, pdu
-from gnuradio import zeromq
+from gnuradio import soapy
 import bpsk_file_transfer_receive_rtlsdr_epy_block_0 as epy_block_0  # embedded python block
 import sip
 import threading
@@ -80,7 +80,6 @@ class bpsk_file_transfer_receive_rtlsdr(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.100:5555", 100, False, (-1), '', False)
         # Create the options list
         self._rfGain_options = [0.0, 12.5, 20.7, 29.7, 36.4, 40.2, 44.5, 49.6]
         # Create the labels list
@@ -97,6 +96,41 @@ class bpsk_file_transfer_receive_rtlsdr(gr.top_block, Qt.QWidget):
             lambda i: self.set_rfGain(self._rfGain_options[i]))
         # Create the radio buttons
         self.top_layout.addWidget(self._rfGain_tool_bar)
+        self.soapy_rtlsdr_source_0 = None
+        dev = 'driver=rtlsdr'
+        stream_args = 'bufflen=16384'
+        tune_args = ['']
+        settings = ['']
+
+        def _set_soapy_rtlsdr_source_0_gain_mode(channel, agc):
+            self.soapy_rtlsdr_source_0.set_gain_mode(channel, agc)
+            if not agc:
+                  self.soapy_rtlsdr_source_0.set_gain(channel, self._soapy_rtlsdr_source_0_gain_value)
+        self.set_soapy_rtlsdr_source_0_gain_mode = _set_soapy_rtlsdr_source_0_gain_mode
+
+        def _set_soapy_rtlsdr_source_0_gain(channel, name, gain):
+            self._soapy_rtlsdr_source_0_gain_value = gain
+            if not self.soapy_rtlsdr_source_0.get_gain_mode(channel):
+                self.soapy_rtlsdr_source_0.set_gain(channel, gain)
+        self.set_soapy_rtlsdr_source_0_gain = _set_soapy_rtlsdr_source_0_gain
+
+        def _set_soapy_rtlsdr_source_0_bias(bias):
+            if 'biastee' in self._soapy_rtlsdr_source_0_setting_keys:
+                self.soapy_rtlsdr_source_0.write_setting('biastee', bias)
+        self.set_soapy_rtlsdr_source_0_bias = _set_soapy_rtlsdr_source_0_bias
+
+        self.soapy_rtlsdr_source_0 = soapy.source(dev, "fc32", 1, '',
+                                  stream_args, tune_args, settings)
+
+        self._soapy_rtlsdr_source_0_setting_keys = [a.key for a in self.soapy_rtlsdr_source_0.get_setting_info()]
+
+        self.soapy_rtlsdr_source_0.set_sample_rate(0, samp_rate)
+        self.soapy_rtlsdr_source_0.set_frequency(0, frequency)
+        self.soapy_rtlsdr_source_0.set_frequency_correction(0, 0)
+        self.set_soapy_rtlsdr_source_0_bias(bool(False))
+        self._soapy_rtlsdr_source_0_gain_value = rfGain
+        self.set_soapy_rtlsdr_source_0_gain_mode(0, bool(False))
+        self.set_soapy_rtlsdr_source_0_gain(0, 'TUNER', rfGain)
         self.qtgui_time_sink_x_1_0 = qtgui.time_sink_c(
             256, #size
             samp_rate/sps, #samp_rate
@@ -237,7 +271,7 @@ class bpsk_file_transfer_receive_rtlsdr(gr.top_block, Qt.QWidget):
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_costas_loop_cc_0, 0))
         self.connect((self.filter_fft_rrc_filter_0, 0), (self.digital_symbol_sync_xx_0, 0))
         self.connect((self.filter_fft_rrc_filter_0, 0), (self.qtgui_freq_sink_x_0, 0))
-        self.connect((self.zeromq_sub_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
+        self.connect((self.soapy_rtlsdr_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
 
 
     def closeEvent(self, event):
@@ -265,6 +299,7 @@ class bpsk_file_transfer_receive_rtlsdr(gr.top_block, Qt.QWidget):
         self.filter_fft_rrc_filter_0.set_taps(firdes.root_raised_cosine(1, self.samp_rate, (self.samp_rate/self.sps), 0.35, (11*self.sps)))
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_1_0.set_samp_rate(self.samp_rate/self.sps)
+        self.soapy_rtlsdr_source_0.set_sample_rate(0, self.samp_rate)
 
     def get_rfGain(self):
         return self.rfGain
@@ -272,12 +307,14 @@ class bpsk_file_transfer_receive_rtlsdr(gr.top_block, Qt.QWidget):
     def set_rfGain(self, rfGain):
         self.rfGain = rfGain
         self._rfGain_callback(self.rfGain)
+        self.set_soapy_rtlsdr_source_0_gain(0, 'TUNER', self.rfGain)
 
     def get_frequency(self):
         return self.frequency
 
     def set_frequency(self, frequency):
         self.frequency = frequency
+        self.soapy_rtlsdr_source_0.set_frequency(0, self.frequency)
 
     def get_constel(self):
         return self.constel

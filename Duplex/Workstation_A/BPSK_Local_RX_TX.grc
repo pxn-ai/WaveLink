@@ -73,7 +73,7 @@ blocks:
     bus_structure: null
     coordinate: [192, 1016.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: hdr
   id: variable
   parameters:
@@ -107,7 +107,7 @@ blocks:
     bus_structure: null
     coordinate: [32, 1092.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: payload_size
   id: variable
   parameters:
@@ -160,7 +160,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 200e3
+    value: 2e6
   states:
     bus_sink: false
     bus_source: false
@@ -200,7 +200,7 @@ blocks:
     bus_structure: null
     coordinate: [328, 1016.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: tx_freq
   id: variable
   parameters:
@@ -422,7 +422,7 @@ blocks:
     bus_structure: null
     coordinate: [656, 784.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: blocks_vector_source_x_0
   id: blocks_vector_source_x
   parameters:
@@ -742,14 +742,14 @@ blocks:
     len_tag_key: ''
     samplerate: int(samp_rate)
     type: fc32
-    uri: '"ip:192.168.1.11"'
+    uri: '"ip:192.168.1.10"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [792, 852.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: iio_pluto_source_0
   id: iio_pluto_source
   parameters:
@@ -773,14 +773,14 @@ blocks:
     rfdc: 'True'
     samplerate: int(samp_rate)
     type: fc32
-    uri: '"ip:192.168.1.11"'
+    uri: '"ip:192.168.1.10"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [544, 1100.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: note_0
   id: note
   parameters:
@@ -1302,7 +1302,7 @@ blocks:
     bus_structure: null
     coordinate: [824, 712.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
@@ -1325,7 +1325,7 @@ blocks:
     bus_structure: null
     coordinate: [328, 1176.0]
     rotation: 0
-    state: enabled
+    state: disabled
 
 connections:
 - [blocks_file_source_0, '0', blocks_stream_to_tagged_stream_0_0_0, '0']

@@ -180,7 +180,7 @@ blocks:
     bus_structure: null
     coordinate: [16, 396.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_multiply_const_vxx_0
   id: blocks_multiply_const_vxx
   parameters:
@@ -217,7 +217,7 @@ blocks:
     bus_structure: null
     coordinate: [272, 424.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_stream_to_tagged_stream_0_0_0_0
   id: blocks_stream_to_tagged_stream
   parameters:
@@ -429,7 +429,7 @@ blocks:
     bus_structure: null
     coordinate: [272, 328.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: iio_pluto_sink_0
   id: iio_pluto_sink
   parameters:
@@ -472,7 +472,7 @@ blocks:
     bus_structure: null
     coordinate: [464, 320.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: qtgui_edit_box_msg_0
   id: qtgui_edit_box_msg
   parameters:
@@ -494,7 +494,7 @@ blocks:
     bus_structure: null
     coordinate: [48, 240.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: qtgui_time_sink_x_0
   id: qtgui_time_sink_x
   parameters:
