@@ -72,8 +72,6 @@ class WaveLinkApp(QMainWindow):
         self.file_button.setStyleSheet("background-color: #34B7F1; color: white; border-radius: 10px; padding: 10px; font-weight: bold;")
         layout.addWidget(self.file_button)
     
-        self.rx_thread.file_received.connect(self.display_file_notification)
-        
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
@@ -84,6 +82,7 @@ class WaveLinkApp(QMainWindow):
         # Start Receiver Thread
         self.rx_thread = ReceiverThread()
         self.rx_thread.message_received.connect(self.display_message)
+        self.rx_thread.file_received.connect(self.display_file_notification)
         self.rx_thread.start()
 
     def send_message(self):
