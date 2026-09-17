@@ -422,7 +422,7 @@ blocks:
     bus_structure: null
     coordinate: [656, 784.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_vector_source_x_0
   id: blocks_vector_source_x
   parameters:
@@ -749,7 +749,7 @@ blocks:
     bus_structure: null
     coordinate: [792, 852.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: iio_pluto_source_0
   id: iio_pluto_source
   parameters:
@@ -780,7 +780,7 @@ blocks:
     bus_structure: null
     coordinate: [544, 1100.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: note_0
   id: note
   parameters:
@@ -1284,7 +1284,7 @@ blocks:
 - name: zeromq_pub_sink_0
   id: zeromq_pub_sink
   parameters:
-    address: '"tcp://*:5000"'
+    address: '"tcp://*:5555"'
     affinity: ''
     alias: ''
     bind: 'True'
@@ -1302,11 +1302,11 @@ blocks:
     bus_structure: null
     coordinate: [824, 712.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://10.172.238.202:5000"'
+    address: '"tcp://172.20.10.2:5555"'
     affinity: ''
     alias: ''
     bind: 'False'
@@ -1325,7 +1325,7 @@ blocks:
     bus_structure: null
     coordinate: [328, 1176.0]
     rotation: 0
-    state: disabled
+    state: enabled
 
 connections:
 - [blocks_file_source_0, '0', blocks_stream_to_tagged_stream_0_0_0, '0']
