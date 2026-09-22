@@ -5,9 +5,10 @@ import os
 import subprocess
 import shutil
 import threading
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTextEdit, QLineEdit, 
                              QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QFileDialog)
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 
 class ReceiverThread(QThread):
     message_received = pyqtSignal(str)
@@ -125,6 +126,27 @@ class WaveLinkApp(QMainWindow):
             except Exception as e:
                 self.chat_history.append(f"<br><div align='center'><span style='background-color:#F8D7DA; color:#721C24; padding:5px; border-radius:10px;'>❌ Error saving file: {e}</span></div><br>")
             self._scroll_to_bottom()
+
+    def send_file_dialog(self):
+        filepath, _ = QFileDialog.getOpenFileName(self, "Select File")
+        if filepath:
+            shutil.copy(filepath, "transmit_buffer.bin")
+            
+            filename = os.path.basename(filepath)
+            bubble = f"<table width='100%'><tr><td align='right'><span style='background-color:#DCF8C6; color:black; font-size:16px;'>&nbsp;&nbsp;⏳ Handshake Sent. Sending {filename}...&nbsp;&nbsp;</span></td></tr></table>"
+            self.chat_history.append(bubble)
+            self._scroll_to_bottom()
+        
+        # Execute directly on the main thread instead of using threading.Thread
+        self.initiate_file_transfer(filename)
+
+    def initiate_file_transfer(self, filename):
+        padded_cmd = f"__SYS:FILE_RX_MODE:{filename}".ljust(1024, ' ')
+        self.tx_socket.sendto(padded_cmd.encode('utf-8'), ("127.0.0.1", 5001))
+        
+        # QTimer waits 1000ms (1 second) without freezing the UI, 
+        # then safely runs switch_flowgraph on the main GUI thread
+        QTimer.singleShot(1000, lambda: self.switch_flowgraph('BPSK_File_Transfer.py'))
 
     def send_file_dialog(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "Select File")
