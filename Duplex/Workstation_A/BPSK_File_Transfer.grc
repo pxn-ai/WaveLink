@@ -9,7 +9,7 @@ options:
     description: ''
     gen_cmake: 'On'
     gen_linking: dynamic
-    generate_options: qt_gui
+    generate_options: no_gui
     hier_block_src_path: '.:'
     id: BPSK_File_Transfer
     max_nouts: '0'
@@ -158,7 +158,7 @@ blocks:
     bus_structure: null
     coordinate: [760, 16.0]
     rotation: 0
-    state: true
+    state: disabled
 - name: blocks_file_source_0
   id: blocks_file_source
   parameters:
@@ -360,7 +360,7 @@ blocks:
   parameters:
     affinity: ''
     alias: ''
-    attenuation1: tx_atten
+    attenuation1: '10'
     bandwidth: samp_rate
     buffer_size: '32768'
     comment: ''
@@ -477,7 +477,7 @@ blocks:
     bus_structure: null
     coordinate: [1056, 512.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: snippet_0
   id: snippet
   parameters:

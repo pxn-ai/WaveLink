@@ -9,7 +9,7 @@ options:
     description: ''
     gen_cmake: 'On'
     gen_linking: dynamic
-    generate_options: qt_gui
+    generate_options: no_gui
     hier_block_src_path: '.:'
     id: BPSK_File_Recieve
     max_nouts: '0'
@@ -57,7 +57,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 915e6
+    value: 925e6
   states:
     bus_sink: false
     bus_source: false
@@ -94,7 +94,7 @@ blocks:
     bus_structure: null
     coordinate: [872, 8.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: samp_rate
   id: variable
   parameters:
@@ -438,7 +438,7 @@ blocks:
     bus_structure: null
     coordinate: [608, 204.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: qtgui_time_sink_x_1_0
   id: qtgui_time_sink_x
   parameters:
@@ -535,7 +535,7 @@ blocks:
     bus_structure: null
     coordinate: [1336, 388.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: soapy_rtlsdr_source_0
   id: soapy_rtlsdr_source
   parameters:
