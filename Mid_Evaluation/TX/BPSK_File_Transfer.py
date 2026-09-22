@@ -24,7 +24,7 @@ from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
-from gnuradio import iio
+from gnuradio import zeromq
 import sip
 import threading
 
@@ -89,6 +89,7 @@ class BPSK_File_Transfer(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
         snippets_init_before_blocks(self)
+        self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5555", 100, False, (-1), '', True, True)
         self._tx_atten_range = qtgui.Range(0, 30, 1, 10, 200)
         self._tx_atten_win = qtgui.RangeWidget(self._tx_atten_range, self.set_tx_atten, "Tx Attenuation", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._tx_atten_win)
@@ -143,13 +144,6 @@ class BPSK_File_Transfer(gr.top_block, Qt.QWidget):
 
         self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
-        self.iio_pluto_sink_0 = iio.fmcomms2_sink_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 32768, False)
-        self.iio_pluto_sink_0.set_len_tag_key('')
-        self.iio_pluto_sink_0.set_bandwidth(samp_rate)
-        self.iio_pluto_sink_0.set_frequency(int(frequency))
-        self.iio_pluto_sink_0.set_samplerate(int(samp_rate))
-        self.iio_pluto_sink_0.set_attenuation(0, tx_atten)
-        self.iio_pluto_sink_0.set_filter_params('Auto', '', 0, 0)
         self.digital_protocol_formatter_bb_0 = digital.protocol_formatter_bb(hdr, 'packet_len')
         self.digital_crc32_bb_0 = digital.crc32_bb(False, "packet_len", True)
         self.digital_constellation_modulator_0 = digital.generic_mod(
@@ -162,6 +156,7 @@ class BPSK_File_Transfer(gr.top_block, Qt.QWidget):
             log=False,
             truncate=False)
         self.blocks_vector_source_x_0 = blocks.vector_source_b([0xc0, 0xaf], True, 1, [])
+        self.blocks_throttle2_0 = blocks.throttle( gr.sizeof_gr_complex*1, samp_rate, True, 0 if "auto" == "auto" else max( int(float(0.1) * samp_rate) if "auto" == "time" else int(0.1), 1) )
         self.blocks_tagged_stream_mux_0 = blocks.tagged_stream_mux(gr.sizeof_char*1, 'packet_len', 0)
         self.blocks_stream_to_tagged_stream_0_0_0_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, preamble_size, "packet_len")
         self.blocks_stream_to_tagged_stream_0_0_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, payload_size, "packet_len")
@@ -174,11 +169,12 @@ class BPSK_File_Transfer(gr.top_block, Qt.QWidget):
         # Connections
         ##################################################
         self.connect((self.blocks_file_source_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0, 0))
-        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.iio_pluto_sink_0, 0))
+        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.blocks_throttle2_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0, 0), (self.digital_crc32_bb_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0_0, 0), (self.blocks_tagged_stream_mux_0, 0))
         self.connect((self.blocks_tagged_stream_mux_0, 0), (self.digital_constellation_modulator_0, 0))
+        self.connect((self.blocks_throttle2_0, 0), (self.zeromq_pub_sink_0, 0))
         self.connect((self.blocks_vector_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0_0, 0))
         self.connect((self.digital_constellation_modulator_0, 0), (self.blocks_multiply_const_vxx_0, 0))
         self.connect((self.digital_crc32_bb_0, 0), (self.blocks_tagged_stream_mux_0, 2))
@@ -199,7 +195,6 @@ class BPSK_File_Transfer(gr.top_block, Qt.QWidget):
 
     def set_tx_atten(self, tx_atten):
         self.tx_atten = tx_atten
-        self.iio_pluto_sink_0.set_attenuation(0,self.tx_atten)
 
     def get_sps(self):
         return self.sps
@@ -212,8 +207,7 @@ class BPSK_File_Transfer(gr.top_block, Qt.QWidget):
 
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
-        self.iio_pluto_sink_0.set_bandwidth(self.samp_rate)
-        self.iio_pluto_sink_0.set_samplerate(int(self.samp_rate))
+        self.blocks_throttle2_0.set_sample_rate(self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
 
     def get_preamble_size(self):
@@ -250,7 +244,6 @@ class BPSK_File_Transfer(gr.top_block, Qt.QWidget):
 
     def set_frequency(self, frequency):
         self.frequency = frequency
-        self.iio_pluto_sink_0.set_frequency(int(self.frequency))
 
     def get_constel(self):
         return self.constel

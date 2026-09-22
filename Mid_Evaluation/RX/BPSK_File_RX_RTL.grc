@@ -528,7 +528,7 @@ blocks:
     bus_structure: null
     coordinate: [72, 328.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: virtual_sink_3
   id: virtual_sink
   parameters:
@@ -584,7 +584,7 @@ blocks:
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://192.168.1.100:5555"'
+    address: '"tcp://172.20.10.2:5555"'
     affinity: ''
     alias: ''
     bind: 'False'
@@ -603,7 +603,7 @@ blocks:
     bus_structure: null
     coordinate: [56, 184.0]
     rotation: 0
-    state: disabled
+    state: enabled
 
 connections:
 - [blocks_repack_bits_bb_1, '0', digital_crc32_bb_1, '0']
