@@ -25,7 +25,7 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import gr, pdu
-from gnuradio import zeromq
+from gnuradio import iio
 import bpskfile5_epy_block_0 as epy_block_0  # embedded python block
 import bpskfile5_epy_block_1 as epy_block_1  # embedded python block
 import sip
@@ -69,11 +69,11 @@ class bpskfile5(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.tx_freq = tx_freq = 915e6
+        self.tx_freq = tx_freq = 925e6
         self.time_offset = time_offset = 1.0001
         self.sps = sps = 4
-        self.samp_rate = samp_rate = 200e3
-        self.rx_freq = rx_freq = 925e6
+        self.samp_rate = samp_rate = 2e6
+        self.rx_freq = rx_freq = 915e6
         self.preamble_size = preamble_size = 250
         self.postamble_size = postamble_size = 10000
         self.payload_size = payload_size = 1
@@ -87,8 +87,6 @@ class bpskfile5(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://10.172.238.202:5000", 100, False, (-1), '', False)
-        self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5000", 100, False, (-1), '', True, True)
         self._time_offset_range = qtgui.Range(0.999, 1.001, 0.0001, 1.0001, 200)
         self._time_offset_win = qtgui.RangeWidget(self._time_offset_range, self.set_time_offset, "Time Scale", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._time_offset_win, 0, 2, 1, 1)
@@ -221,6 +219,23 @@ class bpskfile5(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
+        self.iio_pluto_source_0 = iio.fmcomms2_source_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 32768)
+        self.iio_pluto_source_0.set_len_tag_key('')
+        self.iio_pluto_source_0.set_frequency(int(rx_freq))
+        self.iio_pluto_source_0.set_samplerate(int(samp_rate))
+        self.iio_pluto_source_0.set_gain_mode(0, 'slow_attack')
+        self.iio_pluto_source_0.set_gain(0, 64)
+        self.iio_pluto_source_0.set_quadrature(True)
+        self.iio_pluto_source_0.set_rfdc(True)
+        self.iio_pluto_source_0.set_bbdc(True)
+        self.iio_pluto_source_0.set_filter_params('Auto', '', 0, 0)
+        self.iio_pluto_sink_0 = iio.fmcomms2_sink_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 32768, False)
+        self.iio_pluto_sink_0.set_len_tag_key('')
+        self.iio_pluto_sink_0.set_bandwidth(20000000)
+        self.iio_pluto_sink_0.set_frequency(int(tx_freq))
+        self.iio_pluto_sink_0.set_samplerate(int(samp_rate))
+        self.iio_pluto_sink_0.set_attenuation(0, 10.0)
+        self.iio_pluto_sink_0.set_filter_params('Auto', '', 0, 0)
         self._freq_offset_range = qtgui.Range(-0.25, 0.25, 0.001, 0.01, 200)
         self._freq_offset_win = qtgui.RangeWidget(self._freq_offset_range, self.set_freq_offset, "Freq Offset", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._freq_offset_win, 0, 1, 1, 1)
@@ -262,7 +277,6 @@ class bpskfile5(gr.top_block, Qt.QWidget):
         self.digital_constellation_decoder_cb_1 = digital.constellation_decoder_cb(constel)
         self.blocks_vector_source_x_0_0 = blocks.vector_source_b([0xc0, 0xaf], True, 1, [])
         self.blocks_vector_source_x_0 = blocks.vector_source_b([0xc0, 0xaf], True, 1, [])
-        self.blocks_throttle2_0 = blocks.throttle( gr.sizeof_gr_complex*1, samp_rate, True, 0 if "auto" == "auto" else max( int(float(0.1) * samp_rate) if "auto" == "time" else int(0.1), 1) )
         self.blocks_tagged_stream_mux_0 = blocks.tagged_stream_mux(gr.sizeof_char*1, 'packet_len', 0)
         self.blocks_tag_gate_0 = blocks.tag_gate(gr.sizeof_gr_complex * 1, False)
         self.blocks_tag_gate_0.set_single_key("")
@@ -283,9 +297,8 @@ class bpskfile5(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_repack_bits_bb_1, 0), (self.digital_crc32_bb_1, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0_0, 0), (self.blocks_tagged_stream_mux_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0_0_0, 0), (self.blocks_tagged_stream_mux_0, 3))
-        self.connect((self.blocks_tag_gate_0, 0), (self.blocks_throttle2_0, 0))
+        self.connect((self.blocks_tag_gate_0, 0), (self.iio_pluto_sink_0, 0))
         self.connect((self.blocks_tagged_stream_mux_0, 0), (self.digital_constellation_modulator_0, 0))
-        self.connect((self.blocks_throttle2_0, 0), (self.zeromq_pub_sink_0, 0))
         self.connect((self.blocks_vector_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0_0, 0))
         self.connect((self.blocks_vector_source_x_0_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0_0_0, 0))
         self.connect((self.digital_constellation_decoder_cb_1, 0), (self.digital_diff_decoder_bb_0, 0))
@@ -300,9 +313,9 @@ class bpskfile5(gr.top_block, Qt.QWidget):
         self.connect((self.digital_protocol_formatter_bb_0, 0), (self.blocks_tagged_stream_mux_0, 1))
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_costas_loop_cc_0, 0))
         self.connect((self.filter_fft_rrc_filter_0, 0), (self.digital_symbol_sync_xx_0, 0))
+        self.connect((self.iio_pluto_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
+        self.connect((self.iio_pluto_source_0, 0), (self.qtgui_time_sink_x_0_0, 0))
         self.connect((self.pdu_pdu_to_tagged_stream_0, 0), (self.digital_crc32_bb_0, 0))
-        self.connect((self.zeromq_sub_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
-        self.connect((self.zeromq_sub_source_0, 0), (self.qtgui_time_sink_x_0_0, 0))
 
 
     def closeEvent(self, event):
@@ -318,6 +331,7 @@ class bpskfile5(gr.top_block, Qt.QWidget):
 
     def set_tx_freq(self, tx_freq):
         self.tx_freq = tx_freq
+        self.iio_pluto_sink_0.set_frequency(int(self.tx_freq))
 
     def get_time_offset(self):
         return self.time_offset
@@ -339,8 +353,9 @@ class bpskfile5(gr.top_block, Qt.QWidget):
 
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
-        self.blocks_throttle2_0.set_sample_rate(self.samp_rate)
         self.filter_fft_rrc_filter_0.set_taps(firdes.root_raised_cosine(1, self.samp_rate, (self.samp_rate/self.sps), 0.35, (11*self.sps)))
+        self.iio_pluto_sink_0.set_samplerate(int(self.samp_rate))
+        self.iio_pluto_source_0.set_samplerate(int(self.samp_rate))
         self.qtgui_time_sink_x_0_0.set_samp_rate(self.samp_rate)
         self.qtgui_time_sink_x_1_0.set_samp_rate(self.samp_rate/self.sps)
 
@@ -349,6 +364,7 @@ class bpskfile5(gr.top_block, Qt.QWidget):
 
     def set_rx_freq(self, rx_freq):
         self.rx_freq = rx_freq
+        self.iio_pluto_source_0.set_frequency(int(self.rx_freq))
 
     def get_preamble_size(self):
         return self.preamble_size

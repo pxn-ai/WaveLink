@@ -22,10 +22,9 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import gr, pdu
+from gnuradio import soapy
 from gnuradio import zeromq
-from xmlrpc.server import SimpleXMLRPCServer
 import threading
-import BPSK_Recieve_RTL_Headless_epy_block_0 as epy_block_0  # embedded python block
 
 
 
@@ -50,17 +49,44 @@ class BPSK_Recieve_RTL_Headless(gr.top_block):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.100:5555", 100, False, (-1), '', False)
-        self.zeromq_push_msg_sink_0 = zeromq.push_msg_sink("tcp://127.0.0.1:5002", 100, False)
         self.zeromq_pub_sink_iq = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://127.0.0.1:5004", 100, False, (-1), '', True, True)
-        self.xmlrpc_server_0 = SimpleXMLRPCServer(('127.0.0.1', 8082), allow_none=True)
-        self.xmlrpc_server_0.register_instance(self)
-        self.xmlrpc_server_0_thread = threading.Thread(target=self.xmlrpc_server_0.serve_forever)
-        self.xmlrpc_server_0_thread.daemon = True
-        self.xmlrpc_server_0_thread.start()
+        self.soapy_rtlsdr_source_0 = None
+        dev = 'driver=rtlsdr'
+        stream_args = 'bufflen=16384'
+        tune_args = ['']
+        settings = ['']
+
+        def _set_soapy_rtlsdr_source_0_gain_mode(channel, agc):
+            self.soapy_rtlsdr_source_0.set_gain_mode(channel, agc)
+            if not agc:
+                  self.soapy_rtlsdr_source_0.set_gain(channel, self._soapy_rtlsdr_source_0_gain_value)
+        self.set_soapy_rtlsdr_source_0_gain_mode = _set_soapy_rtlsdr_source_0_gain_mode
+
+        def _set_soapy_rtlsdr_source_0_gain(channel, name, gain):
+            self._soapy_rtlsdr_source_0_gain_value = gain
+            if not self.soapy_rtlsdr_source_0.get_gain_mode(channel):
+                self.soapy_rtlsdr_source_0.set_gain(channel, gain)
+        self.set_soapy_rtlsdr_source_0_gain = _set_soapy_rtlsdr_source_0_gain
+
+        def _set_soapy_rtlsdr_source_0_bias(bias):
+            if 'biastee' in self._soapy_rtlsdr_source_0_setting_keys:
+                self.soapy_rtlsdr_source_0.write_setting('biastee', bias)
+        self.set_soapy_rtlsdr_source_0_bias = _set_soapy_rtlsdr_source_0_bias
+
+        self.soapy_rtlsdr_source_0 = soapy.source(dev, "fc32", 1, '',
+                                  stream_args, tune_args, settings)
+
+        self._soapy_rtlsdr_source_0_setting_keys = [a.key for a in self.soapy_rtlsdr_source_0.get_setting_info()]
+
+        self.soapy_rtlsdr_source_0.set_sample_rate(0, samp_rate)
+        self.soapy_rtlsdr_source_0.set_frequency(0, frequency)
+        self.soapy_rtlsdr_source_0.set_frequency_correction(0, 0)
+        self.set_soapy_rtlsdr_source_0_bias(bool(False))
+        self._soapy_rtlsdr_source_0_gain_value = rfGain
+        self.set_soapy_rtlsdr_source_0_gain_mode(0, bool(False))
+        self.set_soapy_rtlsdr_source_0_gain(0, 'TUNER', rfGain)
         self.pdu_tagged_stream_to_pdu_0 = pdu.tagged_stream_to_pdu(gr.types.byte_t, 'packet_len')
         self.filter_fft_rrc_filter_0 = filter.fft_filter_ccc(1, firdes.root_raised_cosine(1, samp_rate, (samp_rate/sps), 0.35, (11*sps)), 1)
-        self.epy_block_0 = epy_block_0.blk()
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
             digital.TED_SIGNAL_TIMES_SLOPE_ML,
             sps,
@@ -88,9 +114,7 @@ class BPSK_Recieve_RTL_Headless(gr.top_block):
         ##################################################
         # Connections
         ##################################################
-        self.msg_connect((self.epy_block_0, 'msg_out'), (self.zeromq_push_msg_sink_0, 'in'))
         self.msg_connect((self.pdu_tagged_stream_to_pdu_0, 'pdus'), (self.blocks_message_debug_0, 'print'))
-        self.msg_connect((self.pdu_tagged_stream_to_pdu_0, 'pdus'), (self.epy_block_0, 'pdu_in'))
         self.connect((self.blocks_repack_bits_bb_1, 0), (self.digital_crc32_bb_1, 0))
         self.connect((self.digital_constellation_decoder_cb_1, 0), (self.digital_diff_decoder_bb_0, 0))
         self.connect((self.digital_correlate_access_code_xx_ts_0, 0), (self.blocks_repack_bits_bb_1, 0))
@@ -101,7 +125,7 @@ class BPSK_Recieve_RTL_Headless(gr.top_block):
         self.connect((self.digital_diff_decoder_bb_0, 0), (self.digital_correlate_access_code_xx_ts_0, 0))
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_costas_loop_cc_0, 0))
         self.connect((self.filter_fft_rrc_filter_0, 0), (self.digital_symbol_sync_xx_0, 0))
-        self.connect((self.zeromq_sub_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
+        self.connect((self.soapy_rtlsdr_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
 
 
     def get_sps(self):
@@ -118,18 +142,21 @@ class BPSK_Recieve_RTL_Headless(gr.top_block):
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
         self.filter_fft_rrc_filter_0.set_taps(firdes.root_raised_cosine(1, self.samp_rate, (self.samp_rate/self.sps), 0.35, (11*self.sps)))
+        self.soapy_rtlsdr_source_0.set_sample_rate(0, self.samp_rate)
 
     def get_rfGain(self):
         return self.rfGain
 
     def set_rfGain(self, rfGain):
         self.rfGain = rfGain
+        self.set_soapy_rtlsdr_source_0_gain(0, 'TUNER', self.rfGain)
 
     def get_frequency(self):
         return self.frequency
 
     def set_frequency(self, frequency):
         self.frequency = frequency
+        self.soapy_rtlsdr_source_0.set_frequency(0, self.frequency)
 
     def get_constel(self):
         return self.constel

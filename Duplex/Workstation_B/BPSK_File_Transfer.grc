@@ -1,6 +1,6 @@
 options:
   parameters:
-    author: ''
+    author: Team WaveLink
     catch_exceptions: 'True'
     category: '[GRC Hier Blocks]'
     cmake_opt: ''
@@ -11,7 +11,7 @@ options:
     gen_linking: dynamic
     generate_options: qt_gui
     hier_block_src_path: '.:'
-    id: bpsk_file_transfer7_transmit_pluto
+    id: BPSK_File_Transfer
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -22,7 +22,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: bpsk_file_transfer7_transmit_pluto
+    title: Plut_SDR_File_TX
     window_size: (1000,1000)
   states:
     bus_sink: false
@@ -57,12 +57,12 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 905.2e6
+    value: 925e6
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [768, 156.0]
+    coordinate: [952, 188.0]
     rotation: 0
     state: true
 - name: hdr
@@ -99,7 +99,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [232, 156.0]
+    coordinate: [320, 148.0]
     rotation: 0
     state: true
 - name: preamble_size
@@ -111,7 +111,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [120, 152.0]
+    coordinate: [168, 156.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -123,7 +123,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [648, 156.0]
+    coordinate: [824, 188.0]
     rotation: 0
     state: enabled
 - name: sps
@@ -156,7 +156,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1056, 16.0]
+    coordinate: [784, 8.0]
     rotation: 0
     state: true
 - name: blocks_file_source_0
@@ -166,7 +166,7 @@ blocks:
     alias: ''
     begin_tag: pmt.PMT_NIL
     comment: ''
-    file: /home/pxn-ai/Downloads/color_test_800x600_118kb.jpg
+    file: Transmit_buffer.bin
     length: '0'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -180,7 +180,7 @@ blocks:
     bus_structure: null
     coordinate: [16, 396.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_multiply_const_vxx_0
   id: blocks_multiply_const_vxx
   parameters:
@@ -196,7 +196,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [880, 704.0]
+    coordinate: [856, 704.0]
     rotation: 0
     state: true
 - name: blocks_stream_to_tagged_stream_0_0_0
@@ -217,7 +217,7 @@ blocks:
     bus_structure: null
     coordinate: [272, 424.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_stream_to_tagged_stream_0_0_0_0
   id: blocks_stream_to_tagged_stream
   parameters:
@@ -237,25 +237,6 @@ blocks:
     coordinate: [160, 556.0]
     rotation: 0
     state: enabled
-- name: blocks_stream_to_tagged_stream_0_0_0_0_0
-  id: blocks_stream_to_tagged_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    len_tag_key: '"packet_len"'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    packet_len: postamble_size
-    type: byte
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [224, 832.0]
-    rotation: 0
-    state: disabled
 - name: blocks_tagged_stream_mux_0
   id: blocks_tagged_stream_mux
   parameters:
@@ -317,26 +298,6 @@ blocks:
     coordinate: [16, 548.0]
     rotation: 0
     state: enabled
-- name: blocks_vector_source_x_0_0
-  id: blocks_vector_source_x
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: Postamble
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    repeat: 'True'
-    tags: '[]'
-    type: byte
-    vector: '[0xc0, 0xaf]'
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [32, 824.0]
-    rotation: 0
-    state: disabled
 - name: digital_constellation_modulator_0
   id: digital_constellation_modulator
   parameters:
@@ -356,7 +317,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [632, 788.0]
+    coordinate: [632, 772.0]
     rotation: 0
     state: enabled
 - name: digital_crc32_bb_0
@@ -374,7 +335,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [512, 452.0]
+    coordinate: [512, 416.0]
     rotation: 0
     state: enabled
 - name: digital_protocol_formatter_bb_0
@@ -392,42 +353,6 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [776, 424.0]
-    rotation: 0
-    state: enabled
-- name: epy_block_0
-  id: epy_block
-  parameters:
-    _source_code: "import numpy as np\nfrom gnuradio import gr\nimport pmt\n\nclass\
-      \ blk(gr.sync_block):\n    def __init__(self):\n        gr.sync_block.__init__(self,\
-      \ name='Text to PDU', in_sig=None, out_sig=None)\n        self.message_port_register_in(pmt.intern('msg_in'))\n\
-      \        self.message_port_register_out(pmt.intern('pdu_out'))\n        self.set_msg_handler(pmt.intern('msg_in'),\
-      \ self.handle_msg)\n\n    def handle_msg(self, msg):\n        if pmt.is_pair(msg):\n\
-      \            msg = pmt.cdr(msg)\n        \n        text = \"\"\n        if pmt.is_symbol(msg):\n\
-      \            text = pmt.symbol_to_string(msg)\n        elif pmt.is_string(msg):\n\
-      \            text = pmt.string_to_python(msg)\n        else:\n            return\n\
-      \n        text += '\\n'\n        \n        # --- PACKET 1: The Real Message\
-      \ ---\n        bytes_list = list(text.encode('utf-8'))\n        if len(bytes_list)\
-      \ < 1024:\n            bytes_list.extend([32] * (1024 - len(bytes_list)))\n\
-      \        \n        pdu_real = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(bytes_list),\
-      \ bytes_list))\n        self.message_port_pub(pmt.intern('pdu_out'), pdu_real)\n\
-      \        \n        # --- PACKET 2: The Dummy Flush Packet ---\n        # Fires\
-      \ immediately after to push the real packet through the DSP filters.\n     \
-      \   # The receiver's .strip() logic automatically ignores this packet.\n   \
-      \     flush_list = [32] * 1024 \n        pdu_flush = pmt.cons(pmt.make_dict(),\
-      \ pmt.init_u8vector(len(flush_list), flush_list))\n        self.message_port_pub(pmt.intern('pdu_out'),\
-      \ pdu_flush)\n"
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    _io_cache: ('Text to PDU', 'blk', [], [('msg_in', 'message', 1)], [('pdu_out',
-      'message', 1)], '', [])
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [272, 328.0]
     rotation: 0
     state: enabled
 - name: iio_pluto_sink_0
@@ -453,46 +378,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1232, 636.0]
-    rotation: 0
-    state: enabled
-- name: pdu_pdu_to_tagged_stream_0
-  id: pdu_pdu_to_tagged_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    tag: packet_len
-    type: byte
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [464, 320.0]
-    rotation: 0
-    state: enabled
-- name: qtgui_edit_box_msg_0
-  id: qtgui_edit_box_msg
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    gui_hint: ''
-    is_pair: 'False'
-    is_static: 'True'
-    key: ''
-    label: Enter Message
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    type: string
-    value: ''
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [24, 232.0]
+    coordinate: [1048, 644.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0
@@ -589,9 +475,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1184, 500.0]
+    coordinate: [1056, 512.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: snippet_0
   id: snippet
   parameters:
@@ -605,7 +491,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [368, 152.0]
+    coordinate: [480, 148.0]
     rotation: 0
     state: enabled
 - name: virtual_sink_0_0
@@ -618,7 +504,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1224, 416.0]
+    coordinate: [1040, 432.0]
     rotation: 0
     state: true
 - name: virtual_sink_2_0
@@ -657,7 +543,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [184, 744.0]
+    coordinate: [200, 720.0]
     rotation: 0
     state: true
 - name: zeromq_pub_sink_0
@@ -679,7 +565,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1328, 848.0]
+    coordinate: [1232, 856.0]
     rotation: 0
     state: disabled
 
@@ -693,14 +579,10 @@ connections:
 - [blocks_tagged_stream_mux_0, '0', digital_constellation_modulator_0, '0']
 - [blocks_throttle2_0, '0', zeromq_pub_sink_0, '0']
 - [blocks_vector_source_x_0, '0', blocks_stream_to_tagged_stream_0_0_0_0, '0']
-- [blocks_vector_source_x_0_0, '0', blocks_stream_to_tagged_stream_0_0_0_0_0, '0']
 - [digital_constellation_modulator_0, '0', blocks_multiply_const_vxx_0, '0']
 - [digital_crc32_bb_0, '0', digital_protocol_formatter_bb_0, '0']
 - [digital_crc32_bb_0, '0', virtual_sink_2_0, '0']
 - [digital_protocol_formatter_bb_0, '0', virtual_sink_0_0, '0']
-- [epy_block_0, pdu_out, pdu_pdu_to_tagged_stream_0, pdus]
-- [pdu_pdu_to_tagged_stream_0, '0', digital_crc32_bb_0, '0']
-- [qtgui_edit_box_msg_0, msg, epy_block_0, msg_in]
 - [virtual_source_5, '0', blocks_tagged_stream_mux_0, '1']
 - [virtual_source_6, '0', blocks_tagged_stream_mux_0, '2']
 

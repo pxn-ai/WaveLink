@@ -1,5 +1,7 @@
 import sys
-sys.path.append("/opt/homebrew/lib/python3.14/site-packages")
+import os
+
+sys.path.append(os.path.join(os.environ.get("CONDA_PREFIX", sys.prefix), "Lib", "site-packages"))
 
 import asyncio
 import subprocess
@@ -13,16 +15,30 @@ import pmt
 import xmlrpc.client
 import numpy as np
 import json
-import os
+
+if os.name == "nt":
+    conda_prefix = os.environ.get("CONDA_PREFIX", sys.prefix)
+    runtime_paths = [
+        conda_prefix,
+        os.path.join(conda_prefix, "Library", "bin"),
+        os.path.join(conda_prefix, "Library", "usr", "bin"),
+        os.path.join(conda_prefix, "Scripts"),
+    ]
+    os.environ["PATH"] = os.pathsep.join(runtime_paths + [os.environ.get("PATH", "")])
+    for runtime_path in runtime_paths:
+        if os.path.isdir(runtime_path) and hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(runtime_path)
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 app = FastAPI()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-os.makedirs("static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+os.makedirs(os.path.join(BASE_DIR, "static"), exist_ok=True)
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 @app.get("/")
 def read_root():
-    return FileResponse("static/rx_index.html")
+    return FileResponse(os.path.join(BASE_DIR, "static", "rx_index.html"))
 
 # XMLRPC Client
 rx_rpc = xmlrpc.client.ServerProxy("http://127.0.0.1:8082")
@@ -33,7 +49,8 @@ processes = []
 @app.on_event("startup")
 async def startup_event():
     env = os.environ.copy()
-    p_rx = subprocess.Popen(["/opt/homebrew/bin/python3.14", "BPSK_Recieve_RTL_Headless.py"], env=env)
+    rx_script = os.path.join(BASE_DIR, "BPSK_Recieve_RTL_Headless.py")
+    p_rx = subprocess.Popen([sys.executable, rx_script], cwd=BASE_DIR, env=env)
     processes.append(p_rx)
     asyncio.create_task(poll_rx_chat())
     asyncio.create_task(poll_rx_iq())

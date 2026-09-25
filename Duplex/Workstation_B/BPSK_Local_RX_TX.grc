@@ -148,7 +148,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 925e6
+    value: 915e6
   states:
     bus_sink: false
     bus_source: false
@@ -160,7 +160,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 200e3
+    value: 2e6
   states:
     bus_sink: false
     bus_source: false
@@ -205,7 +205,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 915e6
+    value: 925e6
   states:
     bus_sink: false
     bus_source: false
@@ -422,7 +422,7 @@ blocks:
     bus_structure: null
     coordinate: [656, 784.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: blocks_vector_source_x_0
   id: blocks_vector_source_x
   parameters:
@@ -553,7 +553,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [472, 344.0]
+    coordinate: [520, 388.0]
     rotation: 0
     state: enabled
 - name: digital_crc32_bb_1
@@ -605,7 +605,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [712, 328.0]
+    coordinate: [768, 284.0]
     rotation: 0
     state: enabled
 - name: digital_symbol_sync_xx_0
@@ -668,7 +668,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [368, 184.0]
+    coordinate: [360, 168.0]
     rotation: 0
     state: enabled
 - name: epy_block_1
@@ -742,14 +742,14 @@ blocks:
     len_tag_key: ''
     samplerate: int(samp_rate)
     type: fc32
-    uri: '"ip:192.168.1.11"'
+    uri: '"ip:192.168.1.10"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [792, 852.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: iio_pluto_source_0
   id: iio_pluto_source
   parameters:
@@ -773,14 +773,14 @@ blocks:
     rfdc: 'True'
     samplerate: int(samp_rate)
     type: fc32
-    uri: '"ip:192.168.1.11"'
+    uri: '"ip:192.168.1.10"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [544, 1100.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: note_0
   id: note
   parameters:
@@ -834,7 +834,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [328, 240.0]
+    coordinate: [464, 232.0]
     rotation: 0
     state: enabled
 - name: pdu_tagged_stream_to_pdu_0
@@ -873,7 +873,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [72, 168.0]
+    coordinate: [56, 152.0]
     rotation: 0
     state: enabled
 - name: qtgui_edit_box_msg_0_0
@@ -895,7 +895,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1104, 1800.0]
+    coordinate: [1176, 1792.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0_0
@@ -1148,7 +1148,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [960, 336.0]
+    coordinate: [1120, 288.0]
     rotation: 0
     state: true
 - name: virtual_sink_2
@@ -1174,7 +1174,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [752, 440.0]
+    coordinate: [840, 464.0]
     rotation: 0
     state: true
 - name: virtual_sink_3
@@ -1284,7 +1284,7 @@ blocks:
 - name: zeromq_pub_sink_0
   id: zeromq_pub_sink
   parameters:
-    address: '"tcp://*:5000"'
+    address: '"tcp://*:5555"'
     affinity: ''
     alias: ''
     bind: 'True'
@@ -1302,11 +1302,11 @@ blocks:
     bus_structure: null
     coordinate: [824, 712.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://10.172.238.202:5000"'
+    address: '"tcp://172.20.10.4:5555"'
     affinity: ''
     alias: ''
     bind: 'False'
@@ -1325,7 +1325,7 @@ blocks:
     bus_structure: null
     coordinate: [328, 1176.0]
     rotation: 0
-    state: enabled
+    state: disabled
 
 connections:
 - [blocks_file_source_0, '0', blocks_stream_to_tagged_stream_0_0_0, '0']

@@ -1,6 +1,6 @@
 options:
   parameters:
-    author: Barry Duggan
+    author: Team WaveLink
     catch_exceptions: 'True'
     category: '[GRC Hier Blocks]'
     cmake_opt: ''
@@ -9,9 +9,9 @@ options:
     description: ''
     gen_cmake: 'On'
     gen_linking: dynamic
-    generate_options: no_gui
+    generate_options: qt_gui
     hier_block_src_path: '.:'
-    id: BPSK_Recieve_RTL_Headless
+    id: BPSK_File_Recieve
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -22,7 +22,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: BPSK_Recieve_RTL_Headless
+    title: RTL_File_RX
     window_size: (1000,1000)
   states:
     bus_sink: false
@@ -57,7 +57,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 905.2e6
+    value: 915e6
   states:
     bus_sink: false
     bus_source: false
@@ -66,10 +66,28 @@ blocks:
     rotation: 0
     state: true
 - name: rfGain
-  id: variable
+  id: variable_qtgui_chooser
   parameters:
     comment: ''
+    gui_hint: ''
+    label: '"RF Gain"'
+    label0: ''
+    label1: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    labels: '["0.0", "12.5", "20.7", "29.7", "36.4", "40.2", "44.5", "49.6"]'
+    num_opts: '0'
+    option0: '0'
+    option1: '1'
+    option2: '2'
+    option3: '3'
+    option4: '4'
+    options: '[0.0, 12.5, 20.7, 29.7, 36.4, 40.2, 44.5, 49.6]'
+    orient: Qt.QVBoxLayout
+    type: real
     value: '44.5'
+    widget: combo_box
   states:
     bus_sink: false
     bus_source: false
@@ -108,7 +126,7 @@ blocks:
     alias: ''
     append: 'False'
     comment: ''
-    file: bpsk_receive.txt
+    file: bpsk_receive.jpg
     type: byte
     unbuffered: 'True'
     vlen: '1'
@@ -269,36 +287,6 @@ blocks:
     coordinate: [608, 308.0]
     rotation: 0
     state: enabled
-- name: epy_block_0
-  id: epy_block
-  parameters:
-    _source_code: "import numpy as np\nfrom gnuradio import gr\nimport pmt\n\nclass\
-      \ blk(gr.sync_block):\n    def __init__(self):\n        gr.sync_block.__init__(self,\
-      \ name='PDU to Chat Log', in_sig=None, out_sig=None)\n        self.message_port_register_in(pmt.intern('pdu_in'))\n\
-      \        self.message_port_register_out(pmt.intern('msg_out'))\n        self.set_msg_handler(pmt.intern('pdu_in'),\
-      \ self.handle_msg)\n        self.chat_history = []\n\n    def handle_msg(self,\
-      \ msg):\n        if pmt.is_pair(msg):\n            data = pmt.cdr(msg)\n   \
-      \         if pmt.is_u8vector(data):\n                bytes_data = bytes(pmt.u8vector_elements(data))\n\
-      \                new_text = bytes_data.decode('utf-8', errors='ignore').strip()\n\
-      \                \n                if new_text:\n                    self.chat_history.append(f\"\
-      Received: {new_text}\")\n                    if len(self.chat_history) > 10:\n\
-      \                        self.chat_history.pop(0)\n                    \n  \
-      \                  display_text = \"\\n\".join(self.chat_history)\n        \
-      \            self.message_port_pub(pmt.intern('msg_out'), pmt.intern(display_text))\n"
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    _io_cache: ('PDU to Chat Log', 'blk', [], [('pdu_in', 'message', 1)], [('msg_out',
-      'message', 1)], '', [])
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1120, 896.0]
-    rotation: 0
-    state: disabled
 - name: filter_fft_rrc_filter_0
   id: filter_fft_rrc_filter
   parameters:
@@ -322,6 +310,37 @@ blocks:
     coordinate: [304, 304.0]
     rotation: 0
     state: enabled
+- name: iio_pluto_source_0
+  id: iio_pluto_source
+  parameters:
+    affinity: ''
+    alias: ''
+    bandwidth: '20000000'
+    bbdc: 'True'
+    buffer_size: '32768'
+    comment: ''
+    filter: ''
+    filter_source: '''Auto'''
+    fpass: '0'
+    frequency: int(frequency)
+    fstop: '0'
+    gain1: '''slow_attack'''
+    len_tag_key: ''
+    manual_gain1: '64'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    quadrature: 'True'
+    rfdc: 'True'
+    samplerate: int(samp_rate)
+    type: fc32
+    uri: '"ip:192.168.1.10"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [40, 332.0]
+    rotation: 0
+    state: enabled
 - name: pdu_tagged_stream_to_pdu_0
   id: pdu_tagged_stream_to_pdu
   parameters:
@@ -339,6 +358,184 @@ blocks:
     coordinate: [960, 744.0]
     rotation: 0
     state: enabled
+- name: qtgui_freq_sink_x_0
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    average: '1.0'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: '1024'
+    freqhalf: 'True'
+    grid: 'False'
+    gui_hint: ''
+    label: Relative Gain
+    label1: ''
+    label10: ''''''
+    label2: ''''''
+    label3: ''''''
+    label4: ''''''
+    label5: ''''''
+    label6: ''''''
+    label7: ''''''
+    label8: ''''''
+    label9: ''''''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    nconnections: '1'
+    norm_window: 'False'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '10'
+    ymin: '-140'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [608, 204.0]
+    rotation: 0
+    state: disabled
+- name: qtgui_time_sink_x_1_0
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'True'
+    grid: 'True'
+    gui_hint: ''
+    label1: Real
+    label10: Signal 10
+    label2: Imag
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'True'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: Recovered Symbols
+    nconnections: '1'
+    size: '256'
+    srate: samp_rate/sps
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '3'
+    style3: '1'
+    style4: '3'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0.0'
+    tr_level: '0.01'
+    tr_mode: qtgui.TRIG_MODE_AUTO
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: complex
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: Amplitude
+    ymax: '1.0'
+    ymin: '-1.0'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1336, 388.0]
+    rotation: 0
+    state: disabled
 - name: soapy_rtlsdr_source_0
   id: soapy_rtlsdr_source
   parameters:
@@ -360,9 +557,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [72, 328.0]
+    coordinate: [32, 288.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: virtual_sink_3
   id: virtual_sink
   parameters:
@@ -415,62 +612,10 @@ blocks:
     coordinate: [80, 744.0]
     rotation: 0
     state: enabled
-- name: xmlrpc_server_0
-  id: xmlrpc_server
-  parameters:
-    addr: 127.0.0.1
-    alias: ''
-    comment: ''
-    port: '8082'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1008, 28.0]
-    rotation: 0
-    state: disabled
-- name: zeromq_pub_sink_iq
-  id: zeromq_pub_sink
-  parameters:
-    address: '"tcp://127.0.0.1:5004"'
-    affinity: ''
-    alias: ''
-    bind: 'True'
-    comment: ''
-    drop_on_hwm: 'True'
-    hwm: '-1'
-    key: ''
-    pass_tags: 'False'
-    timeout: '100'
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1368, 336.0]
-    rotation: 0
-    state: enabled
-- name: zeromq_push_msg_sink_0
-  id: zeromq_push_msg_sink
-  parameters:
-    address: '"tcp://127.0.0.1:5002"'
-    affinity: ''
-    alias: ''
-    bind: 'False'
-    comment: ''
-    timeout: '100'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1336, 872.0]
-    rotation: 0
-    state: disabled
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://192.168.1.100:5555"'
+    address: '"tcp://172.20.10.2:5555"'
     affinity: ''
     alias: ''
     bind: 'False'
@@ -487,7 +632,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [64, 176.0]
+    coordinate: [32, 152.0]
     rotation: 0
     state: disabled
 
@@ -495,16 +640,16 @@ connections:
 - [blocks_repack_bits_bb_1, '0', digital_crc32_bb_1, '0']
 - [digital_constellation_decoder_cb_1, '0', digital_diff_decoder_bb_0, '0']
 - [digital_correlate_access_code_xx_ts_0, '0', virtual_sink_4, '0']
+- [digital_costas_loop_cc_0, '0', qtgui_time_sink_x_1_0, '0']
 - [digital_costas_loop_cc_0, '0', virtual_sink_3, '0']
-- [digital_costas_loop_cc_0, '0', zeromq_pub_sink_iq, '0']
 - [digital_crc32_bb_1, '0', blocks_file_sink_0, '0']
 - [digital_crc32_bb_1, '0', pdu_tagged_stream_to_pdu_0, '0']
 - [digital_diff_decoder_bb_0, '0', digital_correlate_access_code_xx_ts_0, '0']
 - [digital_symbol_sync_xx_0, '0', digital_costas_loop_cc_0, '0']
-- [epy_block_0, msg_out, zeromq_push_msg_sink_0, in]
 - [filter_fft_rrc_filter_0, '0', digital_symbol_sync_xx_0, '0']
+- [filter_fft_rrc_filter_0, '0', qtgui_freq_sink_x_0, '0']
+- [iio_pluto_source_0, '0', filter_fft_rrc_filter_0, '0']
 - [pdu_tagged_stream_to_pdu_0, pdus, blocks_message_debug_0, print]
-- [pdu_tagged_stream_to_pdu_0, pdus, epy_block_0, pdu_in]
 - [soapy_rtlsdr_source_0, '0', filter_fft_rrc_filter_0, '0']
 - [virtual_source_2, '0', digital_constellation_decoder_cb_1, '0']
 - [virtual_source_3, '0', blocks_repack_bits_bb_1, '0']
