@@ -187,7 +187,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [32, 296.0]
+    coordinate: [48, 304.0]
     rotation: 0
     state: enabled
 - name: blocks_message_debug_0
@@ -876,7 +876,7 @@ blocks:
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
-    address: '"tcp://172.20.10.2:5555"'
+    address: '"tcp://172.20.10.3:5555"'
     affinity: ''
     alias: ''
     bind: 'False'
