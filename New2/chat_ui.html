@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WaveLink Chat</title>
+<style>
+:root{
+  --app:#d1d7db; --side:#fff; --head:#f0f2f5; --wall:#efeae2; --dots:rgba(11,20,26,.045);
+  --in:#fff; --out:#d9fdd3; --text:#111b21; --sub:#667781; --accent:#00a884;
+  --border:#e9edef; --composer:#f0f2f5; --input:#fff; --chip:#fff; --sys:#fff5c4;
+  --tick:#8696a0; --read:#53bdeb; --hover:#f5f6f6; --active:#f0f2f5; --warn:#fff3cd; --warn-t:#664d03;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme=light]){
+    --app:#0a1014; --side:#111b21; --head:#202c33; --wall:#0b141a; --dots:rgba(255,255,255,.035);
+    --in:#202c33; --out:#005c4b; --text:#e9edef; --sub:#8696a0; --border:#222d34;
+    --composer:#202c33; --input:#2a3942; --chip:#182229; --sys:#182229; --tick:#8696a0;
+    --hover:#202c33; --active:#2a3942; --warn:#3a2f10; --warn-t:#ffda6a;
+  }
+}
+:root[data-theme=dark]{
+  --app:#0a1014; --side:#111b21; --head:#202c33; --wall:#0b141a; --dots:rgba(255,255,255,.035);
+  --in:#202c33; --out:#005c4b; --text:#e9edef; --sub:#8696a0; --border:#222d34;
+  --composer:#202c33; --input:#2a3942; --chip:#182229; --sys:#182229; --tick:#8696a0;
+  --hover:#202c33; --active:#2a3942; --warn:#3a2f10; --warn-t:#ffda6a;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--app);color:var(--text);font:14px/1.4 "Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+#app{display:flex;height:100vh;height:100dvh;max-width:1600px;margin:0 auto;background:var(--side);box-shadow:0 6px 18px rgba(11,20,26,.06)}
+
+#side{width:32%;min-width:300px;max-width:440px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--side)}
+.bar{height:59px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--head)}
+.bar .title{flex:1;font-weight:600;font-size:16px}
+.iconbtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--sub);font-size:19px}
+.iconbtn:hover{background:rgba(134,150,160,.15)}
+.avatar{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:600;font-size:17px;text-transform:uppercase;user-select:none}
+.avatar.big{width:49px;height:49px;font-size:20px}
+#list{flex:1;overflow-y:auto}
+.item{display:flex;gap:13px;padding:0 15px;height:72px;align-items:center;cursor:pointer;background:var(--active)}
+.item .mid{flex:1;min-width:0;border-bottom:1px solid var(--border);height:100%;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.item .row1,.item .row2{display:flex;align-items:center;gap:8px}
+.item .name{flex:1;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .when{font-size:12px;color:var(--sub)}
+.item .when.hot{color:var(--accent)}
+.item .prev{flex:1;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center}
+.badge[hidden]{display:none}
+.hint{padding:14px 20px;color:var(--sub);font-size:12.5px;text-align:center}
+
+#main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;background:var(--wall)}
+#main .bar{border-left:0}
+.peer{flex:1;min-width:0;line-height:1.25}
+.peer .n{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peer .s{font-size:13px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peer .s.on{color:var(--accent)}
+.banner{padding:8px 16px;font-size:13px;background:var(--warn);color:var(--warn-t);text-align:center}
+.banner[hidden]{display:none}
+#msgs{flex:1;overflow-y:auto;padding:14px 5% 10px;background-color:var(--wall);
+  background-image:radial-gradient(circle at 1px 1px,var(--dots) 1.2px,transparent 0);background-size:22px 22px}
+.chip{width:fit-content;max-width:90%;margin:8px auto;padding:5px 12px;border-radius:8px;background:var(--chip);color:var(--sub);font-size:12.5px;text-align:center;box-shadow:0 1px .5px rgba(11,20,26,.13)}
+.chip.sys{background:var(--sys);line-height:1.5}
+.row{display:flex;margin-top:2px}
+.row.first{margin-top:10px}
+.row.out{justify-content:flex-end}
+.bubble{position:relative;max-width:min(65%,560px);padding:6px 8px 7px 9px;border-radius:8px;box-shadow:0 1px .5px rgba(11,20,26,.13);font-size:14.2px;line-height:19px;word-wrap:break-word;overflow-wrap:anywhere}
+.row.in .bubble{background:var(--in)}
+.row.out .bubble{background:var(--out)}
+.row.first.in .bubble{border-top-left-radius:0}
+.row.first.out .bubble{border-top-right-radius:0}
+.row.first .bubble::before{content:"";position:absolute;top:0;width:8px;height:13px;background:inherit}
+.row.first.in .bubble::before{left:-8px;clip-path:polygon(100% 0,0 0,100% 100%)}
+.row.first.out .bubble::before{right:-8px;clip-path:polygon(0 0,100% 0,0 100%)}
+.text{white-space:pre-wrap}
+.file-link{display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;font-weight:600}
+.file-link:hover{text-decoration:underline}
+.prog-container{background:rgba(0,0,0,0.1); height:8px; border-radius:4px; margin-top:8px; overflow:hidden; width:200px;}
+.prog-bar{background:var(--accent); height:100%; transition:width 0.3s ease;}
+.prog-text{font-size:11px; font-weight:bold; color:var(--sub); margin-top:4px; text-align:right;}
+
+.meta{float:right;display:inline-flex;align-items:center;gap:3px;margin:8px 0 -4px 12px;font-size:11px;line-height:15px;color:var(--sub);user-select:none}
+.row.out .meta{color:var(--sub)}
+.tick{display:inline-flex;color:var(--tick)}
+.tick.read{color:var(--read)}
+.tick.failed{cursor:pointer}
+.tick svg{display:block}
+
+.composer{flex:none;display:flex;align-items:flex-end;gap:8px;padding:10px 16px;background:var(--composer)}
+.composer textarea{flex:1;border:0;outline:0;resize:none;border-radius:8px;padding:10px 12px;background:var(--input);color:var(--text);
+  font:15px/20px "Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif;max-height:120px;min-height:40px}
+.composer textarea::placeholder{color:var(--sub)}
+#send{background:var(--accent);color:#fff;width:42px;height:42px;border-radius:50%;display:grid;place-items:center}
+#send:disabled{opacity:.5;cursor:default}
+#emoji{position:absolute;left:12px;bottom:70px;width:min(340px,calc(100% - 24px));padding:10px;border-radius:12px;background:var(--head);
+  box-shadow:0 4px 20px rgba(11,20,26,.25);display:grid;grid-template-columns:repeat(8,1fr);gap:2px;z-index:5}
+#emoji[hidden]{display:none}
+#emoji button{font-size:22px;height:38px;border-radius:8px}
+#emoji button:hover{background:rgba(134,150,160,.2)}
+#radio{position:absolute;right:12px;top:64px;min-width:230px;padding:12px 16px;border-radius:10px;background:var(--head);box-shadow:0 4px 20px rgba(11,20,26,.25);z-index:5;font-size:13px}
+#radio[hidden]{display:none}
+#radio h4{margin:0 0 8px;font-size:13px}
+#radio .kv{display:flex;justify-content:space-between;gap:20px;padding:3px 0;color:var(--sub)}
+#radio .kv b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+
+@media (max-width:760px){
+  #side{display:none}
+  .bubble{max-width:82%}
+  #msgs{padding:12px 3% 8px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div class="bar">
+      <div class="avatar" id="meAv">?</div>
+      <div class="title">WaveLink Chat</div>
+      <button class="iconbtn" id="theme" title="Toggle light / dark">🌓</button>
+    </div>
+    <div id="list">
+      <div class="item" id="chatItem">
+        <div class="avatar big" id="listAv">?</div>
+        <div class="mid">
+          <div class="row1"><div class="name" id="listName">Peer</div><div class="when" id="listWhen"></div></div>
+          <div class="row2"><div class="prev" id="listPrev">No messages yet</div><div class="badge" id="listBadge" hidden>0</div></div>
+        </div>
+      </div>
+      <div class="hint">📡 Messages travel over your BPSK radio link.<br>No internet involved.</div>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div class="bar">
+      <div class="avatar" id="peerAv">?</div>
+      <div class="peer"><div class="n" id="peerName">Peer</div><div class="s" id="peerStatus">connecting…</div></div>
+      <button class="iconbtn" id="radioBtn" title="Radio link">📡</button>
+    </div>
+    <div class="banner" id="bannerModem" hidden>⚠ The modem isn't accepting data — is the GNU Radio flowgraph running?</div>
+    <div class="banner" id="bannerConn" hidden>Lost connection to the chat app — retrying…</div>
+
+    <div id="radio" hidden>
+      <h4>Radio link</h4>
+      <div class="kv"><span>Frames sent</span><b id="rTx">0</b></div>
+      <div class="kv"><span>Frames received</span><b id="rRx">0</b></div>
+      <div class="kv"><span>Frames lost</span><b id="rLost">0</b></div>
+      <div class="kv"><span>TX queue</span><b id="rQ">0</b></div>
+    </div>
+
+    <div id="msgs">
+      <div class="chip sys">📡 Messages are sent over the BPSK radio link between the two stations.<br>Delivery ticks come from the other station's acknowledgements.</div>
+    </div>
+
+    <div id="emoji" hidden></div>
+    <div class="composer">
+      <button class="iconbtn" id="emojiBtn" title="Emoji">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.2c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2"/><circle cx="9" cy="9.8" r=".6" fill="currentColor"/><circle cx="15" cy="9.8" r=".6" fill="currentColor"/></svg>
+      </button>
+      <input type="file" id="fileIn" hidden>
+      <button class="iconbtn" id="attachBtn" title="Attach file">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+      </button>
+      <textarea id="input" rows="1" placeholder="Type a message" autocomplete="off"></textarea>
+      <button id="send" title="Send" disabled>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12 2-12 2z"/></svg>
+      </button>
+    </div>
+  </main>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const TICKS = {
+  queued:    '<svg width="16" height="15" viewBox="0 0 16 15"><circle cx="8" cy="7.5" r="5.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.6v3.1l2 1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  sent:      '<svg width="16" height="15" viewBox="0 0 16 15"><path d="M4 8.2l2.8 2.8 5.4-6.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  delivered: '<svg width="17" height="15" viewBox="0 0 17 15"><path d="M1.5 8.3l2.7 2.7 6-6.8M6.3 10.8l.5.5 6.3-7.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  failed:    '<svg width="16" height="15" viewBox="0 0 16 15"><circle cx="8" cy="7.5" r="6" fill="#ea0038"/><path d="M8 4.3v3.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="10.6" r=".9" fill="#fff"/></svg>'
+};
+TICKS.read = TICKS.delivered;
+
+const box = $('#msgs'), ta = $('#input'), sendBtn = $('#send');
+const els = new Map();
+let state = null, first = true, connLost = false, audioCtx = null;
+
+const post = (url, body) => fetch(url, {method: 'POST',
+  headers: {'Content-Type': 'application/json', 'X-Requested-With': 'WaveLink'},
+  body: JSON.stringify(body || {})});
+const fmtTime = ts => new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+const sameDay = (a, b) => a.toDateString() === b.toDateString();
+function dayLabel(ts){
+  const d = new Date(ts * 1000), t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
+  if (sameDay(d, t)) return 'Today';
+  if (sameDay(d, y)) return 'Yesterday';
+  return d.toLocaleDateString([], {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
+}
+function paintAvatar(el, name){
+  el.textContent = (name || '?').trim().charAt(0) || '?';
+  let h = 0; for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) % 360;
+  el.style.background = `hsl(${h} 45% 45%)`;
+}
+function statusText(s){
+  if (s.online) return 'online';
+  if (!s.last_seen) return 'waiting for the other station…';
+  const d = new Date(s.last_seen * 1000);
+  return 'last seen ' + (sameDay(d, new Date()) ? 'today' : 'on ' + d.toLocaleDateString()) + ' at ' + fmtTime(s.last_seen);
+}
+function beep(){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = 880; g.gain.value = 0.05; o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + 0.12);
+  }catch(e){}
+}
+
+function updateTick(row, m){
+  if (m.dir !== 'out') return;
+  const t = row.querySelector('.tick');
+  row.dataset.status = m.status;
+  t.className = 'tick ' + m.status;
+  t.innerHTML = TICKS[m.status] || '';
+}
+
+function build(m, prev){
+  const row = document.createElement('div');
+  row.className = 'row ' + m.dir + (!prev || prev.dir !== m.dir ? ' first' : '');
+  const b = document.createElement('div'); b.className = 'bubble';
+  
+  // NEW: Dynamic File UI Rendering
+  if (m.type === 'file') {
+    if (m.status === 'receiving' || (m.dir === 'out' && m.status !== 'delivered' && m.status !== 'read' && m.status !== 'failed')) {
+        // Draw the Progress Bar
+        b.innerHTML = `
+            <div style="font-weight:bold; display:flex; align-items:center; gap:8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>${m.text || 'Transferring...'}</span>
+            </div>
+            <div class="prog-container"><div class="prog-bar" style="width:${m.progress || 0}%"></div></div>
+            <div class="prog-text">${m.progress || 0}%</div>`;
+    } else {
+        // Draw the fully delivered clickable file
+        const fa = document.createElement('a');
+        fa.className = 'file-link';
+        fa.href = m.dir === 'in' ? m.path : '#';
+        if (m.dir === 'in') fa.download = m.text;
+        fa.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> <span>${m.text}</span>`;
+        b.append(fa);
+    }
+  } else {
+    const t = document.createElement('span'); t.className = 'text'; t.textContent = m.text;
+    b.append(t);
+  }
+
+  const meta = document.createElement('span'); meta.className = 'meta';
+  const time = document.createElement('span'); time.textContent = fmtTime(m.ts);
+  meta.append(time);
+  if (m.dir === 'out'){
+    const tick = document.createElement('span'); tick.className = 'tick'; meta.append(tick);
+    tick.addEventListener('click', () => { if (row.dataset.status === 'failed') post('/api/retry', {id: m.id}); });
+  }
+  b.append(meta); row.append(b);
+  updateTick(row, m);
+  return row;
+}
+
+function daySep(ts){
+  const d = document.createElement('div'); d.className = 'chip'; d.textContent = dayLabel(ts); return d;
+}
+
+function render(s){
+  state = s;
+  paintAvatar($('#meAv'), s.me); paintAvatar($('#peerAv'), s.peer); paintAvatar($('#listAv'), s.peer);
+  $('#peerName').textContent = s.peer; $('#listName').textContent = s.peer;
+  const st = $('#peerStatus'); st.textContent = statusText(s); st.classList.toggle('on', s.online);
+  $('#bannerModem').hidden = !(s.modem.blocked_s > 2);
+  $('#bannerConn').hidden = !connLost;
+  $('#rTx').textContent = s.modem.tx; $('#rRx').textContent = s.modem.rx;
+  $('#rLost').textContent = s.modem.lost; $('#rQ').textContent = s.modem.queue;
+
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
+  let prev = null, addedOut = false, addedIn = false;
+  
+  for (const m of s.messages){
+    const key = m.dir + m.id;
+    let el = els.get(key);
+    
+    // NEW: If it's a file in progress, we must constantly rebuild the innerHTML to update the progress bar
+    if (el && m.type === 'file' && (m.status === 'receiving' || (m.dir === 'out' && m.status !== 'delivered' && m.status !== 'read' && m.status !== 'failed'))) {
+        const tempRow = build(m, prev);
+        el.querySelector('.bubble').innerHTML = tempRow.querySelector('.bubble').innerHTML;
+        updateTick(el, m);
+    } 
+    else if (!el){
+      if (!prev || !sameDay(new Date(prev.ts * 1000), new Date(m.ts * 1000))) box.append(daySep(m.ts));
+      el = build(m, prev); box.append(el); els.set(key, el);
+      if (m.dir === 'out') addedOut = true; else addedIn = true;
+    } 
+    else { updateTick(el, m); }
+    
+    // Once an incoming file finishes, swap its status so it turns into a download link
+    if (el && m.type === 'file' && m.dir === 'in' && m.status === 'unread' && el.querySelector('.prog-bar')) {
+        const tempRow = build(m, prev);
+        el.querySelector('.bubble').innerHTML = tempRow.querySelector('.bubble').innerHTML;
+    }
+    prev = m;
+  }
+  if (first || addedOut || (addedIn && nearBottom)) box.scrollTop = box.scrollHeight;
+  first = false;
+
+  const last = s.messages[s.messages.length - 1];
+  $('#listPrev').textContent = last ? (last.dir === 'out' ? 'You: ' : '') + (last.type === 'file' ? '📄 ' + last.text : last.text) : 'No messages yet';
+  $('#listWhen').textContent = last ? fmtTime(last.ts) : '';
+  $('#listWhen').classList.toggle('hot', s.unread > 0);
+  const bd = $('#listBadge'); bd.hidden = s.unread === 0; bd.textContent = s.unread;
+  document.title = (s.unread ? '(' + s.unread + ') ' : '') + 'WaveLink Chat';
+
+  const focused = document.visibilityState === 'visible' && document.hasFocus();
+  if (addedIn && !focused) beep();
+  if (focused && s.unread > 0) post('/api/read');
+}
+
+function autosize(){ ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'; sendBtn.disabled = !ta.value.trim(); }
+async function send(){
+  const text = ta.value.trim(); if (!text) return;
+  ta.value = ''; autosize(); ta.focus();
+  try { await post('/api/send', {text}); } catch(e) {}
+}
+ta.addEventListener('input', autosize);
+ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
+sendBtn.addEventListener('click', send);
+
+$('#attachBtn').addEventListener('click', () => $('#fileIn').click());
+$('#fileIn').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  // File size technically has no limit now, but let's keep it reasonable for an SDR test
+  if (file.size > 15 * 1024 * 1024) { alert("File is too large. Keep it under 15MB for SDR testing."); return; }
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const b64 = ev.target.result.split(',')[1];
+    try { await post('/api/upload', {name: file.name, b64: b64}); } catch(err) {}
+  };
+  reader.readAsDataURL(file);
+  e.target.value = ''; 
+});
+
+const EMOJI = '😀 😂 😊 😍 😘 😎 🤔 😅 😢 😭 😡 😴 👍 👎 👏 🙏 💪 👋 🙌 🤝 🔥 ❤️ 💔 🎉 ✅ ❌ ⚡ 📡 🛰️ 📶 🔋 🤖 🚀 ☕ 🍕 🎵 🌟 💡 🐛 🔧 ⏳'.split(' ');
+const ep = $('#emoji');
+for (const e of EMOJI){
+  const b = document.createElement('button'); b.textContent = e;
+  b.addEventListener('click', () => {
+    const p = ta.selectionStart ?? ta.value.length;
+    ta.value = ta.value.slice(0, p) + e + ta.value.slice(ta.selectionEnd ?? p);
+    ta.focus(); ta.selectionStart = ta.selectionEnd = p + e.length; autosize();
+  });
+  ep.append(b);
+}
+$('#emojiBtn').addEventListener('click', ev => { ev.stopPropagation(); ep.hidden = !ep.hidden; $('#radio').hidden = true; });
+$('#radioBtn').addEventListener('click', ev => { ev.stopPropagation(); $('#radio').hidden = !$('#radio').hidden; ep.hidden = true; });
+document.addEventListener('click', ev => {
+  if (!ep.contains(ev.target)) ep.hidden = true;
+  if (!$('#radio').contains(ev.target)) $('#radio').hidden = true;
+});
+
+const root = document.documentElement;
+const saved = localStorage.getItem('wl-theme'); if (saved) root.dataset.theme = saved;
+$('#theme').addEventListener('click', () => {
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark'; localStorage.setItem('wl-theme', root.dataset.theme);
+});
+
+function maybeRead(){
+  if (state && state.unread > 0 && document.visibilityState === 'visible' && document.hasFocus()) post('/api/read');
+}
+window.addEventListener('focus', maybeRead);
+document.addEventListener('visibilitychange', maybeRead);
+
+function connect(){
+  const es = new EventSource('/events');
+  es.onopen = () => { connLost = false; $('#bannerConn').hidden = true; };
+  es.onmessage = e => render(JSON.parse(e.data));
+  es.onerror = () => { connLost = true; $('#bannerConn').hidden = false; };
+}
+autosize(); connect(); ta.focus();
+</script>
+</body>
+</html>
