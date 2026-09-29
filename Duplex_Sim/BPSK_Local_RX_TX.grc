@@ -339,27 +339,6 @@ blocks:
     coordinate: [400, 576.0]
     rotation: 0
     state: enabled
-- name: blocks_throttle2_0
-  id: blocks_throttle2
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    ignoretag: 'True'
-    limit: auto
-    maximum: '0.1'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    samples_per_second: samp_rate
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [720, 776.0]
-    rotation: 0
-    state: enabled
 - name: blocks_vector_source_x_0
   id: blocks_vector_source_x
   parameters:
@@ -620,7 +599,7 @@ blocks:
     bus_structure: null
     coordinate: [856, 852.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: iio_pluto_source_0
   id: iio_pluto_source
   parameters:
@@ -649,9 +628,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 1148.0]
+    coordinate: [256, 1092.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: note_0
   id: note
   parameters:
@@ -665,19 +644,6 @@ blocks:
     coordinate: [32, 1384.0]
     rotation: 0
     state: enabled
-- name: note_2
-  id: note
-  parameters:
-    alias: ''
-    comment: ''
-    note: Channel simulation
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [720, 712.0]
-    rotation: 0
-    state: true
 - name: pdu_tagged_stream_to_pdu_0
   id: pdu_tagged_stream_to_pdu
   parameters:
@@ -851,51 +817,6 @@ blocks:
     coordinate: [120, 656.0]
     rotation: 0
     state: true
-- name: zeromq_pub_sink_0
-  id: zeromq_pub_sink
-  parameters:
-    address: '"tcp://*:5555"'
-    affinity: ''
-    alias: ''
-    bind: 'True'
-    comment: ''
-    drop_on_hwm: 'True'
-    hwm: '-1'
-    key: ''
-    pass_tags: 'False'
-    timeout: '100'
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [888, 712.0]
-    rotation: 0
-    state: enabled
-- name: zeromq_sub_source_0
-  id: zeromq_sub_source
-  parameters:
-    address: '"tcp://172.20.10.3:5555"'
-    affinity: ''
-    alias: ''
-    bind: 'False'
-    comment: ''
-    hwm: '-1'
-    key: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    pass_tags: 'False'
-    timeout: '100'
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [248, 1024.0]
-    rotation: 0
-    state: enabled
 
 connections:
 - [blocks_file_source_0, '0', blocks_stream_to_tagged_stream_0_0_0, '0']
@@ -904,10 +825,8 @@ connections:
 - [blocks_stream_to_tagged_stream_0_0_0, '0', digital_crc32_bb_0, '0']
 - [blocks_stream_to_tagged_stream_0_0_0_0, '0', blocks_tagged_stream_mux_0, '0']
 - [blocks_stream_to_tagged_stream_0_0_0_0_0, '0', blocks_tagged_stream_mux_0, '3']
-- [blocks_tag_gate_0, '0', blocks_throttle2_0, '0']
 - [blocks_tag_gate_0, '0', iio_pluto_sink_0, '0']
 - [blocks_tagged_stream_mux_0, '0', virtual_sink_0, '0']
-- [blocks_throttle2_0, '0', zeromq_pub_sink_0, '0']
 - [blocks_vector_source_x_0, '0', blocks_stream_to_tagged_stream_0_0_0_0, '0']
 - [blocks_vector_source_x_0_0, '0', blocks_stream_to_tagged_stream_0_0_0_0_0, '0']
 - [digital_constellation_decoder_cb_1, '0', digital_diff_decoder_bb_0, '0']
@@ -930,7 +849,6 @@ connections:
 - [virtual_source_3, '0', blocks_repack_bits_bb_1, '0']
 - [virtual_source_5, '0', blocks_tagged_stream_mux_0, '1']
 - [virtual_source_6, '0', blocks_tagged_stream_mux_0, '2']
-- [zeromq_sub_source_0, '0', virtual_sink_2, '0']
 
 metadata:
   file_format: 1
