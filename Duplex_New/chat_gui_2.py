@@ -14,7 +14,7 @@ FILE_PKT = struct.Struct(">BIIHH")        # type, chunk_id, file_id, chunk_idx, 
 MAX_TEXT = MAX_DATA - PKT.size            # 1020 bytes
 MAX_FILE_DATA = MAX_DATA - FILE_PKT.size  # 1011 bytes per chunk
 RTO0, RTO_MAX, MAX_TRIES = 3.0, 10.0, 10  # retransmit timing
-PING_S, ONLINE_S = 5.0, 16.0              # presence beacon / online window[cite: 5]
+PING_S, ONLINE_S = 5.0, 16.0              # presence beacon / online window
 WINDOW_SIZE = 16                          # ARQ Sliding Window limit for ANTSDR buffers
 
 HERE = Path(__file__).resolve().parent
@@ -24,7 +24,7 @@ DOWNLOADS.mkdir(exist_ok=True)
 
 
 def rto(tries):
-    return min(RTO0 * 1.5 ** max(tries - 1, 0), RTO_MAX)[cite: 5]
+    return min(RTO0 * 1.5 ** max(tries - 1, 0), RTO_MAX)
 
 
 def split_text(text, limit=MAX_TEXT):
@@ -36,12 +36,12 @@ def split_text(text, limit=MAX_TEXT):
         cur.append(ch); n += b
     if cur:
         out.append("".join(cur))
-    return out[cite: 5]
+    return out
 
 
 class Chat:
     def __init__(self, name, history_path):
-        self.name = name[:32] or "Me"[cite: 5]
+        self.name = name[:32] or "Me"
         self.history_path = Path(history_path)
         self.link = None
         self.lock = threading.RLock()
@@ -64,14 +64,14 @@ class Chat:
 
     def _add(self, m):
         self.msgs.append(m)
-        self.index[(m["dir"], m["id"])] = m[cite: 5]
+        self.index[(m["dir"], m["id"])] = m
 
     def _load(self):
         try:
             d = json.loads(self.history_path.read_text())
         except Exception:
             return
-        self.peer_name = d.get("peer_name", self.peer_name)[cite: 5]
+        self.peer_name = d.get("peer_name", self.peer_name)
         self.last_seen = d.get("last_seen")
         for m in d.get("messages", []):
             if m["dir"] == "out" and m["status"] in ("queued", "sent"):
@@ -85,21 +85,21 @@ class Chat:
              "messages": [{k: m.get(k, 0 if k == "tries" else None) for k in keep if k in m} for m in self.msgs[-2000:]]}
         tmp = self.history_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(d))
-        os.replace(tmp, self.history_path)[cite: 5]
+        os.replace(tmp, self.history_path)
 
     def attach(self, link):
         self.link = link
         for f in (self._rx_loop, self._timer_loop):
-            threading.Thread(target=f, daemon=True).start()[cite: 5]
+            threading.Thread(target=f, daemon=True).start()
 
     def _new_id(self):
         while True:
-            i = random.getrandbits(32)[cite: 5]
+            i = random.getrandbits(32)
             if ("out", i) not in self.index and i not in self.chunk_map:
                 return i
 
     def _tx(self, m):
-        self.link.send(PKT.pack(T_TEXT, m["id"]) + m["text"].encode("utf-8"))[cite: 5]
+        self.link.send(PKT.pack(T_TEXT, m["id"]) + m["text"].encode("utf-8"))
         m["tries"] += 1
         m["next_tx"] = float("inf")
 
@@ -114,7 +114,7 @@ class Chat:
 
     def send_file(self, name, b64):
         try:
-            raw = base64.b64decode(b64)[cite: 5]
+            raw = base64.b64decode(b64)
         except Exception:
             return
         fid = self._new_id()
@@ -123,7 +123,7 @@ class Chat:
         with self.lock:
             self._add(m)
             payload = name.encode("utf-8") + b'\x00' + raw
-            chunks = [payload[i:i + MAX_FILE_DATA] for i in range(0, len(payload), MAX_FILE_DATA)][cite: 5]
+            chunks = [payload[i:i + MAX_FILE_DATA] for i in range(0, len(payload), MAX_FILE_DATA)]
             tot = len(chunks)
             
             # Initialize Selective Repeat state for this file
@@ -152,7 +152,7 @@ class Chat:
                             c["status"], c["tries"], c["next_tx"] = "queued", 0, 0
             else:
                 self._tx(m)
-        self.notify(dirty=True)[cite: 5]
+        self.notify(dirty=True)
 
     def mark_read(self):
         with self.lock:
@@ -163,13 +163,13 @@ class Chat:
                 self._send_read(ids)
                 self.read_recent.append([time.time(), ids, False])
         if ids:
-            self.notify(dirty=True)[cite: 5]
+            self.notify(dirty=True)
 
     def _send_read(self, ids):
         per = (MAX_DATA - PKT.size) // 4
         for i in range(0, len(ids), per):
             chunk = ids[i:i + per]
-            self.link.send(PKT.pack(T_READ, 0) + struct.pack(f">{len(chunk)}I", *chunk))[cite: 5]
+            self.link.send(PKT.pack(T_READ, 0) + struct.pack(f">{len(chunk)}I", *chunk))
 
     def _rx_loop(self):
         while True:
@@ -178,7 +178,7 @@ class Chat:
                 try:
                     self._handle(d)
                 except Exception as e:
-                    print("rx error:", e, file=sys.stderr)[cite: 5]
+                    print("rx error:", e, file=sys.stderr)
 
     def _handle(self, data):
         if len(data) < 1:
@@ -199,7 +199,7 @@ class Chat:
                 self.link.send(PKT.pack(T_ACK, mid))
                 if ("in", mid) not in self.index:
                     self._add({"id": mid, "dir": "in", "type": "text", "ts": now, "status": "unread",
-                               "text": data[PKT.size:].decode("utf-8", "replace")})[cite: 5]
+                               "text": data[PKT.size:].decode("utf-8", "replace")})
                     changed = True
                     
             elif t == T_ACK and len(data) >= PKT.size:
@@ -234,7 +234,7 @@ class Chat:
                                     p["status"] = "sent"
                                     
             elif t == T_FILE and len(data) >= FILE_PKT.size:
-                _, cid, fid, idx, tot = FILE_PKT.unpack_from(data)[cite: 5]
+                _, cid, fid, idx, tot = FILE_PKT.unpack_from(data)
                 body = data[FILE_PKT.size:]
                 self.link.send(PKT.pack(T_ACK, cid))
                 
@@ -271,7 +271,7 @@ class Chat:
                 for i in struct.unpack(f">{len(data[PKT.size:]) // 4}I", data[PKT.size:len(data[PKT.size:]) // 4 * 4 + PKT.size]):
                     m = self.index.get(("out", i))
                     if m and m["status"] != "read":
-                        m["status"], changed = "read", True[cite: 5]
+                        m["status"], changed = "read", True
         self.notify(dirty=changed)
 
     def _timer_loop(self):
@@ -283,7 +283,7 @@ class Chat:
             with self.lock:
                 if now - self._last_ping >= PING_S:
                     self._last_ping = now
-                    self.link.send(PKT.pack(T_PING, 0) + self.name.encode("utf-8"))[cite: 5]
+                    self.link.send(PKT.pack(T_PING, 0) + self.name.encode("utf-8"))
                 
                 # Prioritize Text Messages
                 for m in self.msgs:
@@ -319,12 +319,12 @@ class Chat:
                         e[2] = True
                         self._send_read(e[1])
                     if now - e[0] > 30:
-                        self.read_recent.remove(e)[cite: 5]
+                        self.read_recent.remove(e)
             ticks += 1
             self.notify(dirty=dirty, force=(ticks % 4 == 0))
 
     def _online(self):
-        return time.time() - self.last_rx < ONLINE_S[cite: 5]
+        return time.time() - self.last_rx < ONLINE_S
 
     def state(self, online):
         l = self.link
@@ -350,7 +350,7 @@ class Chat:
                 self.dirty = False
             if self.subs:
                 payload = json.dumps(self.state(online))
-                for q in list(self.subs): q.put(payload)[cite: 5]
+                for q in list(self.subs): q.put(payload)
 
     def subscribe(self):
         q = queue.Queue()
@@ -383,7 +383,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)[cite: 5]
+        self.wfile.write(body)
 
     def do_GET(self):
         if not self._host_ok(): return self._send(403, {"error": "bad host"})
@@ -426,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(b": keep-alive\n\n")
                 self.wfile.flush()
         except OSError: pass
-        finally: self.chat.unsubscribe(q)[cite: 5]
+        finally: self.chat.unsubscribe(q)
 
     def do_POST(self):
         if not self._host_ok() or self.headers.get("X-Requested-With") != "WaveLink":
@@ -450,7 +450,7 @@ class Handler(BaseHTTPRequestHandler):
             self.chat.retry(int(body.get("id", 0)))
         else:
             return self._send(404, {"error": "not found"})
-        self._send(200, {"ok": True})[cite: 5]
+        self._send(200, {"ok": True})
 
 
 def main():
@@ -485,4 +485,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()[cite: 5]
+    main()
