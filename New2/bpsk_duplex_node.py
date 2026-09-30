@@ -20,6 +20,7 @@ import signal
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
+from gnuradio import iio
 from gnuradio import zeromq
 import threading
 
@@ -28,7 +29,7 @@ import threading
 
 class bpsk_duplex_node(gr.top_block):
 
-    def __init__(self, rx_freq=915e6, tx_freq=925e6):
+    def __init__(self, rx_freq=4.0e9, tx_freq=4.1e9):
         gr.top_block.__init__(self, "BPSK Duplex Node", catch_exceptions=True)
         self.flowgraph_started = threading.Event()
 
@@ -54,10 +55,25 @@ class bpsk_duplex_node(gr.top_block):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://172.20.10.2:5600", 100, False, (-1), '', False)
         self.zeromq_push_sink_0 = zeromq.push_sink(gr.sizeof_char, 1, "tcp://127.0.0.1:5002", 100, False, (-1), True)
         self.zeromq_pull_source_0 = zeromq.pull_source(gr.sizeof_char, 1, "tcp://127.0.0.1:5001", 100, False, 2, False)
-        self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5601", 100, False, (-1), '', True, True)
+        self.iio_pluto_source_0 = iio.fmcomms2_source_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 32768)
+        self.iio_pluto_source_0.set_len_tag_key('')
+        self.iio_pluto_source_0.set_frequency(int(rx_freq))
+        self.iio_pluto_source_0.set_samplerate(int(samp_rate))
+        self.iio_pluto_source_0.set_gain_mode(0, 'slow_attack')
+        self.iio_pluto_source_0.set_gain(0, 64)
+        self.iio_pluto_source_0.set_quadrature(True)
+        self.iio_pluto_source_0.set_rfdc(True)
+        self.iio_pluto_source_0.set_bbdc(True)
+        self.iio_pluto_source_0.set_filter_params('Auto', '', 0, 0)
+        self.iio_pluto_sink_0 = iio.fmcomms2_sink_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 8192, False)
+        self.iio_pluto_sink_0.set_len_tag_key('')
+        self.iio_pluto_sink_0.set_bandwidth(20000000)
+        self.iio_pluto_sink_0.set_frequency(int(tx_freq))
+        self.iio_pluto_sink_0.set_samplerate(int(samp_rate))
+        self.iio_pluto_sink_0.set_attenuation(0, 10.0)
+        self.iio_pluto_sink_0.set_filter_params('Auto', '', 0, 0)
         self.filter_fft_rrc_filter_0 = filter.fft_filter_ccc(1, firdes.root_raised_cosine(1, samp_rate, (samp_rate/sps), 0.35, (11*sps)), 1)
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
             digital.TED_SIGNAL_TIMES_SLOPE_ML,
@@ -90,7 +106,6 @@ class bpsk_duplex_node(gr.top_block):
         self.digital_constellation_decoder_cb_1 = digital.constellation_decoder_cb(constel)
         self.blocks_vector_source_x_0_0 = blocks.vector_source_b([0xc0, 0xaf], True, 1, [])
         self.blocks_vector_source_x_0 = blocks.vector_source_b([0xc0, 0xaf], True, 1, [])
-        self.blocks_throttle2_0 = blocks.throttle( gr.sizeof_gr_complex*1, samp_rate, True, 0 if "auto" == "auto" else max( int(float(0.1) * samp_rate) if "auto" == "time" else int(0.1), 1) )
         self.blocks_tagged_stream_mux_0 = blocks.tagged_stream_mux(gr.sizeof_char*1, 'packet_len', 0)
         self.blocks_tag_gate_0 = blocks.tag_gate(gr.sizeof_gr_complex * 1, False)
         self.blocks_tag_gate_0.set_single_key("")
@@ -109,9 +124,8 @@ class bpsk_duplex_node(gr.top_block):
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0, 0), (self.digital_crc32_bb_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0_0, 0), (self.blocks_tagged_stream_mux_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0_0_0_0_0, 0), (self.blocks_tagged_stream_mux_0, 3))
-        self.connect((self.blocks_tag_gate_0, 0), (self.blocks_throttle2_0, 0))
+        self.connect((self.blocks_tag_gate_0, 0), (self.iio_pluto_sink_0, 0))
         self.connect((self.blocks_tagged_stream_mux_0, 0), (self.digital_constellation_modulator_0, 0))
-        self.connect((self.blocks_throttle2_0, 0), (self.zeromq_pub_sink_0, 0))
         self.connect((self.blocks_vector_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0_0, 0))
         self.connect((self.blocks_vector_source_x_0_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0_0_0, 0))
         self.connect((self.digital_constellation_decoder_cb_1, 0), (self.digital_diff_decoder_bb_0, 0))
@@ -125,8 +139,8 @@ class bpsk_duplex_node(gr.top_block):
         self.connect((self.digital_protocol_formatter_bb_0, 0), (self.blocks_tagged_stream_mux_0, 1))
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_costas_loop_cc_0, 0))
         self.connect((self.filter_fft_rrc_filter_0, 0), (self.digital_symbol_sync_xx_0, 0))
+        self.connect((self.iio_pluto_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
         self.connect((self.zeromq_pull_source_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0, 0))
-        self.connect((self.zeromq_sub_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
 
 
     def get_rx_freq(self):
@@ -134,12 +148,14 @@ class bpsk_duplex_node(gr.top_block):
 
     def set_rx_freq(self, rx_freq):
         self.rx_freq = rx_freq
+        self.iio_pluto_source_0.set_frequency(int(self.rx_freq))
 
     def get_tx_freq(self):
         return self.tx_freq
 
     def set_tx_freq(self, tx_freq):
         self.tx_freq = tx_freq
+        self.iio_pluto_sink_0.set_frequency(int(self.tx_freq))
 
     def get_sps(self):
         return self.sps
@@ -154,8 +170,9 @@ class bpsk_duplex_node(gr.top_block):
 
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
-        self.blocks_throttle2_0.set_sample_rate(self.samp_rate)
         self.filter_fft_rrc_filter_0.set_taps(firdes.root_raised_cosine(1, self.samp_rate, (self.samp_rate/self.sps), 0.35, (11*self.sps)))
+        self.iio_pluto_sink_0.set_samplerate(int(self.samp_rate))
+        self.iio_pluto_source_0.set_samplerate(int(self.samp_rate))
 
     def get_preamble_size(self):
         return self.preamble_size
@@ -200,10 +217,10 @@ class bpsk_duplex_node(gr.top_block):
 def argument_parser():
     parser = ArgumentParser()
     parser.add_argument(
-        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(915e6)),
+        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(4.0e9)),
         help="Set RX Freq (Hz) [default=%(default)r]")
     parser.add_argument(
-        "-t", "--tx-freq", dest="tx_freq", type=eng_float, default=eng_notation.num_to_str(float(925e6)),
+        "-t", "--tx-freq", dest="tx_freq", type=eng_float, default=eng_notation.num_to_str(float(4.1e9)),
         help="Set TX Freq (Hz) [default=%(default)r]")
     return parser
 
