@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WaveLink Chat - Selective Repeat ARQ with Live Progress Tracking
+WaveLink Chat - Selective Repeat ARQ + Anti-Starvation Padding
 """
 import argparse, base64, json, os, queue, random, struct, sys, threading, time, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,14 +8,15 @@ from pathlib import Path
 
 from duplex_link import Link, MAX_DATA
 
-T_TEXT, T_ACK, T_READ, T_PING, T_FILE = 1, 2, 3, 4, 5
+# Added T_IDLE (99) to keep the radio link awake
+T_TEXT, T_ACK, T_READ, T_PING, T_FILE, T_IDLE = 1, 2, 3, 4, 5, 99
 PKT = struct.Struct(">BI")
 FILE_PKT = struct.Struct(">BIIHH")        
 MAX_TEXT = MAX_DATA - PKT.size            
 MAX_FILE_DATA = MAX_DATA - FILE_PKT.size  
 RTO0, RTO_MAX, MAX_TRIES = 3.0, 10.0, 10  
 PING_S, ONLINE_S = 5.0, 16.0              
-MAX_IN_FLIGHT = 16  # Window size matched to ANTSDR buffer headroom
+WINDOW_SIZE = 16  
 
 HERE = Path(__file__).resolve().parent
 DOWNLOADS = HERE / "downloads"
@@ -45,8 +46,11 @@ class Chat:
         self.link = None
         self.lock = threading.RLock()
         self.msgs, self.index = [], {}
-        self.file_chunks = {}             
+        
+        self.active_transfers = {}        
+        self.chunk_map = {}               
         self.incoming_files = {}          
+        
         self.peer_name = "Peer"
         self.last_rx = 0.0
         self.last_seen = None
@@ -84,13 +88,26 @@ class Chat:
 
     def attach(self, link):
         self.link = link
-        for f in (self._rx_loop, self._timer_loop):
+        # Start all three loops (RX, Timer, and the new Anti-Starvation loop)
+        for f in (self._rx_loop, self._timer_loop, self._anti_starvation_loop):
             threading.Thread(target=f, daemon=True).start()
+
+    def _anti_starvation_loop(self):
+        """
+        CRITICAL FIX: Continuously streams idle packets to ZeroMQ.
+        This prevents GNU Radio's scheduler from pausing, keeping the RX path alive.
+        """
+        while True:
+            time.sleep(0.05)
+            # If the queue runs dry, feed the beast to prevent the 'O' buffer lockup
+            if self.link.txq.qsize() < 2:
+                # Send a completely invisible dummy packet
+                self.link.send(PKT.pack(T_IDLE, 0) + b'\x00' * 128)
 
     def _new_id(self):
         while True:
             i = random.getrandbits(32)
-            if ("out", i) not in self.index and i not in self.file_chunks:
+            if ("out", i) not in self.index and i not in self.chunk_map:
                 return i
 
     def _tx(self, m):
@@ -118,9 +135,16 @@ class Chat:
             payload = name.encode("utf-8") + b'\x00' + raw
             chunks = [payload[i:i + MAX_FILE_DATA] for i in range(0, len(payload), MAX_FILE_DATA)]
             tot = len(chunks)
+            
+            transfer = {"base": 0, "tot": tot, "chunks": []}
             for idx, block in enumerate(chunks):
                 cid = self._new_id()
-                self.file_chunks[cid] = {"file_id": fid, "idx": idx, "total": tot, "block": block, "tries": 0, "next_tx": 0, "status": "queued"}
+                self.chunk_map[cid] = (fid, idx)
+                transfer["chunks"].append({
+                    "cid": cid, "block": block, "tries": 0, 
+                    "next_tx": 0, "status": "queued"
+                })
+            self.active_transfers[fid] = transfer
         self.notify(dirty=True)
 
     def retry(self, mid):
@@ -130,33 +154,14 @@ class Chat:
                 return
             m["status"], m["tries"] = "queued", 0
             if m.get("type") == "file":
-                for cid, c in self.file_chunks.items():
-                    if c["file_id"] == mid and c["status"] == "failed":
-                        c["status"], c["tries"], c["next_tx"] = "queued", 0, 0
+                transfer = self.active_transfers.get(mid)
+                if transfer:
+                    for c in transfer["chunks"]:
+                        if c["status"] == "failed":
+                            c["status"], c["tries"], c["next_tx"] = "queued", 0, 0
             else:
                 self._tx(m)
         self.notify(dirty=True)
-
-    def on_sent(self, data):
-        if len(data) < 1:
-            return
-        t = data[0]
-        if t == T_TEXT and len(data) >= PKT.size:
-            _, mid = PKT.unpack_from(data)
-            with self.lock:
-                m = self.index.get(("out", mid))
-                if m and m["status"] == "queued":
-                    m["status"] = "sent"
-                    m["next_tx"] = time.time() + rto(m["tries"])
-            self.notify(dirty=True)
-        elif t == T_FILE and len(data) >= FILE_PKT.size:
-            _, cid, fid, idx, tot = FILE_PKT.unpack_from(data)
-            with self.lock:
-                c = self.file_chunks.get(cid)
-                if c and c["status"] == "queued":
-                    c["status"] = "sent"
-                    c["next_tx"] = time.time() + rto(c["tries"])
-            self.notify(dirty=True)
 
     def mark_read(self):
         with self.lock:
@@ -188,6 +193,11 @@ class Chat:
         if len(data) < 1:
             return
         t = data[0]
+        
+        # Instantly discard dummy padding packets without processing
+        if t == T_IDLE:
+            return
+            
         now = time.time()
         changed = False
         with self.lock:
@@ -197,36 +207,44 @@ class Chat:
                 nm = data[PKT.size:].decode("utf-8", "replace").strip()[:32]
                 if nm and nm != self.peer_name:
                     self.peer_name, changed = nm, True
-            
+                    
             elif t == T_TEXT and len(data) >= PKT.size:
                 _, mid = PKT.unpack_from(data)
                 self.link.send(PKT.pack(T_ACK, mid))
                 if ("in", mid) not in self.index:
-                    self._add({"id": mid, "dir": "in", "type": "text", "ts": now, "status": "unread", "text": data[PKT.size:].decode("utf-8", "replace")})
+                    self._add({"id": mid, "dir": "in", "type": "text", "ts": now, "status": "unread",
+                               "text": data[PKT.size:].decode("utf-8", "replace")})
                     changed = True
-            
+                    
             elif t == T_ACK and len(data) >= PKT.size:
                 _, mid = PKT.unpack_from(data)
                 m = self.index.get(("out", mid))
                 if m:
                     if m["status"] in ("queued", "sent", "failed"):
                         m["status"], changed = "delivered", True
-                elif mid in self.file_chunks:
-                    c = self.file_chunks[mid]
-                    if c["status"] != "delivered":
-                        c["status"], changed = "delivered", True
-                        fid = c["file_id"]
-                        
-                        all_chunks = [ch for ch in self.file_chunks.values() if ch["file_id"] == fid]
-                        delivered = sum(1 for ch in all_chunks if ch["status"] == "delivered")
-                        p = self.index.get(("out", fid))
-                        if p:
-                            p["progress"] = int((delivered / c["total"]) * 100)
-                            if delivered == c["total"]:
-                                p["status"] = "delivered"
-                            elif p["status"] == "queued":
-                                p["status"] = "sent"
-            
+                elif mid in self.chunk_map:
+                    fid, idx = self.chunk_map[mid]
+                    transfer = self.active_transfers.get(fid)
+                    if transfer:
+                        c = transfer["chunks"][idx]
+                        if c["status"] != "delivered":
+                            c["status"] = "delivered"
+                            changed = True
+                            
+                            while transfer["base"] < transfer["tot"] and transfer["chunks"][transfer["base"]]["status"] == "delivered":
+                                transfer["base"] += 1
+                                
+                            p = self.index.get(("out", fid))
+                            if p:
+                                delivered_count = sum(1 for ch in transfer["chunks"] if ch["status"] == "delivered")
+                                p["progress"] = int((delivered_count / transfer["tot"]) * 100)
+                                
+                                if transfer["base"] == transfer["tot"]:
+                                    p["status"] = "delivered"
+                                    del self.active_transfers[fid]
+                                elif p["status"] == "queued":
+                                    p["status"] = "sent"
+                                    
             elif t == T_FILE and len(data) >= FILE_PKT.size:
                 _, cid, fid, idx, tot = FILE_PKT.unpack_from(data)
                 body = data[FILE_PKT.size:]
@@ -235,7 +253,8 @@ class Chat:
                 if fid not in self.incoming_files:
                     self.incoming_files[fid] = {"chunks": {}, "tot": tot}
                     if ("in", fid) not in self.index:
-                        self._add({"id": fid, "dir": "in", "type": "file", "text": "Incoming Transfer...", "ts": now, "status": "receiving", "progress": 0})
+                        self._add({"id": fid, "dir": "in", "type": "file", "text": "Incoming Transfer...", 
+                                   "ts": now, "status": "receiving", "progress": 0})
                         changed = True
 
                 self.incoming_files[fid]["chunks"][idx] = body
@@ -269,7 +288,7 @@ class Chat:
     def _timer_loop(self):
         ticks = 0
         while True:
-            time.sleep(0.15)  # Responsive transmission loop for SDR streaming
+            time.sleep(0.15)
             now = time.time()
             dirty = False
             with self.lock:
@@ -277,33 +296,31 @@ class Chat:
                     self._last_ping = now
                     self.link.send(PKT.pack(T_PING, 0) + self.name.encode("utf-8"))
                 
-                # Priority 1: Text Messages
                 for m in self.msgs:
                     if m["dir"] == "out" and m["status"] == "sent" and m.get("type", "text") == "text" and now >= m["next_tx"]:
                         if m["tries"] >= MAX_TRIES:
                             m["status"], dirty = "failed", True
-                        elif self.link.txq.qsize() < 6:
+                        elif self.link.txq.qsize() < WINDOW_SIZE:
                             self._tx(m)
                             
-                # Priority 2: Selective Repeat File Chunks (bounded by sliding window)
-                in_flight = sum(1 for c in self.file_chunks.values() if c["status"] == "sent")
-                
-                for cid, c in list(self.file_chunks.items()):
-                    if c["status"] in ("queued", "sent") and now >= c["next_tx"]:
-                        if c["tries"] >= MAX_TRIES:
-                            c["status"], dirty = "failed", True
-                            p = self.index.get(("out", c["file_id"]))
-                            if p and p["status"] != "failed":
-                                p["status"] = "failed"
-                        elif c["status"] == "sent" or (c["status"] == "queued" and in_flight < MAX_IN_FLIGHT):
-                            if self.link.txq.qsize() < 6:
-                                self.link.send(FILE_PKT.pack(T_FILE, cid, c["file_id"], c["idx"], c["total"]) + c["block"])
+                for fid, transfer in list(self.active_transfers.items()):
+                    base = transfer["base"]
+                    tot = transfer["tot"]
+                    window_end = min(base + WINDOW_SIZE, tot)
+                    
+                    for idx in range(base, window_end):
+                        c = transfer["chunks"][idx]
+                        if c["status"] in ("queued", "sent") and now >= c["next_tx"]:
+                            if c["tries"] >= MAX_TRIES:
+                                c["status"], dirty = "failed", True
+                                p = self.index.get(("out", fid))
+                                if p and p["status"] != "failed":
+                                    p["status"] = "failed"
+                            elif self.link.txq.qsize() < WINDOW_SIZE:
+                                self.link.send(FILE_PKT.pack(T_FILE, c["cid"], fid, idx, tot) + c["block"])
                                 c["tries"] += 1
                                 c["next_tx"] = now + rto(c["tries"])
-                                if c["status"] == "queued":
-                                    c["status"] = "sent"
-                                    in_flight += 1
-                                dirty = True
+                                c["status"], dirty = "sent", True
 
                 for e in list(self.read_recent):
                     if not e[2] and now - e[0] > 4:
@@ -312,7 +329,7 @@ class Chat:
                     if now - e[0] > 30:
                         self.read_recent.remove(e)
             ticks += 1
-            self.notify(dirty=dirty, force=(ticks % 10 == 0))
+            self.notify(dirty=dirty, force=(ticks % 4 == 0))
 
     def _online(self):
         return time.time() - self.last_rx < ONLINE_S
@@ -323,7 +340,8 @@ class Chat:
             "me": self.name, "peer": self.peer_name, "online": online,
             "last_seen": self.last_seen,
             "unread": sum(1 for m in self.msgs if m["dir"] == "in" and m["status"] == "unread"),
-            "modem": {"tx": l.frames_tx, "rx": l.frames_rx, "lost": l.frames_lost, "queue": l.txq.qsize(), "blocked_s": round(l.tx_blocked_for, 1)},
+            "modem": {"tx": l.frames_tx, "rx": l.frames_rx, "lost": l.frames_lost,
+                      "queue": l.txq.qsize(), "blocked_s": round(l.tx_blocked_for, 1)},
             "messages": [{"id": m["id"], "dir": m["dir"], "text": m["text"], "ts": m["ts"],
                           "status": m["status"], "type": m.get("type", "text"), "path": m.get("path"),
                           "tries": m.get("tries", 0), "progress": m.get("progress", 0)} for m in self.msgs[-500:]],
@@ -357,6 +375,7 @@ class Chat:
 class Handler(BaseHTTPRequestHandler):
     chat = None
     loopback_only = True
+
     def log_message(self, *a): pass
 
     def _host_ok(self):
@@ -377,17 +396,23 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._host_ok(): return self._send(403, {"error": "bad host"})
         path = self.path.split("?")[0]
-        if path in ("/", "/index.html"): return self._send(200, (HERE / "chat_ui.html").read_text(encoding="utf-8"), "text/html")
-        if path == "/api/state": return self._send(200, self.chat.state(self.chat._online()))
-        if path == "/events": return self._events()
+        if path in ("/", "/index.html"):
+            return self._send(200, (HERE / "chat_ui.html").read_text(encoding="utf-8"), "text/html")
+        if path == "/api/state":
+            c = self.chat
+            return self._send(200, c.state(c._online()))
+        if path == "/events":
+            return self._events()
         if path.startswith("/downloads/"):
-            fpath = DOWNLOADS / path.split("/")[-1]
+            fname = path.split("/")[-1]
+            fpath = DOWNLOADS / fname
             if fpath.exists():
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
                 self.send_header("Content-Length", str(fpath.stat().st_size))
                 self.end_headers()
-                with open(fpath, "rb") as f: self.wfile.write(f.read())
+                with open(fpath, "rb") as f:
+                    self.wfile.write(f.read())
                 return
         self._send(404, {"error": "not found"})
 
@@ -405,24 +430,34 @@ class Handler(BaseHTTPRequestHandler):
                     payload = q.get(timeout=15)
                     while not q.empty(): payload = q.get_nowait()
                     self.wfile.write(b"data: " + payload.encode("utf-8") + b"\n\n")
-                except queue.Empty: self.wfile.write(b": keep-alive\n\n")
+                except queue.Empty:
+                    self.wfile.write(b": keep-alive\n\n")
                 self.wfile.flush()
         except OSError: pass
         finally: self.chat.unsubscribe(q)
 
     def do_POST(self):
-        if not self._host_ok() or self.headers.get("X-Requested-With") != "WaveLink": return self._send(403, {"error": "forbidden"})
-        try: body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
-        except Exception: return self._send(400, {"error": "bad json"})
-        
+        if not self._host_ok() or self.headers.get("X-Requested-With") != "WaveLink":
+            return self._send(403, {"error": "forbidden"})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            return self._send(400, {"error": "bad json"})
         path = self.path.split("?")[0]
         if path == "/api/send":
-            if text := str(body.get("text", "")).strip(): self.chat.send_text(text[:4000])
+            text = str(body.get("text", "")).strip()
+            if text: self.chat.send_text(text[:4000])
         elif path == "/api/upload":
-            if (name := str(body.get("name", "")).strip()) and (b64 := str(body.get("b64", "")).strip()): self.chat.send_file(name, b64)
-        elif path == "/api/read": self.chat.mark_read()
-        elif path == "/api/retry": self.chat.retry(int(body.get("id", 0)))
-        else: return self._send(404, {"error": "not found"})
+            name = str(body.get("name", "")).strip()
+            b64 = str(body.get("b64", "")).strip()
+            if name and b64: self.chat.send_file(name, b64)
+        elif path == "/api/read":
+            self.chat.mark_read()
+        elif path == "/api/retry":
+            self.chat.retry(int(body.get("id", 0)))
+        else:
+            return self._send(404, {"error": "not found"})
         self._send(200, {"ok": True})
 
 
@@ -448,7 +483,8 @@ def main():
     srv.daemon_threads = True
     url = f"http://localhost:{a.port}"
     print(f"WaveLink Chat as '{chat.name}'  ->  {url}   (Ctrl+C to quit)")
-    if not a.no_browser: threading.Timer(0.8, webbrowser.open, [url]).start()
+    if not a.no_browser:
+        threading.Timer(0.8, webbrowser.open, [url]).start()
     try: srv.serve_forever()
     except KeyboardInterrupt: pass
     finally:

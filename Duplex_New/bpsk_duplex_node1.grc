@@ -536,7 +536,7 @@ blocks:
   parameters:
     affinity: ''
     alias: ''
-    attenuation1: '10.0'
+    attenuation1: '20.0'
     bandwidth: '20000000'
     buffer_size: '4096'
     comment: ''
@@ -627,7 +627,7 @@ blocks:
     label: RX Freq (Hz)
     short_id: r
     type: eng_float
-    value: 4.11e9
+    value: 2.4e9
   states:
     bus_sink: false
     bus_source: false
@@ -644,7 +644,7 @@ blocks:
     label: TX Freq (Hz)
     short_id: t
     type: eng_float
-    value: 4.1e9
+    value: 2.5e9
   states:
     bus_sink: false
     bus_source: false
@@ -838,7 +838,7 @@ blocks:
     alias: ''
     bind: 'False'
     comment: TX byte stream in (Python app binds PUSH)
-    hwm: '2'
+    hwm: '100'
     maxoutbuf: '0'
     minoutbuf: '0'
     pass_tags: 'False'

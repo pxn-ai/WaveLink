@@ -57,7 +57,7 @@ class bpsk_duplex_node(gr.top_block):
 
         self.zeromq_push_sink_0 = zeromq.push_sink(gr.sizeof_char, 1, "tcp://127.0.0.1:5002", 100, False, (-1), True)
         self.zeromq_pull_source_0 = zeromq.pull_source(gr.sizeof_char, 1, "tcp://127.0.0.1:5001", 100, False, 2, False)
-        self.iio_pluto_source_0 = iio.fmcomms2_source_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 4096)
+        self.iio_pluto_source_0 = iio.fmcomms2_source_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 65536)
         self.iio_pluto_source_0.set_len_tag_key('')
         self.iio_pluto_source_0.set_frequency(int(rx_freq))
         self.iio_pluto_source_0.set_samplerate(int(samp_rate))
@@ -67,7 +67,7 @@ class bpsk_duplex_node(gr.top_block):
         self.iio_pluto_source_0.set_rfdc(True)
         self.iio_pluto_source_0.set_bbdc(True)
         self.iio_pluto_source_0.set_filter_params('Auto', '', 0, 0)
-        self.iio_pluto_sink_0 = iio.fmcomms2_sink_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 4096, False)
+        self.iio_pluto_sink_0 = iio.fmcomms2_sink_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 65536, False)
         self.iio_pluto_sink_0.set_len_tag_key('')
         self.iio_pluto_sink_0.set_bandwidth(20000000)
         self.iio_pluto_sink_0.set_frequency(int(tx_freq))

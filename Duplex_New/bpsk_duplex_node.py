@@ -29,7 +29,7 @@ import threading
 
 class bpsk_duplex_node(gr.top_block):
 
-    def __init__(self, rx_freq=4.11e9, tx_freq=4.1e9):
+    def __init__(self, rx_freq=2.4e9, tx_freq=2.5e9):
         gr.top_block.__init__(self, "BPSK Duplex Node", catch_exceptions=True)
         self.flowgraph_started = threading.Event()
 
@@ -56,7 +56,7 @@ class bpsk_duplex_node(gr.top_block):
         ##################################################
 
         self.zeromq_push_sink_0 = zeromq.push_sink(gr.sizeof_char, 1, "tcp://127.0.0.1:5002", 100, False, (-1), True)
-        self.zeromq_pull_source_0 = zeromq.pull_source(gr.sizeof_char, 1, "tcp://127.0.0.1:5001", 100, False, 2, False)
+        self.zeromq_pull_source_0 = zeromq.pull_source(gr.sizeof_char, 1, "tcp://127.0.0.1:5001", 100, False, 100, False)
         self.iio_pluto_source_0 = iio.fmcomms2_source_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 4096)
         self.iio_pluto_source_0.set_len_tag_key('')
         self.iio_pluto_source_0.set_frequency(int(rx_freq))
@@ -72,7 +72,7 @@ class bpsk_duplex_node(gr.top_block):
         self.iio_pluto_sink_0.set_bandwidth(20000000)
         self.iio_pluto_sink_0.set_frequency(int(tx_freq))
         self.iio_pluto_sink_0.set_samplerate(int(samp_rate))
-        self.iio_pluto_sink_0.set_attenuation(0, 10.0)
+        self.iio_pluto_sink_0.set_attenuation(0, 20.0)
         self.iio_pluto_sink_0.set_filter_params('Auto', '', 0, 0)
         self.filter_fft_rrc_filter_0 = filter.fft_filter_ccc(1, firdes.root_raised_cosine(1, samp_rate, (samp_rate/sps), 0.35, (11*sps)), 1)
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
@@ -217,10 +217,10 @@ class bpsk_duplex_node(gr.top_block):
 def argument_parser():
     parser = ArgumentParser()
     parser.add_argument(
-        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(4.11e9)),
+        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.4e9)),
         help="Set RX Freq (Hz) [default=%(default)r]")
     parser.add_argument(
-        "-t", "--tx-freq", dest="tx_freq", type=eng_float, default=eng_notation.num_to_str(float(4.1e9)),
+        "-t", "--tx-freq", dest="tx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.5e9)),
         help="Set TX Freq (Hz) [default=%(default)r]")
     return parser
 
