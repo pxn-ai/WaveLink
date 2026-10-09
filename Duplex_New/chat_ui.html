@@ -77,6 +77,15 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .text{white-space:pre-wrap}
 .file-link{display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;font-weight:600}
 .file-link:hover{text-decoration:underline}
+.file-link.pending{opacity:.75;cursor:default}
+.file-link.pending:hover{text-decoration:none}
+.fprog{margin-top:6px;min-width:180px}
+.fprog[hidden],.fpic[hidden]{display:none}
+.fbar{height:5px;border-radius:3px;background:rgba(134,150,160,.35);overflow:hidden}
+.fbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.fprog.bad .fbar i{background:#ea0038;width:100%!important}
+.fprog small{display:block;margin-top:3px;font-size:11.5px;color:var(--sub)}
+.fpic{display:block;margin-top:6px;max-width:260px;max-height:260px;border-radius:6px}
 .meta{float:right;display:inline-flex;align-items:center;gap:3px;margin:8px 0 -4px 12px;font-size:11px;line-height:15px;color:var(--sub);user-select:none}
 .row.out .meta{color:var(--sub)}
 .tick{display:inline-flex;color:var(--tick)}
@@ -223,6 +232,37 @@ function updateTick(row, m){
           : m.status === 'sent' ? 'Transmitting chunks over radio'
           : m.status === 'delivered' ? 'Delivered' : 'Read';
 }
+// Refresh a file bubble from the latest message state (called on every render, not just on creation)
+function updateFile(root, m){
+  if (m.type !== 'file') return;
+  const fa = root.querySelector('.file-link'); if (!fa) return;
+  const prog = root.querySelector('.fprog'), pic = root.querySelector('.fpic');
+  root.querySelector('.fname').textContent = m.text;
+
+  const pct = Math.max(0, Math.min(100, m.progress || 0));
+  const incoming = m.dir === 'in';
+  const ready = incoming && !!m.path && (m.status === 'unread' || m.status === 'read');
+  const busy = incoming ? m.status === 'receiving'
+                        : (m.status === 'queued' || m.status === 'sent');
+
+  if (ready){
+    fa.href = m.path; fa.setAttribute('download', m.text); fa.classList.remove('pending');
+  } else {
+    fa.removeAttribute('href'); fa.removeAttribute('download'); fa.classList.add('pending');
+  }
+
+  const small = prog.querySelector('small');
+  prog.hidden = !(busy || m.status === 'failed');
+  prog.querySelector('i').style.width = pct + '%';
+  prog.classList.toggle('bad', m.status === 'failed');
+  small.textContent = m.status === 'failed' ? (incoming ? 'Transfer failed' : 'Not delivered — click the red mark to retry')
+                    : incoming ? 'Receiving… ' + pct + '%' : 'Sending… ' + pct + '%';
+
+  if (ready && /\.(png|jpe?g|gif|webp|bmp)$/i.test(m.text)){
+    if (pic.getAttribute('src') !== m.path) pic.src = m.path;
+    pic.hidden = false;
+  } else pic.hidden = true;
+}
 function build(m, prev){
   const row = document.createElement('div');
   row.className = 'row ' + m.dir + (!prev || prev.dir !== m.dir ? ' first' : '');
@@ -231,10 +271,12 @@ function build(m, prev){
   if (m.type === 'file') {
     const fa = document.createElement('a');
     fa.className = 'file-link';
-    fa.href = m.dir === 'in' ? m.path : '#';
-    if (m.dir === 'in') fa.download = m.text;
-    fa.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> <span>${m.text}</span>`;
-    b.append(fa);
+    fa.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> <span class="fname"></span>';
+    const prog = document.createElement('div'); prog.className = 'fprog';
+    prog.innerHTML = '<div class="fbar"><i></i></div><small></small>';
+    const pic = document.createElement('img'); pic.className = 'fpic'; pic.hidden = true;
+    b.append(fa, prog, pic);
+    updateFile(b, m);
   } else {
     const t = document.createElement('span'); t.className = 'text'; t.textContent = m.text;
     b.append(t);
@@ -274,7 +316,7 @@ function render(s){
       if (!prev || !sameDay(new Date(prev.ts * 1000), new Date(m.ts * 1000))) box.append(daySep(m.ts));
       el = build(m, prev); box.append(el); els.set(key, el);
       if (m.dir === 'out') addedOut = true; else addedIn = true;
-    } else updateTick(el, m);
+    } else { updateTick(el, m); updateFile(el, m); }
     prev = m;
   }
   if (first || addedOut || (addedIn && nearBottom)) box.scrollTop = box.scrollHeight;
