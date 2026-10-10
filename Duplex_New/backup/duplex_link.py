@@ -23,18 +23,13 @@ MAX_DATA = FRAME - HDR.size          # 1020 user bytes per frame
 class Link:
     def __init__(self, tx_addr="tcp://127.0.0.1:5001",
                  rx_addr="tcp://127.0.0.1:5002", beacon_s=None,
-                 coalesce=True, on_sent=None, lead_in=2, idle_s=0.1):
+                 coalesce=True, on_sent=None):
         """beacon_s=None: transmit only when there is data (low latency).
         beacon_s=0.5 (say): also send an empty frame every 0.5 s when idle.
         coalesce=True : send() is a byte stream, chunks are merged into frames.
         coalesce=False: every send() (<=1020 bytes) is exactly one frame, and
                         recv() returns exactly one frame's payload (message mode).
-        on_sent(data): called after a frame was handed to the modem.
-        lead_in=N: after the transmitter has been quiet for idle_s, send N empty
-                   frames before the real one. A receiver needs a moment to settle
-                   (AGC, carrier and timing loops) on a burst that starts from
-                   silence; without this the first frame of every burst is lost,
-                   so lone frames (a single text, a ping) never get through."""
+        on_sent(data): called after a frame was handed to the modem."""
         ctx = zmq.Context.instance()
         self.tx = ctx.socket(zmq.PUSH)
         self.tx.setsockopt(zmq.SNDHWM, 2)
@@ -49,8 +44,6 @@ class Link:
         self.beacon_s = beacon_s
         self.coalesce = coalesce
         self.on_sent = on_sent
-        self.lead_in, self.idle_s = max(0, int(lead_in)), idle_s
-        self._last_tx = 0.0
         self._blocked_since = None
         self.txq, self.rxq = queue.Queue(), queue.Queue()
         self.running = True
@@ -112,31 +105,23 @@ class Link:
                     if not self.beacon_s:
                         continue
                     data = b""
-            if self.lead_in and time.time() - self._last_tx > self.idle_s:
-                for _ in range(self.lead_in):             # wake-up frames, ignored by rx
-                    self._push(HDR.pack(MAGIC, seq, 0) + bytes(FRAME - HDR.size))
-                    seq = (seq + 1) & 0xFF
             frame = HDR.pack(MAGIC, seq, len(data)) + data
             frame += bytes(FRAME - len(frame))
-            self._push(frame)
+            while self.running:               # blocks = backpressure
+                try:
+                    self.tx.send(frame)
+                    self.frames_tx += 1
+                    self._blocked_since = None
+                    break
+                except zmq.Again:
+                    if self._blocked_since is None:
+                        self._blocked_since = time.time()
             if data and self.on_sent:
                 try:
                     self.on_sent(data)
                 except Exception as e:
                     print("on_sent error:", e, file=sys.stderr)
             seq = (seq + 1) & 0xFF
-
-    def _push(self, frame):
-        while self.running:                   # blocks = backpressure
-            try:
-                self.tx.send(frame)
-                self.frames_tx += 1
-                self._blocked_since = None
-                self._last_tx = time.time()
-                return
-            except zmq.Again:
-                if self._blocked_since is None:
-                    self._blocked_since = time.time()
 
     def _rx_loop(self):
         buf, expect = bytearray(), None

@@ -29,7 +29,7 @@ import threading
 
 class bpsk_duplex_node(gr.top_block):
 
-    def __init__(self, rx_freq=2.4e9, tx_freq=2.5e9):
+    def __init__(self, rx_freq=2.6e9, tx_freq=2.5e9):
         gr.top_block.__init__(self, "BPSK Duplex Node", catch_exceptions=True)
         self.flowgraph_started = threading.Event()
 
@@ -43,7 +43,7 @@ class bpsk_duplex_node(gr.top_block):
         # Variables
         ##################################################
         self.sps = sps = 4
-        self.samp_rate = samp_rate = 2e6
+        self.samp_rate = samp_rate = 1e6
         self.preamble_size = preamble_size = 256
         self.postamble_size = postamble_size = 256
         self.payload_size = payload_size = 1024
@@ -61,7 +61,7 @@ class bpsk_duplex_node(gr.top_block):
         self.iio_pluto_source_0.set_len_tag_key('')
         self.iio_pluto_source_0.set_frequency(int(rx_freq))
         self.iio_pluto_source_0.set_samplerate(int(samp_rate))
-        self.iio_pluto_source_0.set_gain_mode(0, 'fast_attack')
+        self.iio_pluto_source_0.set_gain_mode(0, 'slow_attack')
         self.iio_pluto_source_0.set_gain(0, 64)
         self.iio_pluto_source_0.set_quadrature(True)
         self.iio_pluto_source_0.set_rfdc(True)
@@ -69,7 +69,7 @@ class bpsk_duplex_node(gr.top_block):
         self.iio_pluto_source_0.set_filter_params('Auto', '', 0, 0)
         self.iio_pluto_sink_0 = iio.fmcomms2_sink_fc32("ip:192.168.1.10" if "ip:192.168.1.10" else iio.get_pluto_uri(), [True, True], 4096, False)
         self.iio_pluto_sink_0.set_len_tag_key('')
-        self.iio_pluto_sink_0.set_bandwidth(20000000)
+        self.iio_pluto_sink_0.set_bandwidth(int(samp_rate))
         self.iio_pluto_sink_0.set_frequency(int(tx_freq))
         self.iio_pluto_sink_0.set_samplerate(int(samp_rate))
         self.iio_pluto_sink_0.set_attenuation(0, 20.0)
@@ -88,6 +88,7 @@ class bpsk_duplex_node(gr.top_block):
             32,
             [])
         self.digital_protocol_formatter_bb_0 = digital.protocol_formatter_bb(hdr, 'packet_len')
+        self.digital_fll_band_edge_cc_0 = digital.fll_band_edge_cc(sps, 0.35, 44, (2*3.14159/200))
         self.digital_diff_decoder_bb_0 = digital.diff_decoder_bb(len(constel.points()), digital.DIFF_DIFFERENTIAL)
         self.digital_crc32_bb_1 = digital.crc32_bb(True, 'packet_len', True)
         self.digital_crc32_bb_0 = digital.crc32_bb(False, "packet_len", True)
@@ -136,10 +137,11 @@ class bpsk_duplex_node(gr.top_block):
         self.connect((self.digital_crc32_bb_0, 0), (self.digital_protocol_formatter_bb_0, 0))
         self.connect((self.digital_crc32_bb_1, 0), (self.zeromq_push_sink_0, 0))
         self.connect((self.digital_diff_decoder_bb_0, 0), (self.digital_correlate_access_code_xx_ts_0, 0))
+        self.connect((self.digital_fll_band_edge_cc_0, 0), (self.filter_fft_rrc_filter_0, 0))
         self.connect((self.digital_protocol_formatter_bb_0, 0), (self.blocks_tagged_stream_mux_0, 1))
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_costas_loop_cc_0, 0))
         self.connect((self.filter_fft_rrc_filter_0, 0), (self.digital_symbol_sync_xx_0, 0))
-        self.connect((self.iio_pluto_source_0, 0), (self.filter_fft_rrc_filter_0, 0))
+        self.connect((self.iio_pluto_source_0, 0), (self.digital_fll_band_edge_cc_0, 0))
         self.connect((self.zeromq_pull_source_0, 0), (self.blocks_stream_to_tagged_stream_0_0_0, 0))
 
 
@@ -171,6 +173,7 @@ class bpsk_duplex_node(gr.top_block):
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
         self.filter_fft_rrc_filter_0.set_taps(firdes.root_raised_cosine(1, self.samp_rate, (self.samp_rate/self.sps), 0.35, (11*self.sps)))
+        self.iio_pluto_sink_0.set_bandwidth(int(self.samp_rate))
         self.iio_pluto_sink_0.set_samplerate(int(self.samp_rate))
         self.iio_pluto_source_0.set_samplerate(int(self.samp_rate))
 
@@ -217,7 +220,7 @@ class bpsk_duplex_node(gr.top_block):
 def argument_parser():
     parser = ArgumentParser()
     parser.add_argument(
-        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.4e9)),
+        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.6e9)),
         help="Set RX Freq (Hz) [default=%(default)r]")
     parser.add_argument(
         "-t", "--tx-freq", dest="tx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.5e9)),

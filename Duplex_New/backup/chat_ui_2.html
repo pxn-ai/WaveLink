@@ -308,19 +308,6 @@ function render(s){
   $('#rLost').textContent = s.modem.lost; $('#rQ').textContent = s.modem.queue;
 
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
-  const keepScroll = box.scrollTop;
-  const known = new Set(els.keys());
-  // A late (retransmitted) message is inserted by the server at its sent position,
-  // i.e. before messages already on screen: redraw the list in the new order.
-  let sawNew = false, reorder = false;
-  for (const m of s.messages){
-    if (!known.has(m.dir + m.id)) sawNew = true;
-    else if (sawNew){ reorder = true; break; }
-  }
-  if (reorder){
-    box.querySelectorAll('#msgs > :not(.sys)').forEach(e => e.remove());
-    els.clear();
-  }
   let prev = null, addedOut = false, addedIn = false;
   for (const m of s.messages){
     const key = m.dir + m.id;
@@ -328,12 +315,11 @@ function render(s){
     if (!el){
       if (!prev || !sameDay(new Date(prev.ts * 1000), new Date(m.ts * 1000))) box.append(daySep(m.ts));
       el = build(m, prev); box.append(el); els.set(key, el);
-      if (!known.has(key)){ if (m.dir === 'out') addedOut = true; else addedIn = true; }
+      if (m.dir === 'out') addedOut = true; else addedIn = true;
     } else { updateTick(el, m); updateFile(el, m); }
     prev = m;
   }
   if (first || addedOut || (addedIn && nearBottom)) box.scrollTop = box.scrollHeight;
-  else if (reorder) box.scrollTop = keepScroll;
   first = false;
 
   const last = s.messages[s.messages.length - 1];

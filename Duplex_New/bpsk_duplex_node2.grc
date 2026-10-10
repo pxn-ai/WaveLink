@@ -464,6 +464,26 @@ blocks:
     coordinate: [432, 1608.0]
     rotation: 0
     state: enabled
+- name: digital_fll_band_edge_cc_0
+  id: digital_fll_band_edge_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Coarse frequency correction (TX/RX oscillator offset)
+    filter_size: '44'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    rolloff: '0.35'
+    samps_per_sym: sps
+    type: cc
+    w: 2*3.14159/200
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [56, 1512.0]
+    rotation: 0
+    state: enabled
 - name: digital_protocol_formatter_bb_0
   id: digital_protocol_formatter_bb
   parameters:
@@ -571,7 +591,7 @@ blocks:
     fpass: '0'
     frequency: int(rx_freq)
     fstop: '0'
-    gain1: '''fast_attack'''
+    gain1: '''slow_attack'''
     len_tag_key: ''
     manual_gain1: '64'
     maxoutbuf: '0'
@@ -917,13 +937,14 @@ connections:
 - [digital_crc32_bb_1, '0', pdu_tagged_stream_to_pdu_0, '0']
 - [digital_crc32_bb_1, '0', zeromq_push_sink_0, '0']
 - [digital_diff_decoder_bb_0, '0', digital_correlate_access_code_xx_ts_0, '0']
+- [digital_fll_band_edge_cc_0, '0', filter_fft_rrc_filter_0, '0']
 - [digital_protocol_formatter_bb_0, '0', virtual_sink_0_0, '0']
 - [digital_symbol_sync_xx_0, '0', digital_costas_loop_cc_0, '0']
 - [filter_fft_rrc_filter_0, '0', digital_symbol_sync_xx_0, '0']
 - [iio_pluto_source_0, '0', virtual_sink_2, '0']
 - [pdu_tagged_stream_to_pdu_0, pdus, blocks_message_debug_0, print]
 - [virtual_source_0, '0', digital_constellation_modulator_0, '0']
-- [virtual_source_1, '0', filter_fft_rrc_filter_0, '0']
+- [virtual_source_1, '0', digital_fll_band_edge_cc_0, '0']
 - [virtual_source_2, '0', digital_constellation_decoder_cb_1, '0']
 - [virtual_source_3, '0', blocks_repack_bits_bb_1, '0']
 - [virtual_source_5, '0', blocks_tagged_stream_mux_0, '1']
