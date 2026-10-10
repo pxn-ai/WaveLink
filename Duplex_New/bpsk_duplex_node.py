@@ -29,7 +29,7 @@ import threading
 
 class bpsk_duplex_node(gr.top_block):
 
-    def __init__(self, rx_freq=2.5e9, tx_freq=2.4e9):
+    def __init__(self, rx_freq=2.4e9, tx_freq=2.5e9):
         gr.top_block.__init__(self, "BPSK Duplex Node", catch_exceptions=True)
         self.flowgraph_started = threading.Event()
 
@@ -61,7 +61,7 @@ class bpsk_duplex_node(gr.top_block):
         self.iio_pluto_source_0.set_len_tag_key('')
         self.iio_pluto_source_0.set_frequency(int(rx_freq))
         self.iio_pluto_source_0.set_samplerate(int(samp_rate))
-        self.iio_pluto_source_0.set_gain_mode(0, 'slow_attack')
+        self.iio_pluto_source_0.set_gain_mode(0, 'fast_attack')
         self.iio_pluto_source_0.set_gain(0, 64)
         self.iio_pluto_source_0.set_quadrature(True)
         self.iio_pluto_source_0.set_rfdc(True)
@@ -93,7 +93,7 @@ class bpsk_duplex_node(gr.top_block):
         self.digital_crc32_bb_0 = digital.crc32_bb(False, "packet_len", True)
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc((2*3.14/100), len(constel.points()), False)
         self.digital_correlate_access_code_xx_ts_0 = digital.correlate_access_code_bb_ts(digital.packet_utils.default_access_code,
-          0, 'packet_len')
+          1, 'packet_len')
         self.digital_constellation_modulator_0 = digital.generic_mod(
             constellation=constel,
             differential=True,
@@ -217,10 +217,10 @@ class bpsk_duplex_node(gr.top_block):
 def argument_parser():
     parser = ArgumentParser()
     parser.add_argument(
-        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.5e9)),
+        "-r", "--rx-freq", dest="rx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.4e9)),
         help="Set RX Freq (Hz) [default=%(default)r]")
     parser.add_argument(
-        "-t", "--tx-freq", dest="tx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.4e9)),
+        "-t", "--tx-freq", dest="tx_freq", type=eng_float, default=eng_notation.num_to_str(float(2.5e9)),
         help="Set TX Freq (Hz) [default=%(default)r]")
     return parser
 
