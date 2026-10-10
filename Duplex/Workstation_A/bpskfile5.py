@@ -68,10 +68,10 @@ class bpskfile5(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.tx_freq = tx_freq = 0.9e9
+        self.tx_freq = tx_freq = 915e6
         self.sps = sps = 4
         self.samp_rate = samp_rate = 2e6
-        self.rx_freq = rx_freq = 1.2e9
+        self.rx_freq = rx_freq = 915e6
         self.preamble_size = preamble_size = 250
         self.postamble_size = postamble_size = 10000
         self.payload_size = payload_size = 1

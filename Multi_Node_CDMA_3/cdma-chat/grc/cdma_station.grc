@@ -1,0 +1,450 @@
+options:
+  parameters:
+    author: EN2130 group
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: One station of the multi-node DS-CDMA chat system
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: cdma_station
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: EN2130 DS-CDMA Chat Station (ANTSDR E200, libiio)
+    window_size: (1400,900)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- name: note_about
+  id: note
+  parameters:
+    note: 'DS-CDMA chat station on an ANTSDR E200 (Pluto/libiio firmware, boot switch = QSPI). Run, then open http://localhost:<web_port>. All stations must share samp_rate and center_freq; each needs a different node_id. Command line: python3 cdma_station.py -i 2 -n Bob'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 140
+    rotation: 0
+    state: enabled
+- name: node_id
+  id: parameter
+  parameters:
+    label: 'Node ID (= Gold code #)'
+    type: intx
+    value: '1'
+    short_id: i
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 232
+    - 8
+    rotation: 0
+    state: enabled
+- name: station_name
+  id: parameter
+  parameters:
+    label: Station name
+    type: str
+    value: Alice
+    short_id: n
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 432
+    - 8
+    rotation: 0
+    state: enabled
+- name: web_port
+  id: parameter
+  parameters:
+    label: Web UI port
+    type: intx
+    value: '8080'
+    short_id: p
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 632
+    - 8
+    rotation: 0
+    state: enabled
+- name: enc_key
+  id: parameter
+  parameters:
+    label: Encryption passphrase ('' = off)
+    type: str
+    value: ''
+    short_id: k
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 832
+    - 8
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    value: 4e6
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1064
+    - 8
+    rotation: 0
+    state: enabled
+- name: center_freq
+  id: variable
+  parameters:
+    value: 2.5e9
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1204
+    - 8
+    rotation: 0
+    state: enabled
+- name: tx_buffer
+  id: variable
+  parameters:
+    value: '131072'
+    comment: 'TX driver buffer (33 ms).
+
+      Larger = no mid-burst underruns.'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1344
+    - 8
+    rotation: 0
+    state: enabled
+- name: uri
+  id: parameter
+  parameters:
+    label: ANTSDR URI
+    type: str
+    value: ip:192.168.1.10
+    short_id: u
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1064
+    - 100
+    rotation: 0
+    state: enabled
+- name: rx_gain
+  id: variable_qtgui_range
+  parameters:
+    label: RX gain (dB)
+    rangeType: float
+    value: '40'
+    start: '0'
+    stop: '71'
+    step: '1'
+    widget: counter_slider
+    gui_hint: 0,0,1,1
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1240
+    - 100
+    rotation: 0
+    state: enabled
+- name: tx_atten
+  id: variable_qtgui_range
+  parameters:
+    label: TX attenuation (dB, 0 = max power)
+    rangeType: float
+    value: '10'
+    start: '0'
+    stop: '89'
+    step: '1'
+    widget: counter_slider
+    gui_hint: 0,1,1,1
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1440
+    - 100
+    rotation: 0
+    state: enabled
+- name: antsdr_rx
+  id: iio_fmcomms2_source
+  parameters:
+    type: fc32
+    uri: uri
+    frequency: int(center_freq)
+    samplerate: int(samp_rate)
+    bandwidth: int(samp_rate)
+    buffer_size: '32768'
+    rx1_en: 'True'
+    rx2_en: 'False'
+    gain1: '''manual'''
+    manual_gain1: rx_gain
+    quadrature: 'True'
+    rfdc: 'True'
+    bbdc: 'True'
+    len_tag_key: ''''''
+    filter_source: '''Auto'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 40
+    - 300
+    rotation: 0
+    state: enabled
+- name: cdma_rx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Chat RX - receive side of a DS-CDMA station.\n\nFeeds the received baseband samples to the station's demodulator, which\nruns in its own thread: RRC matched filter, Gold-code correlators for this\nnode's code and the broadcast code, CFO-immune differential preamble\ndetector, PLL + DLL despreading, CRC-8 header check, then the link layer\n(CRC-32, addressing, ACKs).  Several same-code bursts that overlap in time\nare decoded independently.\n\nConnect the ANTSDR source to its input.  Use the same node_id as the\n'CDMA Chat TX' block of this station.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nfrom gnuradio import gr\n\n# Make the cdmachat package importable: this file is generated next to the .grc,\n# and the .grc lives in <project>/grc/.\n_HERE = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.getcwd() + \"/x\")))\nfor _cand in (os.path.join(_HERE, \"..\"), _HERE, os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n    if os.path.isdir(os.path.join(_cand,\
+      \ \"cdmachat\")):\n        sys.path.insert(0, os.path.abspath(_cand))\n        break\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, station_name=\"Alice\", web_port=8080, enc_key=\"\",\n                 samp_rate=4e6, center_freq=2.5e9, tx_buffer=131072, mode=\"antsdr\"):\n        gr.sync_block.__init__(self, name=\"CDMA Chat RX\", in_sig=[np.complex64], out_sig=None)\n        self.args = (int(node_id), station_name, int(web_port), enc_key, float(samp_rate),\n                     float(center_freq), int(tx_buffer))\n        self.mode = mode\n        self.station = None\n\n    def start(self):\n        from cdmachat.grc_glue import get_station\n        self.station = get_station(*self.args, mode=self.mode)\n        self.station.start()\n        return True\n\n    def stop(self):\n        if self.station is not None:\n            self.station.stop()\n            self.station = None\n        return True\n\n    def work(self, input_items, output_items):\n        if self.station\
+      \ is not None:\n            self.station.radio.rx_push(input_items[0])\n        return len(input_items[0])\n"
+    node_id: node_id
+    station_name: station_name
+    web_port: web_port
+    enc_key: enc_key
+    samp_rate: samp_rate
+    center_freq: center_freq
+    tx_buffer: tx_buffer
+    mode: '''antsdr'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 440
+    - 330
+    rotation: 0
+    state: enabled
+- name: rx_spectrum
+  id: qtgui_freq_sink_x
+  parameters:
+    type: complex
+    name: '"Received spectrum (2.5 GHz)"'
+    fftsize: '1024'
+    fc: center_freq
+    bw: samp_rate
+    ymin: '-120'
+    ymax: '-10'
+    average: '0.2'
+    nconnections: '1'
+    update_time: '0.10'
+    gui_hint: 1,0,1,2
+    grid: 'True'
+    label1: ''''''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 440
+    - 440
+    rotation: 0
+    state: enabled
+- name: rx_waterfall
+  id: qtgui_waterfall_sink_x
+  parameters:
+    type: complex
+    name: '"Received waterfall: CDMA bursts"'
+    fftsize: '512'
+    fc: center_freq
+    bw: samp_rate
+    int_min: '-110'
+    int_max: '-30'
+    gui_hint: 2,0,1,2
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 440
+    - 600
+    rotation: 0
+    state: enabled
+- name: cdma_tx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Chat TX - one DS-CDMA station (transmit side + the whole station).\n\nWhen the flowgraph starts this block starts the station: link layer\n(addressing, CRC-32, fragmentation, selective-repeat ARQ, priority),\nchat application and the web UI on http://localhost:<web_port>.\nIts output is the station's transmit signal: zeros when idle, and\nDS-CDMA BPSK bursts (31-chip Gold codes, RRC pulses) whenever the link\nlayer sends. Bursts for different stations are spread with different\ncodes and summed, so several links share 2.5 GHz at the same time.\n\nConnect the output to the ANTSDR sink.  Pair it with a 'CDMA Chat RX'\nblock that has the same node_id.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nfrom gnuradio import gr\n\n# Make the cdmachat package importable: this file is generated next to the .grc,\n# and the .grc lives in <project>/grc/.\n_HERE = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.getcwd() + \"/x\")))\nfor _cand in (os.path.join(_HERE,\
+      \ \"..\"), _HERE, os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n    if os.path.isdir(os.path.join(_cand, \"cdmachat\")):\n        sys.path.insert(0, os.path.abspath(_cand))\n        break\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, station_name=\"Alice\", web_port=8080, enc_key=\"\",\n                 samp_rate=4e6, center_freq=2.5e9, tx_buffer=131072, mode=\"antsdr\"):\n        gr.sync_block.__init__(self, name=\"CDMA Chat TX\", in_sig=None, out_sig=[np.complex64])\n        self.node_id = int(node_id)\n        self.station_name = station_name\n        self.web_port = int(web_port)\n        self.enc_key = enc_key\n        self.samp_rate = float(samp_rate)\n        self.center_freq = float(center_freq)\n        self.tx_buffer = int(tx_buffer)\n        self.mode = mode\n        self.station = None\n\n    def start(self):\n        from cdmachat.grc_glue import get_station\n        self.station = get_station(self.node_id, self.station_name, self.web_port, self.enc_key,\n\
+      \                                   self.samp_rate, self.center_freq, self.tx_buffer, mode=self.mode)\n        self.station.start()\n        return True\n\n    def stop(self):\n        if self.station is not None:\n            self.station.stop()\n            self.station = None\n        return True\n\n    def work(self, input_items, output_items):\n        out = output_items[0]\n        if self.station is None:\n            out[:] = 0\n        else:\n            out[:] = self.station.radio.tx_read(len(out))\n        return len(out)\n"
+    node_id: node_id
+    station_name: station_name
+    web_port: web_port
+    enc_key: enc_key
+    samp_rate: samp_rate
+    center_freq: center_freq
+    tx_buffer: tx_buffer
+    mode: '''antsdr'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 40
+    - 760
+    rotation: 0
+    state: enabled
+- name: antsdr_tx
+  id: iio_fmcomms2_sink
+  parameters:
+    type: fc32
+    uri: uri
+    frequency: int(center_freq)
+    samplerate: int(samp_rate)
+    bandwidth: int(samp_rate)
+    buffer_size: tx_buffer
+    tx1_en: 'True'
+    tx2_en: 'False'
+    cyclic: 'False'
+    attenuation1: tx_atten
+    len_tag_key: ''''''
+    filter_source: '''Auto'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 440
+    - 780
+    rotation: 0
+    state: enabled
+- name: tx_scope
+  id: qtgui_time_sink_x
+  parameters:
+    type: complex
+    name: '"Transmitted baseband (bursts)"'
+    size: '40000'
+    srate: samp_rate
+    ymin: '-1'
+    ymax: '1'
+    update_time: '0.2'
+    gui_hint: 3,0,1,2
+    label1: '''I'''
+    label2: '''Q'''
+    entags: 'False'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 440
+    - 940
+    rotation: 0
+    state: enabled
+connections:
+- - antsdr_rx
+  - '0'
+  - cdma_rx
+  - '0'
+- - antsdr_rx
+  - '0'
+  - rx_spectrum
+  - '0'
+- - antsdr_rx
+  - '0'
+  - rx_waterfall
+  - '0'
+- - cdma_tx
+  - '0'
+  - antsdr_tx
+  - '0'
+- - cdma_tx
+  - '0'
+  - tx_scope
+  - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.9.2

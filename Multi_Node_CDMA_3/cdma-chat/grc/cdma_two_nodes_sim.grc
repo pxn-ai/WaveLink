@@ -1,0 +1,406 @@
+options:
+  parameters:
+    author: EN2130 group
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: Two full stations over a simulated channel (no hardware)
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: cdma_two_nodes_sim
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: EN2130 DS-CDMA Chat - two stations, simulated channel
+    window_size: (1400,900)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- name: note_about
+  id: note
+  parameters:
+    note: 'No hardware needed: two complete stations share one simulated 2.5 GHz channel. Open http://localhost:8081 (Alice) and http://localhost:8082 (Bob). Move the noise slider to watch CRC drops and ARQ retransmissions in the web dashboard.'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 100
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    value: 2e6
+    comment: '2 MS/s: two receivers run in this one process,
+
+      so use half the rate of the hardware graph.'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 232
+    - 8
+    rotation: 0
+    state: enabled
+- name: center_freq
+  id: variable
+  parameters:
+    value: 2.5e9
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 372
+    - 8
+    rotation: 0
+    state: enabled
+- name: tx_buffer
+  id: variable
+  parameters:
+    value: '131072'
+    comment: 'TX driver buffer (33 ms).
+
+      Larger = no mid-burst underruns.'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 512
+    - 8
+    rotation: 0
+    state: enabled
+- name: noise
+  id: variable_qtgui_range
+  parameters:
+    label: Channel noise voltage
+    rangeType: float
+    value: '0.05'
+    start: '0'
+    stop: '0.6'
+    step: '0.01'
+    widget: counter_slider
+    gui_hint: 0,0,1,2
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 680
+    - 8
+    rotation: 0
+    state: enabled
+- name: cfo_hz
+  id: variable_qtgui_range
+  parameters:
+    label: Carrier offset between radios (Hz)
+    rangeType: float
+    value: '3000'
+    start: '-15000'
+    stop: '15000'
+    step: '500'
+    widget: counter_slider
+    gui_hint: 1,0,1,2
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 900
+    - 8
+    rotation: 0
+    state: enabled
+- name: alice_tx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Chat TX - one DS-CDMA station (transmit side + the whole station).\n\nWhen the flowgraph starts this block starts the station: link layer\n(addressing, CRC-32, fragmentation, selective-repeat ARQ, priority),\nchat application and the web UI on http://localhost:<web_port>.\nIts output is the station's transmit signal: zeros when idle, and\nDS-CDMA BPSK bursts (31-chip Gold codes, RRC pulses) whenever the link\nlayer sends. Bursts for different stations are spread with different\ncodes and summed, so several links share 2.5 GHz at the same time.\n\nConnect the output to the ANTSDR sink.  Pair it with a 'CDMA Chat RX'\nblock that has the same node_id.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nfrom gnuradio import gr\n\n# Make the cdmachat package importable: this file is generated next to the .grc,\n# and the .grc lives in <project>/grc/.\n_HERE = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.getcwd() + \"/x\")))\nfor _cand in (os.path.join(_HERE,\
+      \ \"..\"), _HERE, os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n    if os.path.isdir(os.path.join(_cand, \"cdmachat\")):\n        sys.path.insert(0, os.path.abspath(_cand))\n        break\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, station_name=\"Alice\", web_port=8080, enc_key=\"\",\n                 samp_rate=4e6, center_freq=2.5e9, tx_buffer=131072, mode=\"antsdr\"):\n        gr.sync_block.__init__(self, name=\"CDMA Chat TX\", in_sig=None, out_sig=[np.complex64])\n        self.node_id = int(node_id)\n        self.station_name = station_name\n        self.web_port = int(web_port)\n        self.enc_key = enc_key\n        self.samp_rate = float(samp_rate)\n        self.center_freq = float(center_freq)\n        self.tx_buffer = int(tx_buffer)\n        self.mode = mode\n        self.station = None\n\n    def start(self):\n        from cdmachat.grc_glue import get_station\n        self.station = get_station(self.node_id, self.station_name, self.web_port, self.enc_key,\n\
+      \                                   self.samp_rate, self.center_freq, self.tx_buffer, mode=self.mode)\n        self.station.start()\n        return True\n\n    def stop(self):\n        if self.station is not None:\n            self.station.stop()\n            self.station = None\n        return True\n\n    def work(self, input_items, output_items):\n        out = output_items[0]\n        if self.station is None:\n            out[:] = 0\n        else:\n            out[:] = self.station.radio.tx_read(len(out))\n        return len(out)\n"
+    node_id: '1'
+    station_name: '''Alice'''
+    web_port: '8081'
+    enc_key: ''''''
+    samp_rate: samp_rate
+    center_freq: center_freq
+    tx_buffer: tx_buffer
+    mode: '''grc-sim'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 40
+    - 220
+    rotation: 0
+    state: enabled
+- name: bob_tx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Chat TX - one DS-CDMA station (transmit side + the whole station).\n\nWhen the flowgraph starts this block starts the station: link layer\n(addressing, CRC-32, fragmentation, selective-repeat ARQ, priority),\nchat application and the web UI on http://localhost:<web_port>.\nIts output is the station's transmit signal: zeros when idle, and\nDS-CDMA BPSK bursts (31-chip Gold codes, RRC pulses) whenever the link\nlayer sends. Bursts for different stations are spread with different\ncodes and summed, so several links share 2.5 GHz at the same time.\n\nConnect the output to the ANTSDR sink.  Pair it with a 'CDMA Chat RX'\nblock that has the same node_id.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nfrom gnuradio import gr\n\n# Make the cdmachat package importable: this file is generated next to the .grc,\n# and the .grc lives in <project>/grc/.\n_HERE = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.getcwd() + \"/x\")))\nfor _cand in (os.path.join(_HERE,\
+      \ \"..\"), _HERE, os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n    if os.path.isdir(os.path.join(_cand, \"cdmachat\")):\n        sys.path.insert(0, os.path.abspath(_cand))\n        break\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, station_name=\"Alice\", web_port=8080, enc_key=\"\",\n                 samp_rate=4e6, center_freq=2.5e9, tx_buffer=131072, mode=\"antsdr\"):\n        gr.sync_block.__init__(self, name=\"CDMA Chat TX\", in_sig=None, out_sig=[np.complex64])\n        self.node_id = int(node_id)\n        self.station_name = station_name\n        self.web_port = int(web_port)\n        self.enc_key = enc_key\n        self.samp_rate = float(samp_rate)\n        self.center_freq = float(center_freq)\n        self.tx_buffer = int(tx_buffer)\n        self.mode = mode\n        self.station = None\n\n    def start(self):\n        from cdmachat.grc_glue import get_station\n        self.station = get_station(self.node_id, self.station_name, self.web_port, self.enc_key,\n\
+      \                                   self.samp_rate, self.center_freq, self.tx_buffer, mode=self.mode)\n        self.station.start()\n        return True\n\n    def stop(self):\n        if self.station is not None:\n            self.station.stop()\n            self.station = None\n        return True\n\n    def work(self, input_items, output_items):\n        out = output_items[0]\n        if self.station is None:\n            out[:] = 0\n        else:\n            out[:] = self.station.radio.tx_read(len(out))\n        return len(out)\n"
+    node_id: '2'
+    station_name: '''Bob'''
+    web_port: '8082'
+    enc_key: ''''''
+    samp_rate: samp_rate
+    center_freq: center_freq
+    tx_buffer: tx_buffer
+    mode: '''grc-sim'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 40
+    - 420
+    rotation: 0
+    state: enabled
+- name: air_sum
+  id: blocks_add_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 400
+    - 330
+    rotation: 0
+    state: enabled
+- name: throttle
+  id: blocks_throttle
+  parameters:
+    type: complex
+    samples_per_second: samp_rate
+    ignoretag: 'True'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 340
+    rotation: 0
+    state: enabled
+- name: channel
+  id: channels_channel_model
+  parameters:
+    noise_voltage: noise
+    freq_offset: cfo_hz/samp_rate
+    epsilon: '1.0'
+    taps: '[1.0+0j]'
+    seed: '0'
+    block_tags: 'False'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 760
+    - 310
+    rotation: 0
+    state: enabled
+- name: alice_rx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Chat RX - receive side of a DS-CDMA station.\n\nFeeds the received baseband samples to the station's demodulator, which\nruns in its own thread: RRC matched filter, Gold-code correlators for this\nnode's code and the broadcast code, CFO-immune differential preamble\ndetector, PLL + DLL despreading, CRC-8 header check, then the link layer\n(CRC-32, addressing, ACKs).  Several same-code bursts that overlap in time\nare decoded independently.\n\nConnect the ANTSDR source to its input.  Use the same node_id as the\n'CDMA Chat TX' block of this station.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nfrom gnuradio import gr\n\n# Make the cdmachat package importable: this file is generated next to the .grc,\n# and the .grc lives in <project>/grc/.\n_HERE = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.getcwd() + \"/x\")))\nfor _cand in (os.path.join(_HERE, \"..\"), _HERE, os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n    if os.path.isdir(os.path.join(_cand,\
+      \ \"cdmachat\")):\n        sys.path.insert(0, os.path.abspath(_cand))\n        break\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, station_name=\"Alice\", web_port=8080, enc_key=\"\",\n                 samp_rate=4e6, center_freq=2.5e9, tx_buffer=131072, mode=\"antsdr\"):\n        gr.sync_block.__init__(self, name=\"CDMA Chat RX\", in_sig=[np.complex64], out_sig=None)\n        self.args = (int(node_id), station_name, int(web_port), enc_key, float(samp_rate),\n                     float(center_freq), int(tx_buffer))\n        self.mode = mode\n        self.station = None\n\n    def start(self):\n        from cdmachat.grc_glue import get_station\n        self.station = get_station(*self.args, mode=self.mode)\n        self.station.start()\n        return True\n\n    def stop(self):\n        if self.station is not None:\n            self.station.stop()\n            self.station = None\n        return True\n\n    def work(self, input_items, output_items):\n        if self.station\
+      \ is not None:\n            self.station.radio.rx_push(input_items[0])\n        return len(input_items[0])\n"
+    node_id: '1'
+    station_name: '''Alice'''
+    web_port: '8081'
+    enc_key: ''''''
+    samp_rate: samp_rate
+    center_freq: center_freq
+    tx_buffer: tx_buffer
+    mode: '''grc-sim'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1080
+    - 220
+    rotation: 0
+    state: enabled
+- name: bob_rx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Chat RX - receive side of a DS-CDMA station.\n\nFeeds the received baseband samples to the station's demodulator, which\nruns in its own thread: RRC matched filter, Gold-code correlators for this\nnode's code and the broadcast code, CFO-immune differential preamble\ndetector, PLL + DLL despreading, CRC-8 header check, then the link layer\n(CRC-32, addressing, ACKs).  Several same-code bursts that overlap in time\nare decoded independently.\n\nConnect the ANTSDR source to its input.  Use the same node_id as the\n'CDMA Chat TX' block of this station.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nfrom gnuradio import gr\n\n# Make the cdmachat package importable: this file is generated next to the .grc,\n# and the .grc lives in <project>/grc/.\n_HERE = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.getcwd() + \"/x\")))\nfor _cand in (os.path.join(_HERE, \"..\"), _HERE, os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n    if os.path.isdir(os.path.join(_cand,\
+      \ \"cdmachat\")):\n        sys.path.insert(0, os.path.abspath(_cand))\n        break\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, station_name=\"Alice\", web_port=8080, enc_key=\"\",\n                 samp_rate=4e6, center_freq=2.5e9, tx_buffer=131072, mode=\"antsdr\"):\n        gr.sync_block.__init__(self, name=\"CDMA Chat RX\", in_sig=[np.complex64], out_sig=None)\n        self.args = (int(node_id), station_name, int(web_port), enc_key, float(samp_rate),\n                     float(center_freq), int(tx_buffer))\n        self.mode = mode\n        self.station = None\n\n    def start(self):\n        from cdmachat.grc_glue import get_station\n        self.station = get_station(*self.args, mode=self.mode)\n        self.station.start()\n        return True\n\n    def stop(self):\n        if self.station is not None:\n            self.station.stop()\n            self.station = None\n        return True\n\n    def work(self, input_items, output_items):\n        if self.station\
+      \ is not None:\n            self.station.radio.rx_push(input_items[0])\n        return len(input_items[0])\n"
+    node_id: '2'
+    station_name: '''Bob'''
+    web_port: '8082'
+    enc_key: ''''''
+    samp_rate: samp_rate
+    center_freq: center_freq
+    tx_buffer: tx_buffer
+    mode: '''grc-sim'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1080
+    - 420
+    rotation: 0
+    state: enabled
+- name: air_spectrum
+  id: qtgui_freq_sink_x
+  parameters:
+    type: complex
+    name: '"Shared channel spectrum"'
+    fftsize: '1024'
+    fc: '0'
+    bw: samp_rate
+    ymin: '-120'
+    ymax: '-10'
+    average: '0.2'
+    nconnections: '1'
+    update_time: '0.10'
+    gui_hint: 2,0,1,2
+    grid: 'True'
+    label1: ''''''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1080
+    - 600
+    rotation: 0
+    state: enabled
+- name: air_scope
+  id: qtgui_time_sink_x
+  parameters:
+    type: complex
+    name: '"Shared channel (time)"'
+    size: '40000'
+    srate: samp_rate
+    ymin: '-1.5'
+    ymax: '1.5'
+    update_time: '0.2'
+    gui_hint: 3,0,1,2
+    label1: '''I'''
+    label2: '''Q'''
+    entags: 'False'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1080
+    - 760
+    rotation: 0
+    state: enabled
+connections:
+- - alice_tx
+  - '0'
+  - air_sum
+  - '0'
+- - bob_tx
+  - '0'
+  - air_sum
+  - '1'
+- - air_sum
+  - '0'
+  - throttle
+  - '0'
+- - throttle
+  - '0'
+  - channel
+  - '0'
+- - channel
+  - '0'
+  - alice_rx
+  - '0'
+- - channel
+  - '0'
+  - bob_rx
+  - '0'
+- - channel
+  - '0'
+  - air_spectrum
+  - '0'
+- - channel
+  - '0'
+  - air_scope
+  - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.9.2

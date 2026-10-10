@@ -1,0 +1,926 @@
+options:
+  parameters:
+    author: EN2130 group
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: Two-user DS-CDMA with stock blocks
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: cdma_phy_concept
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: 'EN2130 DS-CDMA concept: spreading and despreading'
+    window_size: (1300,1100)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- name: note_about
+  id: note
+  parameters:
+    note: DS-CDMA from stock GNU Radio blocks. Two users send random BPSK bits, each spread by its own 31-chip Gold code (the same codes the chat system gives node 1 and node 2). The sum plus noise is despread with code 1, code 2, and an unused code 3. Despreading with the right code recovers +/-1; the wrong code gives only noise. Compare the narrow BPSK spectrum with the 31x wider spread spectrum. (Rectangular chips, perfect sync, for teaching.)
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 100
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    value: 1e6
+    comment: 1 sample per chip
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 232
+    - 8
+    rotation: 0
+    state: enabled
+- name: sf
+  id: variable
+  parameters:
+    value: '31'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 360
+    - 8
+    rotation: 0
+    state: enabled
+- name: code1
+  id: variable
+  parameters:
+    value: '[-1, -1, -1, -1, -1, 1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, 1, 1, 1, -1, -1, -1, 1]'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 460
+    - 8
+    rotation: 0
+    state: enabled
+- name: code2
+  id: variable
+  parameters:
+    value: '[-1, -1, 1, -1, -1, -1, -1, -1, -1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, -1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1]'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 580
+    - 8
+    rotation: 0
+    state: enabled
+- name: code3
+  id: variable
+  parameters:
+    value: '[-1, 1, -1, -1, 1, -1, 1, -1, -1, 1, 1, 1, -1, 1, 1, -1, 1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, 1, -1, -1, 1]'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 700
+    - 8
+    rotation: 0
+    state: enabled
+- name: noise_amp
+  id: variable_qtgui_range
+  parameters:
+    label: Noise amplitude
+    rangeType: float
+    value: '1.0'
+    start: '0'
+    stop: '5'
+    step: '0.1'
+    widget: counter_slider
+    gui_hint: 0,0,1,2
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 840
+    - 8
+    rotation: 0
+    state: enabled
+- name: user2_gain
+  id: variable_qtgui_range
+  parameters:
+    label: User 2 amplitude (near-far)
+    rangeType: float
+    value: '1.0'
+    start: '0'
+    stop: '5'
+    step: '0.1'
+    widget: counter_slider
+    gui_hint: 1,0,1,2
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1060
+    - 8
+    rotation: 0
+    state: enabled
+- name: u1_bits
+  id: analog_random_source_x
+  parameters:
+    type: byte
+    min: '0'
+    max: '2'
+    num_samps: '10000'
+    repeat: 'True'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 220
+    rotation: 0
+    state: enabled
+- name: u1_bpsk
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    in_type: byte
+    out_type: complex
+    symbol_table: '[-1, 1]'
+    dimension: '1'
+    num_ports: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 228
+    rotation: 0
+    state: enabled
+- name: u1_repeat
+  id: blocks_repeat
+  parameters:
+    type: complex
+    interp: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 400
+    - 228
+    rotation: 0
+    state: enabled
+- name: u1_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code1
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 400
+    - 300
+    rotation: 0
+    state: enabled
+- name: u1_spread
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 600
+    - 240
+    rotation: 0
+    state: enabled
+- name: u2_bits
+  id: analog_random_source_x
+  parameters:
+    type: byte
+    min: '0'
+    max: '2'
+    num_samps: '10000'
+    repeat: 'True'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 400
+    rotation: 0
+    state: enabled
+- name: u2_bpsk
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    in_type: byte
+    out_type: complex
+    symbol_table: '[-1, 1]'
+    dimension: '1'
+    num_ports: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 408
+    rotation: 0
+    state: enabled
+- name: u2_repeat
+  id: blocks_repeat
+  parameters:
+    type: complex
+    interp: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 400
+    - 408
+    rotation: 0
+    state: enabled
+- name: u2_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code2
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 400
+    - 480
+    rotation: 0
+    state: enabled
+- name: u2_spread
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 600
+    - 420
+    rotation: 0
+    state: enabled
+- name: u2_level
+  id: blocks_multiply_const_vxx
+  parameters:
+    type: complex
+    const: user2_gain
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 760
+    - 420
+    rotation: 0
+    state: enabled
+- name: noise_src
+  id: analog_noise_source_x
+  parameters:
+    type: complex
+    noise_type: analog.GR_GAUSSIAN
+    amp: noise_amp
+    seed: '42'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 760
+    - 540
+    rotation: 0
+    state: enabled
+- name: air
+  id: blocks_add_xx
+  parameters:
+    type: complex
+    num_inputs: '3'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 960
+    - 320
+    rotation: 0
+    state: enabled
+- name: throttle
+  id: blocks_throttle
+  parameters:
+    type: complex
+    samples_per_second: samp_rate
+    ignoretag: 'True'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1100
+    - 330
+    rotation: 0
+    state: enabled
+- name: spec
+  id: qtgui_freq_sink_x
+  parameters:
+    type: complex
+    name: '"Narrowband BPSK (user 1) vs spread signal on air"'
+    fftsize: '1024'
+    fc: '0'
+    bw: samp_rate
+    ymin: '-120'
+    ymax: '-10'
+    average: '0.2'
+    nconnections: '2'
+    update_time: '0.10'
+    gui_hint: 2,0,1,2
+    grid: 'True'
+    label1: '''BPSK before spreading'''
+    label2: '''On air (2 users + noise)'''
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1100
+    - 120
+    rotation: 0
+    state: enabled
+- name: d1_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code1
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1300
+    - 290
+    rotation: 0
+    state: enabled
+- name: d1_mix
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1500
+    - 240
+    rotation: 0
+    state: enabled
+- name: d1_dump
+  id: blocks_integrate_xx
+  parameters:
+    type: complex
+    decim: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1660
+    - 240
+    rotation: 0
+    state: enabled
+- name: d1_norm
+  id: blocks_multiply_const_vxx
+  parameters:
+    type: complex
+    const: 1/sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1820
+    - 240
+    rotation: 0
+    state: enabled
+- name: d2_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code2
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1300
+    - 470
+    rotation: 0
+    state: enabled
+- name: d2_mix
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1500
+    - 420
+    rotation: 0
+    state: enabled
+- name: d2_dump
+  id: blocks_integrate_xx
+  parameters:
+    type: complex
+    decim: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1660
+    - 420
+    rotation: 0
+    state: enabled
+- name: d2_norm
+  id: blocks_multiply_const_vxx
+  parameters:
+    type: complex
+    const: 1/sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1820
+    - 420
+    rotation: 0
+    state: enabled
+- name: d3_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code3
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1300
+    - 650
+    rotation: 0
+    state: enabled
+- name: d3_mix
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1500
+    - 600
+    rotation: 0
+    state: enabled
+- name: d3_dump
+  id: blocks_integrate_xx
+  parameters:
+    type: complex
+    decim: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1660
+    - 600
+    rotation: 0
+    state: enabled
+- name: d3_norm
+  id: blocks_multiply_const_vxx
+  parameters:
+    type: complex
+    const: 1/sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1820
+    - 600
+    rotation: 0
+    state: enabled
+- name: const
+  id: qtgui_const_sink_x
+  parameters:
+    type: complex
+    name: '"Despread symbols: right code vs wrong code"'
+    size: '512'
+    nconnections: '3'
+    xmin: '-2.5'
+    xmax: '2.5'
+    ymin: '-2.5'
+    ymax: '2.5'
+    gui_hint: 3,0,2,2
+    grid: 'True'
+    label1: '''despread with code 1 (user 1)'''
+    label2: '''despread with code 2 (user 2)'''
+    label3: '''despread with code 3 (nobody)'''
+    color3: '"green"'
+    style1: '0'
+    style2: '0'
+    style3: '0'
+    marker1: '0'
+    marker2: '0'
+    marker3: '0'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2000
+    - 380
+    rotation: 0
+    state: enabled
+- name: chips_scope
+  id: qtgui_time_sink_x
+  parameters:
+    type: complex
+    name: '"Chips on air (noise-like)"'
+    size: '310'
+    srate: samp_rate
+    ymin: '-4'
+    ymax: '4'
+    update_time: '0.2'
+    gui_hint: 5,0,1,2
+    label1: '''I'''
+    label2: '''Q'''
+    entags: 'False'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1300
+    - 720
+    rotation: 0
+    state: enabled
+connections:
+- - u1_bits
+  - '0'
+  - u1_bpsk
+  - '0'
+- - u1_bpsk
+  - '0'
+  - u1_repeat
+  - '0'
+- - u1_repeat
+  - '0'
+  - u1_spread
+  - '0'
+- - u1_code
+  - '0'
+  - u1_spread
+  - '1'
+- - u2_bits
+  - '0'
+  - u2_bpsk
+  - '0'
+- - u2_bpsk
+  - '0'
+  - u2_repeat
+  - '0'
+- - u2_repeat
+  - '0'
+  - u2_spread
+  - '0'
+- - u2_code
+  - '0'
+  - u2_spread
+  - '1'
+- - u1_spread
+  - '0'
+  - air
+  - '0'
+- - u2_spread
+  - '0'
+  - u2_level
+  - '0'
+- - u2_level
+  - '0'
+  - air
+  - '1'
+- - noise_src
+  - '0'
+  - air
+  - '2'
+- - air
+  - '0'
+  - throttle
+  - '0'
+- - u1_repeat
+  - '0'
+  - spec
+  - '0'
+- - throttle
+  - '0'
+  - spec
+  - '1'
+- - throttle
+  - '0'
+  - d1_mix
+  - '0'
+- - d1_code
+  - '0'
+  - d1_mix
+  - '1'
+- - d1_mix
+  - '0'
+  - d1_dump
+  - '0'
+- - d1_dump
+  - '0'
+  - d1_norm
+  - '0'
+- - d1_norm
+  - '0'
+  - const
+  - '0'
+- - throttle
+  - '0'
+  - d2_mix
+  - '0'
+- - d2_code
+  - '0'
+  - d2_mix
+  - '1'
+- - d2_mix
+  - '0'
+  - d2_dump
+  - '0'
+- - d2_dump
+  - '0'
+  - d2_norm
+  - '0'
+- - d2_norm
+  - '0'
+  - const
+  - '1'
+- - throttle
+  - '0'
+  - d3_mix
+  - '0'
+- - d3_code
+  - '0'
+  - d3_mix
+  - '1'
+- - d3_mix
+  - '0'
+  - d3_dump
+  - '0'
+- - d3_dump
+  - '0'
+  - d3_norm
+  - '0'
+- - d3_norm
+  - '0'
+  - const
+  - '2'
+- - throttle
+  - '0'
+  - chips_scope
+  - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.9.2
