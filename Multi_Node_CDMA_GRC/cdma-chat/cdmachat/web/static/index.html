@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CDMA Chat</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- ======================= sidebar ======================= -->
+  <aside id="side">
+    <header class="me">
+      <div class="avatar" id="meAvatar">?</div>
+      <div class="meinfo">
+        <div class="mename" id="meName" title="Click to rename">…</div>
+        <div class="mesub" id="meSub">node ?</div>
+      </div>
+      <button class="icon" id="radioBtn" title="Radio dashboard" aria-label="Radio dashboard">
+        <svg viewBox="0 0 24 24"><path d="M4 18h2V9H4zm4 0h2V5H8zm4 0h2v-6h-2zm4 0h2V8h-2zm4 0h2v-3h-2z"/></svg>
+      </button>
+    </header>
+    <div class="phy" id="phyLine"></div>
+    <div class="search"><input id="filter" placeholder="Search chats"></div>
+    <ul id="chats"></ul>
+    <footer class="sidefoot" id="sideFoot"></footer>
+  </aside>
+
+  <!-- ======================= conversation ======================= -->
+  <main id="main">
+    <div id="empty" class="empty">
+      <div class="emptyart">
+        <svg viewBox="0 0 120 60" aria-hidden="true">
+          <path class="w1" d="M0 30 Q 7.5 5 15 30 T 30 30 T 45 30 T 60 30 T 75 30 T 90 30 T 105 30 T 120 30"/>
+          <path class="w2" d="M0 30 h10 v-14 h10 v28 h10 v-28 h20 v28 h10 v-14 h20 v14 h10 v-28 h10 v14 h20"/>
+        </svg>
+      </div>
+      <h2>CDMA Chat</h2>
+      <p>Direct-sequence spread-spectrum messaging over ANTSDR at 2.5&nbsp;GHz.<br>
+        Stations appear on the left as soon as their beacons are heard.</p>
+    </div>
+    <section id="conv" hidden>
+      <header class="convhead">
+        <button class="icon back" id="backBtn" aria-label="Back">
+          <svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>
+        </button>
+        <div class="avatar" id="convAvatar"></div>
+        <div class="convinfo">
+          <div class="convname" id="convName"></div>
+          <div class="convsub" id="convSub"></div>
+        </div>
+        <button class="icon" id="gameBtn" title="New tic-tac-toe game" aria-label="New game">
+          <svg viewBox="0 0 24 24"><path d="M9 3v18M15 3v18M3 9h18M3 15h18" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+        </button>
+      </header>
+      <div id="msgs"></div>
+      <div id="pending" hidden></div>
+      <footer class="composer">
+        <button class="icon" id="attachBtn" title="Send image / file" aria-label="Attach">
+          <svg viewBox="0 0 24 24"><path d="M16.5 6.5v10a4.5 4.5 0 0 1-9 0V6a3 3 0 0 1 6 0v10a1.5 1.5 0 0 1-3 0V6.5H9V16a3 3 0 0 0 6 0V6a4.5 4.5 0 0 0-9 0v10.5a6 6 0 0 0 12 0v-10z"/></svg>
+        </button>
+        <input type="file" id="fileIn" hidden>
+        <button class="icon toggle" id="urgentBtn" title="Urgent (high priority)" aria-pressed="false" aria-label="Urgent">
+          <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+        </button>
+        <textarea id="text" rows="1" placeholder="Type a message"></textarea>
+        <button class="icon send" id="sendBtn" aria-label="Send">
+          <svg class="ic-send" viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg>
+          <svg class="ic-mic" viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1a7 7 0 0 0 6-6.9z"/></svg>
+        </button>
+      </footer>
+      <div id="recBar" hidden>
+        <span class="recdot"></span><span id="recTime">0:00</span>
+        <span class="rechint">Recording voice note (max 15 s)</span>
+        <button id="recCancel">Cancel</button><button id="recSend" class="primary">Send</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======================= radio dashboard ======================= -->
+  <aside id="dash" hidden>
+    <header class="dashhead">
+      <h3>Radio</h3>
+      <button class="icon" id="dashClose" aria-label="Close">
+        <svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6z"/></svg>
+      </button>
+    </header>
+    <div class="dashbody">
+      <div class="tiles" id="tiles"></div>
+      <div class="panel">
+        <div class="ptitle">Last burst constellation <span id="constInfo"></span></div>
+        <canvas id="constCv" width="300" height="300"></canvas>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Received spectrum <span class="muted">(baseband, dB)</span></div>
+        <canvas id="specCv" width="300" height="140"></canvas>
+      </div>
+      <div class="panel" id="simPanel" hidden>
+        <div class="ptitle">Simulated channel</div>
+        <label class="slider">Eb/N0 of a 0 dB link <b id="ebVal"></b>
+          <input type="range" id="ebSlider" min="2" max="30" step="0.5"></label>
+        <div class="muted small" id="simCpu"></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Links heard</div>
+        <table class="kv" id="linkTbl"></table>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Transmit queue</div>
+        <table class="kv" id="queueTbl"></table>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Counters</div>
+        <table class="kv" id="ctrTbl"></table>
+      </div>
+      <div class="panel">
+        <div class="ptitle">PHY</div>
+        <table class="kv" id="phyTbl"></table>
+      </div>
+      <button class="danger" id="clearBtn">Clear chat history</button>
+    </div>
+  </aside>
+</div>
+<div id="toast" role="status"></div>
+<div id="lightbox" hidden><img alt=""></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
