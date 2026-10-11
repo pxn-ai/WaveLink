@@ -83,7 +83,7 @@ class bpskfile5(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://172.20.10.2:5600", 100, False, (-1), '', False)
+        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, "tcp://192.168.1.113:5601", 100, False, (-1), '', False)
         self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, "tcp://*:5601", 100, False, (-1), '', True, True)
         self.qtgui_time_sink_x_1_0 = qtgui.time_sink_c(
             256, #size
