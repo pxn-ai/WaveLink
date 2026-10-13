@@ -1,0 +1,2268 @@
+options:
+  parameters:
+    author: EN2130 group
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: DS-CDMA BPSK/QPSK/16-QAM physical layer of one station
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: no_gui
+    hier_block_src_path: '.:'
+    id: cdma_phy
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: run
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: CDMA Chat - physical layer (ANTSDR E200)
+    window_size: (1400,900)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- name: note_about
+  id: note
+  parameters:
+    note: 'PHYSICAL LAYER of one CDMA Chat station. The chat app compiles this file with grcc, runs it and attaches its link layer to the ''MAC -> PHY'' and ''PHY
+
+      -> MAC'' blocks. Every station uses the same file with its own Node ID (1-4 = its Gold code). ANTSDR E200 with the Pluto (libiio) firmware, carrier 2.5
+
+      GHz, DS-CDMA with 31-chip Gold codes, payload BPSK, QPSK or 16-QAM chosen per frame by the link layer.'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 90
+    rotation: 0
+    state: enabled
+- name: node_id
+  id: parameter
+  parameters:
+    label: Node ID (= Gold code)
+    type: intx
+    value: '1'
+    short_id: i
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 170
+    rotation: 0
+    state: enabled
+- name: uri
+  id: parameter
+  parameters:
+    label: ANTSDR URI
+    type: str
+    value: ip:192.168.1.10
+    short_id: u
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 248
+    - 170
+    rotation: 0
+    state: enabled
+- name: center_freq
+  id: parameter
+  parameters:
+    label: Carrier (Hz)
+    type: eng_float
+    value: 2.5e9
+    short_id: f
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 488
+    - 170
+    rotation: 0
+    state: enabled
+- name: rx_gain
+  id: parameter
+  parameters:
+    label: RX gain (dB)
+    type: eng_float
+    value: '40'
+    short_id: g
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 728
+    - 170
+    rotation: 0
+    state: enabled
+- name: tx_atten
+  id: parameter
+  parameters:
+    label: TX attenuation (dB)
+    type: eng_float
+    value: '10'
+    short_id: a
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 968
+    - 170
+    rotation: 0
+    state: enabled
+- name: tx_buffer
+  id: parameter
+  parameters:
+    label: TX buffer (samples)
+    type: intx
+    value: '131072'
+    short_id: b
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 170
+    rotation: 0
+    state: enabled
+- name: imports
+  id: import_
+  parameters:
+    imports: 'from gnuradio.filter import firdes
+
+      import pmt'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 290
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    value: 4e6
+    comment: ANTSDR sample rate (S/s)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 268
+    - 290
+    rotation: 0
+    state: enabled
+- name: sps
+  id: variable
+  parameters:
+    value: '2'
+    comment: samples per chip
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 468
+    - 290
+    rotation: 0
+    state: enabled
+- name: chip_rate
+  id: variable
+  parameters:
+    value: samp_rate / sps
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 668
+    - 290
+    rotation: 0
+    state: enabled
+- name: sf
+  id: variable
+  parameters:
+    value: '31'
+    comment: 'spreading factor =
+
+      Gold code length'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 868
+    - 290
+    rotation: 0
+    state: enabled
+- name: gold_degree
+  id: variable
+  parameters:
+    value: '5'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1068
+    - 290
+    rotation: 0
+    state: enabled
+- name: preamble_bits
+  id: variable
+  parameters:
+    value: '48'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1268
+    - 290
+    rotation: 0
+    state: enabled
+- name: max_payload
+  id: variable
+  parameters:
+    value: '1024'
+    comment: 'max bytes per burst
+
+      (MAC frame + CRC-32)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1468
+    - 290
+    rotation: 0
+    state: enabled
+- name: rolloff
+  id: variable
+  parameters:
+    value: '0.35'
+    comment: RRC roll-off
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1668
+    - 290
+    rotation: 0
+    state: enabled
+- name: ldpc_max_iter
+  id: variable
+  parameters:
+    value: '20'
+    comment: 'LDPC decoder: max
+
+      min-sum iterations
+
+      (stops early when
+
+      all checks pass)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1868
+    - 290
+    rotation: 0
+    state: enabled
+- name: rrc_taps
+  id: variable
+  parameters:
+    value: firdes.root_raised_cosine(sps, sps, 1.0, rolloff, 8 * sps + 1)
+    comment: root-raised-cosine chip pulse
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 400
+    rotation: 0
+    state: enabled
+- name: tx_scale
+  id: variable
+  parameters:
+    value: 0.25 / (sum(t * t for t in rrc_taps) / sps) ** 0.5
+    comment: 'RMS 0.25 per code lane:
+
+      headroom for 16-QAM peaks
+
+      and several lanes at once'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 468
+    - 400
+    rotation: 0
+    state: enabled
+- name: code_0
+  id: variable
+  parameters:
+    value: '[-1, -1, -1, -1, -1, +1, +1, -1, -1, +1, -1, +1, +1, -1, +1, +1, +1, +1, -1, +1, -1, +1, -1, -1, -1, +1, -1, -1, +1, +1, +1]'
+    comment: 'Gold code #0 (broadcast)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 520
+    rotation: 0
+    state: enabled
+- name: code_1
+  id: variable
+  parameters:
+    value: '[-1, -1, -1, -1, -1, +1, +1, -1, +1, +1, -1, -1, +1, +1, +1, +1, -1, +1, -1, -1, +1, -1, +1, -1, +1, +1, +1, -1, -1, -1, +1]'
+    comment: 'Gold code #1 (node 1)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 338
+    - 520
+    rotation: 0
+    state: enabled
+- name: code_2
+  id: variable
+  parameters:
+    value: '[-1, -1, +1, -1, -1, -1, -1, -1, -1, +1, -1, -1, +1, +1, -1, +1, -1, +1, +1, +1, -1, +1, +1, +1, +1, +1, +1, +1, -1, -1, -1]'
+    comment: 'Gold code #2 (node 2)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 668
+    - 520
+    rotation: 0
+    state: enabled
+- name: code_3
+  id: variable
+  parameters:
+    value: '[-1, +1, -1, -1, +1, -1, +1, -1, -1, +1, +1, +1, -1, +1, +1, -1, +1, -1, -1, +1, -1, -1, +1, +1, -1, -1, +1, +1, -1, -1, +1]'
+    comment: 'Gold code #3 (node 3)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 998
+    - 520
+    rotation: 0
+    state: enabled
+- name: code_4
+  id: variable
+  parameters:
+    value: '[+1, -1, -1, +1, +1, +1, +1, -1, -1, -1, -1, -1, -1, -1, -1, +1, -1, +1, -1, +1, +1, -1, +1, -1, +1, -1, +1, +1, -1, +1, +1]'
+    comment: 'Gold code #4 (node 4)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1328
+    - 520
+    rotation: 0
+    state: enabled
+- name: const_bpsk
+  id: variable_constellation
+  parameters:
+    type: calcdist
+    const_points: '[1+0j, -1+0j]'
+    sym_map: '[0, 1]'
+    rot_sym: '2'
+    dims: '1'
+    normalization: digital.constellation.POWER_NORMALIZATION
+    precision: '8'
+    npwr: '1.0'
+    soft_dec_lut: None
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 640
+    rotation: 0
+    state: enabled
+- name: const_qpsk
+  id: variable_constellation
+  parameters:
+    type: calcdist
+    const_points: '[1+1j, 1-1j, -1+1j, -1-1j]'
+    sym_map: '[0, 1, 2, 3]'
+    rot_sym: '4'
+    dims: '1'
+    normalization: digital.constellation.POWER_NORMALIZATION
+    precision: '8'
+    npwr: '1.0'
+    soft_dec_lut: None
+    comment: 'Gray: index = bits'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 308
+    - 640
+    rotation: 0
+    state: enabled
+- name: const_16qam
+  id: variable_constellation
+  parameters:
+    type: calcdist
+    const_points: '[(-3-3j), (-3-1j), (-3+3j), (-3+1j), (-1-3j), (-1-1j), (-1+3j), (-1+1j), (3-3j), (3-1j), (3+3j), (3+1j), (1-3j), (1-1j), (1+3j), (1+1j)]'
+    sym_map: '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]'
+    rot_sym: '4'
+    dims: '1'
+    normalization: digital.constellation.POWER_NORMALIZATION
+    precision: '8'
+    npwr: '0.05'
+    soft_dec_lut: None
+    comment: 'Gray: index = bits
+
+      (I = bits 0-1, Q = bits 2-3)
+
+      npwr 0.05: soft bits shaped
+
+      for ~13 dB (max-log-like)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 640
+    rotation: 0
+    state: enabled
+- name: sym_table
+  id: variable
+  parameters:
+    value: list(const_bpsk.points()) + list(const_qpsk.points()) + list(const_16qam.points())
+    comment: 'combined table for the TX
+
+      Chunks to Symbols blocks:
+
+      0-1 BPSK, 2-5 QPSK, 6-21 16-QAM'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 908
+    - 640
+    rotation: 0
+    state: enabled
+- name: note_tx
+  id: note
+  parameters:
+    note: 'TRANSMITTER: MAC frame -> CRC-32 -> LDPC Encoder (5G NR code, rate 1/2, 2/3, 3/4, 5/6 or uncoded, chosen per frame by
+
+      the link layer) -> CDMA PHY Framer (48 preamble symbols, Golay-coded header, payload as constellation indices) -> one
+
+      lane per Gold code: Chunks to Symbols (BPSK / QPSK / 16-QAM), Repeat x31 and Multiply by the code = spreading -> Burst
+
+      Combiner (adds the lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 800
+    rotation: 0
+    state: enabled
+- name: mac_tx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nMAC -> PHY (from app)\n\nEntry point of the physical layer.  The chat application's link layer calls\nsubmit(frame, code, mod) on this block; it publishes the MAC frame as a PDU\nwhose metadata says which Gold code to spread it with (= destination station,\n0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam,\nplus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the cdmachat package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"cdmachat\")):\n            cand = os.path.abspath(cand)\n\
+      \            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"cdmachat\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from cdmachat.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"MAC -> PHY (from app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        _register(self.node_id, \"mac_tx\", self)\n\n    def submit(self, frame, code, mod):\n        meta = pmt.make_dict()\n        meta = pmt.dict_add(meta, pmt.intern(\"code\"), pmt.from_long(int(code)))\n        meta = pmt.dict_add(meta, pmt.intern(\"mod\"), pmt.intern(str(mod)))\n\
+      \        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_u8vector(len(frame), list(frame))))\n"
+    node_id: node_id
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 910
+    rotation: 0
+    state: enabled
+- name: tx_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: byte
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 278
+    - 910
+    rotation: 0
+    state: enabled
+- name: tx_crc
+  id: digital_crc32_bb
+  parameters:
+    check: 'False'
+    lengthtagname: '"packet_len"'
+    packed: 'True'
+    comment: append CRC-32
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 548
+    - 910
+    rotation: 0
+    state: enabled
+- name: tx_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: byte
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 818
+    - 910
+    rotation: 0
+    state: enabled
+- name: ldpc_enc
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nLDPC Encoder\n\nForward error correction for the payload: the 5G NR LDPC code (3GPP TS 38.212,\nbase graph 1).  Each MAC frame + CRC-32 is one codeword: filler bits up to\n22 x Z (Z = smallest 5G lifting size that fits), systematic encoding, then rate\nmatching to the code rate the link layer asked for (1/2, 2/3, 3/4 or 5/6; the\nfirst 2 Z bits are punctured as in 5G) and the 5G bit interleaver for the\nmodulation.  An uncoded frame ('16qam', 'qpsk', 'bpsk') passes as plain bits.\n\nInput PDU:  frame bytes, metadata code, mod = modulation-and-coding ('16qam-3/4')\nOutput PDU: one byte per coded bit (0/1), metadata code, mod, rate, length\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the cdmachat package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for\
+      \ cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"cdmachat\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"cdmachat\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from cdmachat.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, max_payload=1024):\n        gr.sync_block.__init__(self, name=\"LDPC Encoder\", in_sig=None, out_sig=None)\n        self.max_payload = int(max_payload)\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n\
+      \        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from cdmachat.grc_phy import LdpcEncoderCore, phy_config\n        self.core = LdpcEncoderCore(phy_config(4e6, 2, max_payload=self.max_payload))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        frame = bytes(pmt.u8vector_elements(vec))\n        mcs = pmt.symbol_to_string(pmt.dict_ref(meta, pmt.intern(\"mod\"), pmt.intern(\"qpsk-1/2\")))\n        bits, mod, rate = self.core.encode(frame, mcs)\n        meta = pmt.dict_add(meta, pmt.intern(\"mod\"), pmt.intern(mod))\n        meta = pmt.dict_add(meta, pmt.intern(\"rate\"), pmt.from_long(int(rate)))\n        meta = pmt.dict_add(meta, pmt.intern(\"length\"), pmt.from_long(len(frame)))\n        self.message_port_pub(self.port_out, pmt.cons(meta,\
+      \ pmt.init_u8vector(len(bits), bits.tolist())))\n"
+    max_payload: max_payload
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1088
+    - 910
+    rotation: 0
+    state: enabled
+- name: framer
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA PHY Framer\n\nBuilds one burst per PDU and outputs it as constellation *indices* (one byte per\nsymbol) for the Chunks-to-Symbols blocks of the code lanes:\n\n  preamble   48 known BPSK symbols, different for every Gold code (burst detection,\n             timing, carrier phase and frequency estimation at the receiver)\n  header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,\n             2-bit modulation, 3-bit code rate, CRC-8\n  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5)\n             or 16-QAM (6-21) of the combined symbol table\n\nOutput metadata 'code' selects the lane (spreading code) downstream.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the cdmachat package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(),\
+      \ \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"cdmachat\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"cdmachat\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from cdmachat.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, gold_degree=5, preamble_bits=48, max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA PHY Framer\", in_sig=None, out_sig=None)\n        self.args = (int(gold_degree), int(preamble_bits), int(max_payload))\n        self.port_in,\
+      \ self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from cdmachat.grc_phy import FramerCore, phy_config\n        g, k, m = self.args\n        self.core = FramerCore(phy_config(4e6, 2, g, k, m))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        code = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"code\"), pmt.from_long(0)))\n        mod = pmt.symbol_to_string(pmt.dict_ref(meta, pmt.intern(\"mod\"), pmt.intern(\"bpskc\")))\n        rate = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"rate\"), pmt.from_long(0)))\n        length = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"length\"), pmt.from_long(0)))\n        bits = np.asarray(pmt.u8vector_elements(vec),\
+      \ dtype=np.int8)\n        idx = self.core.indices(bits, length, code, mod, rate)\n        out = pmt.dict_add(pmt.make_dict(), pmt.intern(\"code\"), pmt.from_long(code))\n        self.message_port_pub(self.port_out, pmt.cons(out, pmt.init_u8vector(len(idx), idx.tolist())))\n"
+    gold_degree: gold_degree
+    preamble_bits: preamble_bits
+    max_payload: max_payload
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 1460
+    rotation: 0
+    state: enabled
+- name: lane0_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("code")
+    v: pmt.from_long(0)
+    invert: 'False'
+    comment: code 0 = broadcast
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 308
+    - 1060
+    rotation: 0
+    state: enabled
+- name: lane0_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: byte
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 578
+    - 1060
+    rotation: 0
+    state: enabled
+- name: lane0_map
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    in_type: byte
+    out_type: complex
+    symbol_table: sym_table
+    dimension: '1'
+    num_ports: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 848
+    - 1060
+    rotation: 0
+    state: enabled
+- name: lane0_repeat
+  id: blocks_repeat
+  parameters:
+    type: complex
+    interp: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1060
+    rotation: 0
+    state: enabled
+- name: lane0_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code_0
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1140
+    rotation: 0
+    state: enabled
+- name: lane0_spread
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1388
+    - 1090
+    rotation: 0
+    state: enabled
+- name: lane0_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: complex
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: sf
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1598
+    - 1090
+    rotation: 0
+    state: enabled
+- name: lane1_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("code")
+    v: pmt.from_long(1)
+    invert: 'False'
+    comment: bursts for node 1
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 308
+    - 1260
+    rotation: 0
+    state: enabled
+- name: lane1_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: byte
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 578
+    - 1260
+    rotation: 0
+    state: enabled
+- name: lane1_map
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    in_type: byte
+    out_type: complex
+    symbol_table: sym_table
+    dimension: '1'
+    num_ports: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 848
+    - 1260
+    rotation: 0
+    state: enabled
+- name: lane1_repeat
+  id: blocks_repeat
+  parameters:
+    type: complex
+    interp: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1260
+    rotation: 0
+    state: enabled
+- name: lane1_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code_1
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1340
+    rotation: 0
+    state: enabled
+- name: lane1_spread
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1388
+    - 1290
+    rotation: 0
+    state: enabled
+- name: lane1_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: complex
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: sf
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1598
+    - 1290
+    rotation: 0
+    state: enabled
+- name: lane2_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("code")
+    v: pmt.from_long(2)
+    invert: 'False'
+    comment: bursts for node 2
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 308
+    - 1460
+    rotation: 0
+    state: enabled
+- name: lane2_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: byte
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 578
+    - 1460
+    rotation: 0
+    state: enabled
+- name: lane2_map
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    in_type: byte
+    out_type: complex
+    symbol_table: sym_table
+    dimension: '1'
+    num_ports: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 848
+    - 1460
+    rotation: 0
+    state: enabled
+- name: lane2_repeat
+  id: blocks_repeat
+  parameters:
+    type: complex
+    interp: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1460
+    rotation: 0
+    state: enabled
+- name: lane2_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code_2
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1540
+    rotation: 0
+    state: enabled
+- name: lane2_spread
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1388
+    - 1490
+    rotation: 0
+    state: enabled
+- name: lane2_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: complex
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: sf
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1598
+    - 1490
+    rotation: 0
+    state: enabled
+- name: lane3_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("code")
+    v: pmt.from_long(3)
+    invert: 'False'
+    comment: bursts for node 3
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 308
+    - 1660
+    rotation: 0
+    state: enabled
+- name: lane3_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: byte
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 578
+    - 1660
+    rotation: 0
+    state: enabled
+- name: lane3_map
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    in_type: byte
+    out_type: complex
+    symbol_table: sym_table
+    dimension: '1'
+    num_ports: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 848
+    - 1660
+    rotation: 0
+    state: enabled
+- name: lane3_repeat
+  id: blocks_repeat
+  parameters:
+    type: complex
+    interp: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1660
+    rotation: 0
+    state: enabled
+- name: lane3_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code_3
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1740
+    rotation: 0
+    state: enabled
+- name: lane3_spread
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1388
+    - 1690
+    rotation: 0
+    state: enabled
+- name: lane3_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: complex
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: sf
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1598
+    - 1690
+    rotation: 0
+    state: enabled
+- name: lane4_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("code")
+    v: pmt.from_long(4)
+    invert: 'False'
+    comment: bursts for node 4
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 308
+    - 1860
+    rotation: 0
+    state: enabled
+- name: lane4_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: byte
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 578
+    - 1860
+    rotation: 0
+    state: enabled
+- name: lane4_map
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    in_type: byte
+    out_type: complex
+    symbol_table: sym_table
+    dimension: '1'
+    num_ports: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 848
+    - 1860
+    rotation: 0
+    state: enabled
+- name: lane4_repeat
+  id: blocks_repeat
+  parameters:
+    type: complex
+    interp: sf
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1860
+    rotation: 0
+    state: enabled
+- name: lane4_code
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: code_4
+    repeat: 'True'
+    tags: '[]'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1118
+    - 1940
+    rotation: 0
+    state: enabled
+- name: lane4_spread
+  id: blocks_multiply_xx
+  parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1388
+    - 1890
+    rotation: 0
+    state: enabled
+- name: lane4_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: complex
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: sf
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1598
+    - 1890
+    rotation: 0
+    state: enabled
+- name: combiner
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Burst Combiner\n\nOne input per code lane (chips of complete bursts, tagged with 'packet_len').\nBursts on different codes are added together sample by sample (several links\nactive at once on one carrier = CDMA); bursts on the same code follow each other.\nWhen no lane is sending, zeros are output so the radio always gets a continuous\nstream (the stock 'PDU to Stream' block stops instead, which starves the Pluto sink).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the cdmachat package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"cdmachat\")):\n      \
+      \      cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"cdmachat\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from cdmachat.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\nimport collections\n\n\nclass blk(gr.basic_block):\n    def __init__(self, node_id=1, codes=(0, 1, 2, 3, 4), chip_rate=2e6, samp_rate=4e6,\n                 tx_buffer=131072):\n        self.codes = [int(c) for c in codes]\n        gr.basic_block.__init__(self, name=\"CDMA Burst Combiner\",\n                                in_sig=[np.complex64] * len(self.codes), out_sig=[np.complex64])\n        self.node_id = int(node_id)\n        self.len_key = pmt.intern(\"packet_len\")\n        self.lens = [collections.deque() for\
+      \ _ in self.codes]\n        self.bufs = [collections.deque() for _ in self.codes]\n        self.have = [0] * len(self.codes)\n        # produce in large chunks: each Python call has a fixed overhead, so fewer,\n        # bigger calls keep the CPU load low (costs <= 4 ms of TX latency at 2 Mchip/s)\n        self.set_output_multiple(8192)\n        self.core = None\n        try:\n            if _project():\n                from cdmachat.grc_phy import CombinerCore\n                self.core = CombinerCore(float(chip_rate), int(tx_buffer), float(samp_rate))\n                _register(self.node_id, \"combiner\", self.core)\n        except ImportError:\n            pass\n\n    def forecast(self, noutput_items, ninputs):\n        return [0] * ninputs                  # run even when every lane is idle\n\n    def _take(self, i, n):\n        parts, need = [], n\n        while need:\n            b = self.bufs[i][0]\n            if b.size <= need:\n                parts.append(self.bufs[i].popleft())\n\
+      \                need -= b.size\n            else:\n                parts.append(b[:need])\n                self.bufs[i][0] = b[need:]\n                need = 0\n        self.have[i] -= n\n        return np.concatenate(parts)\n\n    def general_work(self, input_items, output_items):\n        for i, x in enumerate(input_items):\n            n = len(x)\n            if not n:\n                continue\n            for t in self.get_tags_in_window(i, 0, n):\n                if pmt.eq(t.key, self.len_key):\n                    self.lens[i].append(pmt.to_long(t.value))\n            self.bufs[i].append(np.array(x, dtype=np.complex64))\n            self.have[i] += n\n            self.consume(i, n)\n            # only complete bursts are scheduled, so a burst is never cut by a gap\n            while self.lens[i] and self.have[i] >= self.lens[i][0]:\n                burst = self._take(i, self.lens[i].popleft())\n                if self.core is not None:\n                    self.core.push(self.codes[i],\
+      \ burst)\n        out = output_items[0]\n        if self.core is None:\n            out[:] = 0\n        else:\n            self.core.read_into(out)\n        return len(out)\n"
+    node_id: node_id
+    codes: (0, 1, 2, 3, 4)
+    chip_rate: chip_rate
+    samp_rate: samp_rate
+    tx_buffer: tx_buffer
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1928
+    - 1420
+    rotation: 0
+    state: enabled
+- name: tx_rrc
+  id: interp_fir_filter_xxx
+  parameters:
+    type: ccf
+    interp: sps
+    taps: rrc_taps
+    samp_delay: '0'
+    comment: 'RRC pulse shaping
+
+      (chips -> samples)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2198
+    - 1460
+    rotation: 0
+    state: enabled
+- name: tx_gain
+  id: blocks_multiply_const_vxx
+  parameters:
+    type: complex
+    const: tx_scale
+    vlen: '1'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2468
+    - 1460
+    rotation: 0
+    state: enabled
+- name: note_rx
+  id: note
+  parameters:
+    note: 'RECEIVER: ANTSDR -> RRC matched filter -> CDMA Despreader (preamble correlation for this node''s code and the broadcast
+
+      code, carrier-offset estimate, DLL timing, despreading, Golay header, carrier tracking) -> one branch per modulation:
+
+      Constellation Soft Decoder (soft bits) -> LDPC Decoder (min-sum) -> CRC-32 check (bad frames dropped) -> MAC'
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 2110
+    rotation: 0
+    state: enabled
+- name: rx_mf
+  id: fft_filter_xxx
+  parameters:
+    type: ccf
+    decim: '1'
+    taps: rrc_taps
+    samp_delay: '0'
+    nthreads: '1'
+    comment: RRC matched filter
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 278
+    - 2220
+    rotation: 0
+    state: enabled
+- name: despreader
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nCDMA Despreader\n\nInput: received samples after the RRC matched filter.\nFor this station's Gold code and the broadcast code it\n  1. correlates with the code-specific preamble (differential detector: works\n     with carrier frequency offset) -> burst start, timing, coarse CFO\n  2. removes the CFO, despreads (x code, sum over 31 chips) with fractional-delay\n     timing and an early-late DLL that follows the clock offset between radios\n  3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):\n     length, modulation, code rate, CRC-8\n  4. tracks the carrier phase over the payload (decision-directed loop anchored\n     on the known preamble and header)\nand outputs one PDU per burst: the despread payload symbols, normalised to the\nunit-energy constellation, with metadata mod / rate / length / code / snr_db /\nesn0_db / cfo_hz.  The stock Constellation Soft Decoder blocks downstream turn\nthem into soft bits for the LDPC Decoder.\n\"\"\
+      \"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the cdmachat package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"cdmachat\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"cdmachat\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from cdmachat.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project:\
+      \ ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,\n                 max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA Despreader\", in_sig=[np.complex64], out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        self.set_output_multiple(16384)        # hand samples over in big chunks (less overhead)\n        self.core = None\n        try:\n            if _project():\n                from cdmachat.grc_phy import DespreaderCore, phy_config\n                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload)\n                self.core = DespreaderCore(cfg, self.node_id, self._publish)\n                _register(self.node_id, \"despreader\", self.core)\n        except ImportError:\n            pass\n\n    def _publish(self, f):\n        mod = \"bpsk\" if f.mod in (\"bpsk\"\
+      , \"bpskc\") else f.mod\n        meta = pmt.make_dict()\n        for k, v in ((\"mod\", pmt.intern(mod)), (\"code\", pmt.from_long(int(f.code_idx))),\n                     (\"rate\", pmt.from_long(int(f.rate))), (\"length\", pmt.from_long(int(f.length))),\n                     (\"mcs\", pmt.intern(f.mcs)),\n                     (\"snr_db\", pmt.from_double(float(f.snr_db))),\n                     (\"esn0_db\", pmt.from_double(float(f.esn0_db))),\n                     (\"cfo_hz\", pmt.from_double(float(f.cfo_hz))),\n                     (\"metric\", pmt.from_double(float(f.metric)))):\n            meta = pmt.dict_add(meta, pmt.intern(k), v)\n        s = f.symbols\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_c32vector(len(s), s.tolist())))\n\n    def start(self):\n        if self.core is not None:\n            self.core.start()\n        return True\n\n    def stop(self):\n        if self.core is not None:\n            self.core.stop()\n        return True\n\n   \
+      \ def work(self, input_items, output_items):\n        if self.core is not None:\n            self.core.push(input_items[0])\n        return len(input_items[0])\n"
+    node_id: node_id
+    samp_rate: samp_rate
+    sps: sps
+    gold_degree: gold_degree
+    preamble_bits: preamble_bits
+    max_payload: max_payload
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 548
+    - 2220
+    rotation: 0
+    state: enabled
+- name: rx_bpsk_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("mod")
+    v: pmt.intern("bpsk")
+    invert: 'False'
+    comment: BPSK bursts
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 938
+    - 2220
+    rotation: 0
+    state: enabled
+- name: rx_bpsk_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: complex
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: 'buffer holds a whole burst
+
+      (1 KB BPSK-1/2 = 16.5k symbols)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 2220
+    rotation: 0
+    state: enabled
+- name: rx_bpsk_soft
+  id: digital_constellation_soft_decoder_cf
+  parameters:
+    constellation: const_bpsk
+    npwr: '-1'
+    minoutbuf: '32768'
+    comment: 1 soft bit per symbol
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1478
+    - 2220
+    rotation: 0
+    state: enabled
+- name: rx_bpsk_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: float
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: '1'
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1748
+    - 2220
+    rotation: 0
+    state: enabled
+- name: rx_bpsk_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: float
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2018
+    - 2220
+    rotation: 0
+    state: enabled
+- name: rx_qpsk_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("mod")
+    v: pmt.intern("qpsk")
+    invert: 'False'
+    comment: QPSK bursts
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 938
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_qpsk_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: complex
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: 'buffer holds a whole burst
+
+      (1 KB BPSK-1/2 = 16.5k symbols)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_qpsk_soft
+  id: digital_constellation_soft_decoder_cf
+  parameters:
+    constellation: const_qpsk
+    npwr: '-1'
+    minoutbuf: '32768'
+    comment: 2 soft bits per symbol
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1478
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_qpsk_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: float
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: '2'
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1748
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_qpsk_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: float
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2018
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_qam16_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("mod")
+    v: pmt.intern("16qam")
+    invert: 'False'
+    comment: 16QAM bursts
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 938
+    - 2580
+    rotation: 0
+    state: enabled
+- name: rx_qam16_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: complex
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: 'buffer holds a whole burst
+
+      (1 KB BPSK-1/2 = 16.5k symbols)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 2580
+    rotation: 0
+    state: enabled
+- name: rx_qam16_soft
+  id: digital_constellation_soft_decoder_cf
+  parameters:
+    constellation: const_16qam
+    npwr: '-1'
+    minoutbuf: '32768'
+    comment: 4 soft bits per symbol
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1478
+    - 2580
+    rotation: 0
+    state: enabled
+- name: rx_qam16_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: float
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: '4'
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1748
+    - 2580
+    rotation: 0
+    state: enabled
+- name: rx_qam16_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: float
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2018
+    - 2580
+    rotation: 0
+    state: enabled
+- name: ldpc_dec
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nLDPC Decoder\n\nInput PDUs: the soft bits of one burst's payload from a stock Constellation Soft\nDecoder (log P(1)/P(0) per bit), metadata mod, rate, length and the receiver's\nmeasurements.  Undoes the bit interleaver and rate matching, then decodes the\n5G NR LDPC codeword with a layered normalised min-sum decoder (scale invariant,\nso it needs no noise estimate; early stop when every parity check is met;\nat most 'Max iterations').  Uncoded frames get hard decisions.\n\nOutput PDU: the frame bytes incl. CRC-32 (checked by the stock block after this),\nmetadata + fec_iters.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the cdmachat package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here,\
+      \ \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"cdmachat\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"cdmachat\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from cdmachat.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, max_iter=20):\n        gr.sync_block.__init__(self, name=\"LDPC Decoder\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n\
+      \        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n        try:\n            if _project():\n                from cdmachat.grc_phy import LdpcDecoderCore\n                self.core = LdpcDecoderCore(max_iter)\n                _register(self.node_id, \"ldpc_decoder\", self.core)\n        except ImportError:\n            pass\n\n    def handle(self, msg):\n        if self.core is None:\n            return\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        get = lambda k, d: pmt.to_python(pmt.dict_ref(meta, pmt.intern(k), pmt.to_pmt(d)))  # noqa: E731\n        soft = np.asarray(pmt.f32vector_elements(vec), dtype=np.float32)\n        data, ok, it = self.core.decode(soft, int(get(\"length\", 0)), str(get(\"mod\", \"qpsk\")),\n                                        int(get(\"rate\", 0)))\n        meta = pmt.dict_add(meta, pmt.intern(\"fec_iters\"), pmt.from_long(int(it)))\n        meta = pmt.dict_add(meta, pmt.intern(\"fec_ok\"), pmt.from_bool(bool(ok)))\n\
+      \        self.message_port_pub(self.port_out, pmt.cons(meta, pmt.init_u8vector(len(data), list(data))))\n"
+    node_id: node_id
+    max_iter: ldpc_max_iter
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2288
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_bytes
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: byte
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2558
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_crc
+  id: digital_crc32_bb
+  parameters:
+    check: 'True'
+    lengthtagname: '"packet_len"'
+    packed: 'True'
+    comment: 'check + strip CRC-32
+
+      (bad frames dropped)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2828
+    - 2400
+    rotation: 0
+    state: enabled
+- name: rx_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: byte
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 3098
+    - 2400
+    rotation: 0
+    state: enabled
+- name: mac_rx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nPHY -> MAC (to app)\n\nExit point of the physical layer: frames that passed the CRC-32 check, with the\nreceiver's metadata (code, modulation and code rate, SNR, carrier offset,\nLDPC iterations).  The chat\napplication's link layer installs a handler here; when the flowgraph is run on\nits own (e.g. from GNU Radio Companion) received frames are just printed.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the cdmachat package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"cdmachat\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n\
+      \                sys.path.insert(0, cand)\n            return True\n    return \"cdmachat\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from cdmachat.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"PHY -> MAC (to app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port)\n        self.set_msg_handler(self.port, self.handle)\n        self.handler = None\n        _register(self.node_id, \"mac_rx\", self)\n\n    def handle(self, msg):\n        meta = pmt.to_python(pmt.car(msg)) or {}\n        data = bytes(pmt.u8vector_elements(pmt.cdr(msg)))\n        if self.handler is not None:\n\
+      \            self.handler(meta, data)\n        else:\n            print(f\"[node {self.node_id}] rx {len(data)} B  {meta.get('mcs') or meta.get('mod')} \"\n                  f\"code={meta.get('code')} Es/N0={meta.get('esn0_db', 0):.1f} dB\", flush=True)\n"
+    node_id: node_id
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 3368
+    - 2400
+    rotation: 0
+    state: enabled
+- name: antsdr_tx
+  id: iio_pluto_sink
+  parameters:
+    type: fc32
+    uri: uri
+    frequency: int(center_freq)
+    samplerate: int(samp_rate)
+    bandwidth: int(samp_rate)
+    buffer_size: tx_buffer
+    cyclic: 'False'
+    attenuation1: tx_atten
+    len_tag_key: ''
+    filter_source: '''Auto'''
+    filter: ''
+    fpass: '0'
+    fstop: '0'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2738
+    - 1420
+    rotation: 0
+    state: enabled
+- name: antsdr_rx
+  id: iio_pluto_source
+  parameters:
+    type: fc32
+    uri: uri
+    frequency: int(center_freq)
+    samplerate: int(samp_rate)
+    bandwidth: int(samp_rate)
+    buffer_size: '32768'
+    gain1: '''manual'''
+    manual_gain1: rx_gain
+    quadrature: 'True'
+    rfdc: 'True'
+    bbdc: 'True'
+    len_tag_key: ''
+    filter_source: '''Auto'''
+    filter: ''
+    fpass: '0'
+    fstop: '0'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 2220
+    rotation: 0
+    state: enabled
+connections:
+- - mac_tx
+  - pdus
+  - tx_stream
+  - pdus
+- - tx_stream
+  - '0'
+  - tx_crc
+  - '0'
+- - tx_crc
+  - '0'
+  - tx_pdu
+  - '0'
+- - tx_pdu
+  - pdus
+  - ldpc_enc
+  - pdus
+- - ldpc_enc
+  - pdus
+  - framer
+  - pdus
+- - framer
+  - pdus
+  - lane0_select
+  - pdus
+- - lane0_select
+  - pdus
+  - lane0_stream
+  - pdus
+- - lane0_stream
+  - '0'
+  - lane0_map
+  - '0'
+- - lane0_map
+  - '0'
+  - lane0_repeat
+  - '0'
+- - lane0_repeat
+  - '0'
+  - lane0_spread
+  - '0'
+- - lane0_code
+  - '0'
+  - lane0_spread
+  - '1'
+- - lane0_spread
+  - '0'
+  - lane0_len
+  - '0'
+- - lane0_len
+  - '0'
+  - combiner
+  - '0'
+- - framer
+  - pdus
+  - lane1_select
+  - pdus
+- - lane1_select
+  - pdus
+  - lane1_stream
+  - pdus
+- - lane1_stream
+  - '0'
+  - lane1_map
+  - '0'
+- - lane1_map
+  - '0'
+  - lane1_repeat
+  - '0'
+- - lane1_repeat
+  - '0'
+  - lane1_spread
+  - '0'
+- - lane1_code
+  - '0'
+  - lane1_spread
+  - '1'
+- - lane1_spread
+  - '0'
+  - lane1_len
+  - '0'
+- - lane1_len
+  - '0'
+  - combiner
+  - '1'
+- - framer
+  - pdus
+  - lane2_select
+  - pdus
+- - lane2_select
+  - pdus
+  - lane2_stream
+  - pdus
+- - lane2_stream
+  - '0'
+  - lane2_map
+  - '0'
+- - lane2_map
+  - '0'
+  - lane2_repeat
+  - '0'
+- - lane2_repeat
+  - '0'
+  - lane2_spread
+  - '0'
+- - lane2_code
+  - '0'
+  - lane2_spread
+  - '1'
+- - lane2_spread
+  - '0'
+  - lane2_len
+  - '0'
+- - lane2_len
+  - '0'
+  - combiner
+  - '2'
+- - framer
+  - pdus
+  - lane3_select
+  - pdus
+- - lane3_select
+  - pdus
+  - lane3_stream
+  - pdus
+- - lane3_stream
+  - '0'
+  - lane3_map
+  - '0'
+- - lane3_map
+  - '0'
+  - lane3_repeat
+  - '0'
+- - lane3_repeat
+  - '0'
+  - lane3_spread
+  - '0'
+- - lane3_code
+  - '0'
+  - lane3_spread
+  - '1'
+- - lane3_spread
+  - '0'
+  - lane3_len
+  - '0'
+- - lane3_len
+  - '0'
+  - combiner
+  - '3'
+- - framer
+  - pdus
+  - lane4_select
+  - pdus
+- - lane4_select
+  - pdus
+  - lane4_stream
+  - pdus
+- - lane4_stream
+  - '0'
+  - lane4_map
+  - '0'
+- - lane4_map
+  - '0'
+  - lane4_repeat
+  - '0'
+- - lane4_repeat
+  - '0'
+  - lane4_spread
+  - '0'
+- - lane4_code
+  - '0'
+  - lane4_spread
+  - '1'
+- - lane4_spread
+  - '0'
+  - lane4_len
+  - '0'
+- - lane4_len
+  - '0'
+  - combiner
+  - '4'
+- - combiner
+  - '0'
+  - tx_rrc
+  - '0'
+- - tx_rrc
+  - '0'
+  - tx_gain
+  - '0'
+- - rx_mf
+  - '0'
+  - despreader
+  - '0'
+- - despreader
+  - pdus
+  - rx_bpsk_select
+  - pdus
+- - rx_bpsk_select
+  - pdus
+  - rx_bpsk_stream
+  - pdus
+- - rx_bpsk_stream
+  - '0'
+  - rx_bpsk_soft
+  - '0'
+- - rx_bpsk_soft
+  - '0'
+  - rx_bpsk_len
+  - '0'
+- - rx_bpsk_len
+  - '0'
+  - rx_bpsk_pdu
+  - '0'
+- - rx_bpsk_pdu
+  - pdus
+  - ldpc_dec
+  - pdus
+- - despreader
+  - pdus
+  - rx_qpsk_select
+  - pdus
+- - rx_qpsk_select
+  - pdus
+  - rx_qpsk_stream
+  - pdus
+- - rx_qpsk_stream
+  - '0'
+  - rx_qpsk_soft
+  - '0'
+- - rx_qpsk_soft
+  - '0'
+  - rx_qpsk_len
+  - '0'
+- - rx_qpsk_len
+  - '0'
+  - rx_qpsk_pdu
+  - '0'
+- - rx_qpsk_pdu
+  - pdus
+  - ldpc_dec
+  - pdus
+- - despreader
+  - pdus
+  - rx_qam16_select
+  - pdus
+- - rx_qam16_select
+  - pdus
+  - rx_qam16_stream
+  - pdus
+- - rx_qam16_stream
+  - '0'
+  - rx_qam16_soft
+  - '0'
+- - rx_qam16_soft
+  - '0'
+  - rx_qam16_len
+  - '0'
+- - rx_qam16_len
+  - '0'
+  - rx_qam16_pdu
+  - '0'
+- - rx_qam16_pdu
+  - pdus
+  - ldpc_dec
+  - pdus
+- - ldpc_dec
+  - pdus
+  - rx_bytes
+  - pdus
+- - rx_bytes
+  - '0'
+  - rx_crc
+  - '0'
+- - rx_crc
+  - '0'
+  - rx_pdu
+  - '0'
+- - rx_pdu
+  - pdus
+  - mac_rx
+  - pdus
+- - tx_gain
+  - '0'
+  - antsdr_tx
+  - '0'
+- - antsdr_rx
+  - '0'
+  - rx_mf
+  - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0
