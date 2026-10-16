@@ -1,6 +1,6 @@
 #!/bin/zsh
 cd "$(dirname "$0")"
-source /path/to/radioconda/bin/activate
+source /Volumes/Pasan_s_SSD/radioconda/bin/activate
 
 python3 -m wavelink run --id 2 --name pxn --uri ip:192.168.1.10 --key "WaveLink"
 
