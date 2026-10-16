@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WaveLink Chat</title>
+<link rel="icon" type="image/png" href="/static/wavelink-favicon-64.png">
+<link rel="apple-touch-icon" href="/static/wavelink-icon-192.png">
+<meta name="theme-color" content="#0b2a6e">
+<script>
+  /* this station's look, cached from its profile so the first paint has the right colours */
+  (function () {
+    var r = document.documentElement, t = {};
+    try { t = JSON.parse(localStorage.getItem("wavelink-theme") || "{}") || {}; } catch (e) {}
+    var m = t.mode || "auto";
+    if (m === "auto") m = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    r.setAttribute("data-mode", m);
+    r.setAttribute("data-pal", t.pal || "wavelink");
+    r.setAttribute("data-anim", t.anim === false ? "off" : "on");
+    if (t.pal === "custom" && /^#[0-9a-f]{6}$/i.test(t.accent || "") && t.vars) for (var k in t.vars) r.style.setProperty(k, t.vars[k]);
+  })();
+</script>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/games.css">
+</head>
+<body>
+<div id="app">
+  <!-- ======================= sidebar ======================= -->
+  <aside id="side">
+    <div class="brand">
+      <span class="wl-mark" id="brandMark" aria-hidden="true"><img src="/static/wavelink-mark.png" alt=""><i></i><i></i></span>
+      <span class="wl-head"><span class="wl-word" data-text="WaveLink"><b class="wl-wave">Wave</b><b class="wl-link">Link</b></span><span class="wl-chat">Chat</span></span>
+    </div>
+    <header class="me">
+      <button class="avatar" id="meAvatar" title="Your profile and settings" aria-label="Your profile and settings">?</button>
+      <div class="meinfo">
+        <div class="mename" id="meName" title="Your profile and settings">…</div>
+        <div class="mesub" id="meSub">node ?</div>
+      </div>
+      <div class="navbtns" id="navBtns">
+      <button class="icon" id="gcBtn" title="Game center: UNO and Gold Code GP" aria-label="Game center">
+        <svg viewBox="0 0 24 24"><path d="M7.5 6h9a5.5 5.5 0 0 1 5.3 7l-1.2 4.3a2.6 2.6 0 0 1-4.4 1.1L13.8 16h-3.6l-2.4 2.4a2.6 2.6 0 0 1-4.4-1.1L2.2 13a5.5 5.5 0 0 1 5.3-7zM7 8.6v1.7H5.3v1.6H7v1.7h1.6v-1.7h1.7v-1.6H8.6V8.6zm8.7 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
+        <span class="dot" hidden></span><span class="nlbl">Game center</span>
+      </button>
+      <button class="icon" id="radioBtn" title="Radio dashboard" aria-label="Radio dashboard">
+        <svg viewBox="0 0 24 24"><path d="M4 18h2V9H4zm4 0h2V5H8zm4 0h2v-6h-2zm4 0h2V8h-2zm4 0h2v-3h-2z"/></svg><span class="nlbl">Radio</span>
+      </button>
+      <button class="icon" id="setBtn" title="Settings: profile, theme, wallpaper, sounds" aria-label="Settings">
+        <svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.5 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg><span class="nlbl">Settings</span>
+      </button>
+      </div>
+    </header>
+    <div class="phy" id="phyLine"></div>
+    <div class="search"><input id="filter" placeholder="Search chats" aria-label="Search chats"></div>
+    <ul id="chats"></ul>
+    <nav class="sidenav" id="sideNav" aria-label="Game center, radio and settings"></nav>
+    <footer class="sidefoot" id="sideFoot"></footer>
+  </aside>
+
+  <!-- ======================= conversation ======================= -->
+  <main id="main">
+    <div id="empty" class="empty">
+      <div class="aurora" aria-hidden="true"><i></i><i></i></div>
+      <div class="hero-logo" aria-hidden="true"><span class="halo"></span><span class="hring"></span><span class="hring"></span><span class="hring"></span>
+        <img src="/static/wavelink-mark.png" alt=""></div>
+      <h1 class="wl-head"><span class="wl-word" data-text="WaveLink"><b class="wl-wave">Wave</b><b class="wl-link">Link</b></span><span class="wl-chat">Chat</span></h1>
+      <p>Spread-spectrum messaging for up to four stations on 2.5&nbsp;GHz. Each station has its own Gold code,
+        so all of them can talk at the same time.</p>
+      <div class="on-air" id="onAir">Listening for other stations…</div>
+    </div>
+    <section id="conv" hidden>
+      <header class="convhead">
+        <button class="icon back" id="backBtn" aria-label="Back">
+          <svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>
+        </button>
+        <div class="avatar" id="convAvatar"></div>
+        <div class="convinfo">
+          <div class="convname" id="convName"></div>
+          <div class="convsub" id="convSub"></div>
+        </div>
+        <button class="icon" id="gameBtn" title="New tic-tac-toe game" aria-label="New game">
+          <svg viewBox="0 0 24 24"><path d="M9 3v18M15 3v18M3 9h18M3 15h18" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+        </button>
+      </header>
+      <div class="msgwrap">
+        <div id="wall" class="wall-plain" aria-hidden="true"></div>
+        <div id="msgs"></div>
+        <button id="jumpBtn" hidden aria-label="Jump to new messages">
+          <svg viewBox="0 0 24 24"><path d="M12 16.6 5.4 10l1.4-1.4 5.2 5.2 5.2-5.2 1.4 1.4z"/></svg><span class="n"></span>
+        </button>
+      </div>
+      <div id="pending" hidden></div>
+      <footer class="composer">
+        <button class="icon" id="emojiBtn" title="Emoji" aria-label="Emoji" aria-expanded="false" aria-controls="emojiPop">
+          <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18.2a8.2 8.2 0 1 1 0-16.4 8.2 8.2 0 0 1 0 16.4zM8.6 11.2a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm6.8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM12 17.6c2.4 0 4.4-1.5 5.2-3.6H6.8c.8 2.1 2.8 3.6 5.2 3.6z"/></svg>
+        </button>
+        <button class="icon" id="attachBtn" title="Send a photo, audio or any file" aria-label="Attach">
+          <svg viewBox="0 0 24 24"><path d="M16.5 6.5v10a4.5 4.5 0 0 1-9 0V6a3 3 0 0 1 6 0v10a1.5 1.5 0 0 1-3 0V6.5H9V16a3 3 0 0 0 6 0V6a4.5 4.5 0 0 0-9 0v10.5a6 6 0 0 0 12 0v-10z"/></svg>
+        </button>
+        <input type="file" id="fileIn" hidden>
+        <button class="icon toggle" id="urgentBtn" title="Urgent (high priority)" aria-pressed="false" aria-label="Urgent">
+          <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+        </button>
+        <textarea id="text" rows="1" placeholder="Type a message" aria-label="Message"></textarea>
+        <button class="icon" id="camBtn" title="Take a photo" aria-label="Take a photo">
+          <svg viewBox="0 0 24 24"><path d="M9.2 4 7.6 6H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.6l-1.6-2zM12 8.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 1.8a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4z"/></svg>
+        </button>
+        <button class="icon send" id="sendBtn" aria-label="Send or record a voice note">
+          <svg class="ic-send" viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg>
+          <svg class="ic-mic" viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1a7 7 0 0 0 6-6.9z"/></svg>
+        </button>
+        <div id="emojiPop" hidden role="dialog" aria-label="Emoji"></div>
+      </footer>
+      <div id="recBar" hidden>
+        <span class="recdot"></span><span id="recTime">0:00</span>
+        <canvas id="recLevel" width="240" height="36" aria-hidden="true"></canvas>
+        <span class="rechint" id="recHint">Recording (max 30 s)</span>
+        <button id="recCancel">Cancel</button><button id="recSend" class="primary">Send</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======================= radio dashboard ======================= -->
+  <aside id="dash" hidden>
+    <header class="dashhead">
+      <h3><span class="livedot" id="liveDot" title="Pulses when frames are heard"><i></i></span>Radio</h3>
+      <button class="icon" id="dashClose" aria-label="Close">
+        <svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6z"/></svg>
+      </button>
+    </header>
+    <div class="dashbody">
+      <div class="tiles" id="tiles"></div>
+      <div class="panel">
+        <div class="ptitle">Last burst constellation <span id="constInfo"></span></div>
+        <canvas id="constCv" width="300" height="300"></canvas>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Received spectrum <span class="muted">(baseband, dB)</span></div>
+        <canvas id="specCv" width="300" height="140"></canvas>
+      </div>
+      <div class="panel" id="simPanel" hidden>
+        <div class="ptitle">Simulated channel</div>
+        <label class="slider">Eb/N0 of a 0 dB link <b id="ebVal"></b>
+          <input type="range" id="ebSlider" min="2" max="30" step="0.5"></label>
+        <div class="muted small" id="simCpu"></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Links heard</div>
+        <table class="kv" id="linkTbl"></table>
+      </div>
+      <div class="panel" id="pcPanel">
+        <div class="ptitle pcrow"><span id="lPc">Transmit power control</span><button class="switch" id="pcSw" role="switch" aria-labelledby="lPc"></button></div>
+        <div class="muted small" id="pcInfo"></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Transmit queue</div>
+        <table class="kv" id="queueTbl"></table>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Counters</div>
+        <table class="kv" id="ctrTbl"></table>
+      </div>
+      <div class="panel">
+        <div class="ptitle">PHY</div>
+        <table class="kv" id="phyTbl"></table>
+      </div>
+      <button class="danger" id="clearBtn">Clear chat history</button>
+    </div>
+  </aside>
+
+  <!-- ======================= settings (settings.js fills the lists) ======================= -->
+  <aside id="settings" hidden aria-label="Settings">
+    <header class="dashhead">
+      <h3>Settings</h3>
+      <button class="icon" id="setClose" aria-label="Close settings">
+        <svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6z"/></svg>
+      </button>
+    </header>
+    <div class="dashbody">
+      <section class="set" aria-labelledby="hProf">
+        <h4 id="hProf">Profile</h4>
+        <div class="prof">
+          <div class="avatar lg" id="setAvatar"></div>
+          <div class="grow">
+            <input type="text" id="setName" maxlength="32" placeholder="Station name" aria-label="Name" autocomplete="off">
+            <div class="seg" id="avKind" role="group" aria-label="Picture">
+              <button data-v="photo">Photo</button><button data-v="emoji">Emoji</button><button data-v="initial">Initial</button>
+            </div>
+          </div>
+        </div>
+        <div class="row" id="avPhotoRow"><button class="smallbtn" id="avUpload">Choose a photo…</button><span class="muted small" id="avPhotoInfo"></span></div>
+        <div class="avpick" id="avPick" role="group" aria-label="Emoji"></div>
+        <input type="range" class="hue" id="avHue" min="0" max="359" step="1" aria-label="Background colour">
+        <p class="muted small">Your name and picture go out with your station's beacons. A photo is sent once, about 5&nbsp;KB, to each station that asks for it.</p>
+        <input type="file" id="avFile" accept="image/*" hidden>
+      </section>
+
+      <section class="set" aria-labelledby="hTheme">
+        <h4 id="hTheme">Theme</h4>
+        <div class="swatches2" id="palGrid" role="group" aria-label="Colour palette"></div>
+        <div class="row"><span class="lbl">Light or dark</span>
+          <div class="seg" id="modeSeg" role="group" aria-label="Light or dark"><button data-v="auto">Auto</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+        <div class="row"><span class="lbl" id="lAnim">Breathing lights and motion</span><button class="switch" id="animSw" role="switch" aria-labelledby="lAnim"></button></div>
+        <div class="row"><span class="lbl" id="lNav">Game center, Radio and Settings buttons at the bottom of the chat list</span><button class="switch" id="navSw" role="switch" aria-labelledby="lNav"></button></div>
+      </section>
+
+      <section class="set" aria-labelledby="hWall">
+        <h4 id="hWall">Chat wallpaper</h4>
+        <div class="walls" id="wallGrid" role="group" aria-label="Wallpaper"></div>
+        <div class="row"><button class="smallbtn" id="wallUpload">Upload a wallpaper…</button><button class="smallbtn" id="wallEditBtn" hidden>Crop, rotate, adjust…</button></div>
+        <div class="row" id="fitRow"><span class="lbl">Fit</span>
+          <div class="seg" id="fitSeg" role="group" aria-label="How your photo fits the chat"><button data-v="cover" title="Fills the chat; the edges that don't fit are cut off">Crop to fit</button><button data-v="contain" title="All of the picture, with bands beside it">Fit inside</button><button data-v="stretch" title="Squeezed into the chat's shape">Stretch</button><button data-v="normal" title="Actual size, in the middle">Normal</button></div></div>
+        <div class="row" id="dimRow"><label for="wallDim">Dim your photo</label><input type="range" id="wallDim" min="0" max="0.85" step="0.05"></div>
+        <p class="muted small">Your photo stays on this station. When you upload one you can crop it to the chat's shape, turn it and adjust it; the original is kept, so you can change it again later.</p>
+        <input type="file" id="wallFile" accept="image/*" hidden>
+      </section>
+
+      <section class="set" aria-labelledby="hSnd">
+        <h4 id="hSnd">Sounds</h4>
+        <div class="row"><span class="lbl" id="lSnd">Sound effects in the chat and the games</span><button class="switch" id="sndSw" role="switch" aria-labelledby="lSnd"></button></div>
+        <div class="row"><label for="vol">Volume</label><input type="range" id="vol" min="0" max="1" step="0.05"><button class="smallbtn" id="sndTest">Play</button></div>
+        <div class="row"><span class="lbl">Background music</span></div>
+        <div class="mgrid" id="musicGrid" role="group" aria-label="Background music"></div>
+        <div class="row"><label for="musicVol">Music volume</label><input type="range" id="musicVol" min="0" max="1" step="0.05"></div>
+        <div class="row"><button class="smallbtn" id="musicUpload">Upload an MP3…</button><span class="muted small" id="musicName"></span></div>
+        <input type="file" id="musicFile" accept="audio/*,.mp3" hidden>
+        <p class="muted small">Music loops on this station only. It plays after your first click on the page, and goes quiet while you record or play a voice note.</p>
+      </section>
+
+      <section class="set" aria-labelledby="hMedia">
+        <h4 id="hMedia">Sending photos and audio</h4>
+        <div class="row"><span class="lbl" id="lAsk">Choose the quality each time</span><button class="switch" id="askSw" role="switch" aria-labelledby="lAsk"></button></div>
+        <div class="row"><span class="lbl">Photos</span>
+          <div class="seg" id="photoSeg" role="group" aria-label="Photo quality"><button data-v="saver">Saver</button><button data-v="standard">Standard</button><button data-v="hd">HD</button><button data-v="original">Original</button></div></div>
+        <div class="row"><span class="lbl">Voice and audio</span>
+          <div class="seg" id="voiceSeg" role="group" aria-label="Audio quality"><button data-v="low">Low</button><button data-v="standard">Standard</button><button data-v="high">High</button></div></div>
+        <p class="muted small" id="mediaNote"></p>
+      </section>
+
+      <section class="set" aria-labelledby="hGame">
+        <h4 id="hGame">Gold Code GP</h4>
+        <div class="row"><span class="lbl">Camera</span>
+          <div class="seg" id="camSeg" role="group" aria-label="Race camera"><button data-v="north">North up</button><button data-v="chase">Chase</button></div></div>
+        <p class="muted small">Chase keeps your car pointing up the screen and turns the city around it. Press V during a race to switch.</p>
+      </section>
+
+      <section class="set about" aria-label="About WaveLink Chat">
+        <div class="about-logo"><img class="on-light" src="/static/wavelink-logo-light.png" alt="WaveLink"><img class="on-dark" src="/static/wavelink-logo-dark.png" alt="WaveLink"></div>
+        <p>WaveLink Chat, by team WaveLink.</p>
+        <p id="aboutStation">DS-CDMA over ANTSDR E200 and GNU Radio, 2.5&nbsp;GHz.</p>
+      </section>
+    </div>
+  </aside>
+</div>
+<div id="gc" hidden role="dialog" aria-label="Game center"><div class="gc-body" id="gcBody"></div>
+  <aside id="gcChat" hidden aria-label="Chats">
+    <header class="gcc-head"><div class="gcc-tabs" id="gccTabs" role="tablist"></div>
+      <button class="gcc-x" id="gccClose" title="Close (Esc)" aria-label="Close chats"><svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6z"/></svg></button></header>
+    <div class="gcc-msgs" id="gccMsgs"></div>
+    <div class="gcc-tray" id="gccTray" hidden role="toolbar" aria-label="Voice, camera, file, emoji and priority">
+      <button type="button" data-tool="mic" title="Record a voice note"><i><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1a7 7 0 0 0 6-6.9z"/></svg></i><span>Voice</span></button>
+      <button type="button" data-tool="cam" title="Take a photo"><i><svg viewBox="0 0 24 24"><path d="M9.2 4 7.6 6H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.6l-1.6-2zM12 8.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 1.8a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4z"/></svg></i><span>Camera</span></button>
+      <button type="button" data-tool="file" title="Send a photo, audio or any file"><i><svg viewBox="0 0 24 24"><path d="M16.5 6.5v10a4.5 4.5 0 0 1-9 0V6a3 3 0 0 1 6 0v10a1.5 1.5 0 0 1-3 0V6.5H9V16a3 3 0 0 0 6 0V6a4.5 4.5 0 0 0-9 0v10.5a6 6 0 0 0 12 0v-10z"/></svg></i><span>File</span></button>
+      <button type="button" data-tool="emoji" title="Emoji" aria-expanded="false"><i><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18.2a8.2 8.2 0 1 1 0-16.4 8.2 8.2 0 0 1 0 16.4zM8.6 11.2a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm6.8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM12 17.6c2.4 0 4.4-1.5 5.2-3.6H6.8c.8 2.1 2.8 3.6 5.2 3.6z"/></svg></i><span>Emoji</span></button>
+      <button type="button" data-tool="urgent" title="Priority: your next message goes out ahead of other traffic" aria-pressed="false"><i><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></i><span>Priority</span></button>
+    </div>
+    <div class="gcc-rec" id="gccRec" hidden>
+      <span class="recdot"></span><span class="rtime" id="gccRecTime">0:00</span>
+      <canvas id="gccRecLevel" width="160" height="28" aria-hidden="true"></canvas>
+      <span class="rechint" id="gccRecHint"></span>
+      <button type="button" id="gccRecCancel">Cancel</button><button type="button" class="primary" id="gccRecSend">Send</button>
+    </div>
+    <form class="gcc-send" id="gccForm">
+      <button type="button" class="gcc-plus" id="gccPlus" aria-expanded="false" aria-controls="gccTray" title="Voice, camera, file, emoji, priority" aria-label="More: voice note, camera, file, emoji, priority">
+        <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button>
+      <input id="gccText" type="text" autocomplete="off" placeholder="Message" aria-label="Message">
+      <button class="gcc-go" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg></button></form>
+    <input type="file" id="gccFile" hidden>
+  </aside>
+</div>
+<div id="toast" role="status"></div>
+<div id="lightbox" hidden><img alt=""></div>
+<script src="/static/emoji.js"></script>
+<script src="/static/app.js"></script>
+<script src="/static/sfx.js"></script>
+<script src="/static/music.js"></script>
+<script src="/static/settings.js"></script>
+<script src="/static/emojipick.js"></script>
+<script src="/static/media.js"></script>
+<script src="/static/walledit.js"></script>
+<script src="/static/games.js"></script>
+<script src="/static/gcchat.js"></script>
+<script src="/static/uno.js"></script>
+<script src="/static/race.js"></script>
+</body>
+</html>
