@@ -1092,6 +1092,13 @@ python3 -m wavelink fake-air --cut 1:3 --ppm 2=20 --speed 0.5 --control 8790   #
                                                   # half speed for a slow PC, a control port for live changes
 ```
 
+The last line is an alternative to the first, not a second air: one air per name runs at a time, and a second one
+stops with an error (`fake-air --name lab` and `--uri fake:lab` run a separate one). The air and its stations share
+their samples through files in `/dev/shm` on Linux; macOS has no `/dev/shm`, so there they use a temporary folder
+(`WAVELINK_SHM_DIR=DIR` picks the folder on any system: the air and its stations must use the same one). On macOS,
+activate the Python that has GNU Radio in every terminal first (radioconda: `source <radioconda>/bin/activate`);
+Homebrew's `python3` has no GNU Radio.
+
 With a `fake:` URI the app swaps the flowgraph's two ANTSDR blocks for stand-ins with the same arguments and setters
 that behave like gr-iio's towards GNU Radio: the sink takes whole `tx_buffer` buffers into a queue of 4 (libiio's
 default) that the DAC drains at 4 MS/s and blocks while it is full; the source hands out whole 32,768-sample buffers;

@@ -24,9 +24,9 @@ clock.  Per link: a path gain, a delay, a constant phase and the carrier offset 
 LOs; a station's own transmitter leaks into its own receiver (+25 dB over the others: TX and RX
 antennas side by side); AWGN at every receiver; optionally a sample-clock error per station
 (ppm, its TX and RX), bursty interference, cut links and injected faults (TX underruns, lost RX
-buffers).  Stations and air exchange samples through shared memory: /dev/shm/wavelink-<air>-<slot>,
-a header and two rings of 2^20 samples per station.  The air also records every time two stations
-transmit at once and some third station hears both (TD-CDMA slots must never overlap).
+buffers).  Stations and air exchange samples through shared memory: SHM_DIR/wavelink-<air>-<slot>
+(see _shm_dir()), a header and two rings of 2^20 samples per station.  The air also records every
+time two stations transmit at once and some third station hears both (TD-CDMA slots must never overlap).
 
 A slot is where one station's radio plugs in; by default the station's address (`fake:` = air
 "wavelink", slot = --id).  `fake:lab/5` plugs into slot 5 of air "lab" (e.g. a second station
@@ -42,13 +42,27 @@ import os
 import random
 import socket
 import sys
+import tempfile
 import threading
 import time
 import types
 
 import numpy as np
 
-SHM_DIR = "/dev/shm"
+
+def _shm_dir() -> str:
+    """The folder that holds the slot files.  The air and every station work it out on their own, in
+    separate processes, so it must come out the same in each of them.  (Linux has /dev/shm, a RAM disk;
+    macOS has none.)"""
+    d = os.environ.get("WAVELINK_SHM_DIR")
+    if d:
+        return d
+    if os.path.isdir("/dev/shm"):
+        return "/dev/shm"
+    return tempfile.gettempdir()                    # macOS: the per-user $TMPDIR, the same in every terminal
+
+
+SHM_DIR = _shm_dir()
 MAGIC = 0x574C414952                 # "WLAIR"
 VERSION = 1
 HDR = 64                             # int64 header fields
@@ -387,6 +401,21 @@ def installed() -> bool:
 
 
 # ============================================================================ the air
+def _lock_air(air: str):
+    """Hold SHM_DIR/wavelink-<air>.lock while this air runs.  A second air of the same name would create
+    the slot files again under the running one (zeroing them) and garble its stations' streams.  The OS
+    drops the lock when the process ends, however it ends, so a crashed air leaves no stale lock."""
+    import fcntl
+    f = open(os.path.join(SHM_DIR, f"wavelink-{air}.lock"), "a")     # ("a": never truncates)
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        f.close()
+        raise RuntimeError(f"a fake air '{air}' is already running: stop it first, or start this one with "
+                           f"--name OTHER (its stations: --uri fake:OTHER)") from None
+    return f
+
+
 class _Slot:
     """The air's side of one slot (one station's radio)."""
 
@@ -572,6 +601,7 @@ class FakeAir:
         self.log = log
         self.rng = np.random.default_rng(seed)
         ids = list(range(1, slots + 1)) if isinstance(slots, int) else [int(s) for s in slots]
+        self._lockf = _lock_air(self.name)              # (before any slot file is touched)
         self.slots: dict[int, _Slot] = {}
         for i in ids:
             self.slots[i] = _Slot(self, i)
@@ -809,6 +839,13 @@ class FakeAir:
         self.stop()
         for s in self.slots.values():
             s.close()
+        lk, self._lockf = self._lockf, None
+        if lk is not None:                              # (after the slots: the next air may start now)
+            try:
+                os.unlink(lk.name)
+            except OSError:
+                pass
+            lk.close()
 
     def _loop(self):
         N = self.N

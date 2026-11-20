@@ -185,9 +185,12 @@ def cmd_run(a):
 
 def cmd_fake_air(a):
     """The air between fake ANTSDRs (stations: run --uri fake:), see wavelink/fake_antsdr.py."""
-    from .fake_antsdr import FakeAir
-    air = FakeAir(name=a.name, slots=a.slots, esn0_db=a.esn0, self_leak_db=a.self_leak, lo_ppm=a.lo_ppm,
-                  seed=a.seed, speed=a.speed)
+    from . import fake_antsdr
+    try:
+        air = fake_antsdr.FakeAir(name=a.name, slots=a.slots, esn0_db=a.esn0, self_leak_db=a.self_leak,
+                                  lo_ppm=a.lo_ppm, seed=a.seed, speed=a.speed)
+    except (RuntimeError, OSError) as e:           # an air of this name is running / no slot folder
+        raise SystemExit(f"fake-air: {e}")
     for spec in a.link_gain or ():
         try:
             pair, g = spec.split("=")
@@ -210,7 +213,8 @@ def cmd_fake_air(a):
     air.start()
     if a.control:
         air.serve_control(a.control)
-    print(f"fake air '{a.name}': slots {sorted(air.slots)}, Es/N0 {a.esn0:.0f} dB on a 0 dB link, own TX "
+    print(f"fake air '{a.name}' (slot files in {fake_antsdr.SHM_DIR}): slots {sorted(air.slots)}, "
+          f"Es/N0 {a.esn0:.0f} dB on a 0 dB link, own TX "
           f"+{a.self_leak:.0f} dB.  Stations: python3 -m wavelink run --id N --uri fake:{'' if a.name == 'wavelink' else a.name}"
           + (f"   (control: 127.0.0.1:{a.control})" if a.control else ""))
     signal.signal(signal.SIGTERM, lambda *x: (_ for _ in ()).throw(KeyboardInterrupt()))
