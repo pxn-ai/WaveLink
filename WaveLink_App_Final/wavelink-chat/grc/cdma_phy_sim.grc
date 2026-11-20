@@ -94,6 +94,24 @@ blocks:
     - 170
     rotation: 0
     state: enabled
+- name: code_family
+  id: parameter
+  parameters:
+    label: Codes (walsh / gold)
+    type: str
+    value: walsh
+    short_id: c
+    hide: none
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 620
+    - 170
+    rotation: 0
+    state: enabled
 - name: imports
   id: import_
   parameters:
@@ -155,10 +173,10 @@ blocks:
 - name: sf
   id: variable
   parameters:
-    value: '31'
-    comment: 'spreading factor =
+    value: 32 if code_family == 'walsh' else 31
+    comment: 'spreading factor = code
 
-      Gold code length'
+      length (Walsh 32, Gold 31)'
   states:
     bus_sink: false
     bus_source: false
@@ -266,7 +284,7 @@ blocks:
     value: 0.25 / (sum(t * t for t in rrc_taps) / sps) ** 0.5
     comment: 'RMS 0.25 per code lane:
 
-      headroom for 16-QAM peaks
+      headroom for 16/64-QAM peaks
 
       and several lanes at once'
   states:
@@ -278,11 +296,47 @@ blocks:
     - 400
     rotation: 0
     state: enabled
+- name: walsh_table
+  id: variable
+  parameters:
+    value: '[[+1, +1, -1, -1, +1, +1, +1, +1, -1, -1, +1, +1, +1, +1, -1, +1, +1, -1, -1, -1, +1, -1, -1, -1, +1, -1, -1, -1, +1, -1, +1, -1], [+1, +1, -1, -1, -1, -1, -1, -1, +1, +1, -1, -1, +1, +1, -1, +1, +1, -1, -1, -1, -1, +1, +1, +1, -1, +1, +1, +1, +1, -1, +1, -1], [+1, -1, -1, +1, -1, +1, -1, +1, +1, -1, -1, +1, +1, -1, -1, -1, +1, +1, -1, +1, -1, -1, +1, -1, -1, -1, +1, -1, +1, +1, +1, +1], [+1, +1, -1, -1, +1, +1, +1, +1, +1, +1, -1, -1, -1, -1, +1, -1, +1, -1, -1, -1, +1, -1, -1, -1, -1, +1, +1, +1, -1, +1, -1, +1], [+1, -1, -1, +1, +1, -1, +1, -1, +1, -1, -1, +1, -1, +1, +1, +1, +1, +1, -1, +1, +1, +1, -1, +1, -1, -1, +1, -1, -1, -1, -1, -1]]'
+    comment: 'codes #0-4: Walsh rows x one
+
+      scrambling sequence (32 chips;
+
+      orthogonal when the bursts
+
+      start together, as in a slot)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 928
+    - 400
+    rotation: 0
+    state: enabled
+- name: gold_table
+  id: variable
+  parameters:
+    value: '[[-1, -1, -1, -1, -1, +1, +1, -1, -1, +1, -1, +1, +1, -1, +1, +1, +1, +1, -1, +1, -1, +1, -1, -1, -1, +1, -1, -1, +1, +1, +1], [-1, -1, -1, -1, -1, +1, +1, -1, +1, +1, -1, -1, +1, +1, +1, +1, -1, +1, -1, -1, +1, -1, +1, -1, +1, +1, +1, -1, -1, -1, +1], [-1, -1, +1, -1, -1, -1, -1, -1, -1, +1, -1, -1, +1, +1, -1, +1, -1, +1, +1, +1, -1, +1, +1, +1, +1, +1, +1, +1, -1, -1, -1], [-1, +1, -1, -1, +1, -1, +1, -1, -1, +1, +1, +1, -1, +1, +1, -1, +1, -1, -1, +1, -1, -1, +1, +1, -1, -1, +1, +1, -1, -1, +1], [+1, -1, -1, +1, +1, +1, +1, -1, -1, -1, -1, -1, -1, -1, -1, +1, -1, +1, -1, +1, +1, -1, +1, -1, +1, -1, +1, +1, -1, +1, +1]]'
+    comment: 'codes #0-4: Gold codes
+
+      (31 chips; spread ALOHA)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1388
+    - 400
+    rotation: 0
+    state: enabled
 - name: code_0
   id: variable
   parameters:
-    value: '[-1, -1, -1, -1, -1, +1, +1, -1, -1, +1, -1, +1, +1, -1, +1, +1, +1, +1, -1, +1, -1, +1, -1, -1, -1, +1, -1, -1, +1, +1, +1]'
-    comment: 'Gold code #0 (broadcast)'
+    value: (walsh_table if code_family == 'walsh' else gold_table)[0]
+    comment: 'code #0 (broadcast)'
   states:
     bus_sink: false
     bus_source: false
@@ -295,8 +349,8 @@ blocks:
 - name: code_1
   id: variable
   parameters:
-    value: '[-1, -1, -1, -1, -1, +1, +1, -1, +1, +1, -1, -1, +1, +1, +1, +1, -1, +1, -1, -1, +1, -1, +1, -1, +1, +1, +1, -1, -1, -1, +1]'
-    comment: 'Gold code #1 (node 1)'
+    value: (walsh_table if code_family == 'walsh' else gold_table)[1]
+    comment: 'code #1 (node 1)'
   states:
     bus_sink: false
     bus_source: false
@@ -309,8 +363,8 @@ blocks:
 - name: code_2
   id: variable
   parameters:
-    value: '[-1, -1, +1, -1, -1, -1, -1, -1, -1, +1, -1, -1, +1, +1, -1, +1, -1, +1, +1, +1, -1, +1, +1, +1, +1, +1, +1, +1, -1, -1, -1]'
-    comment: 'Gold code #2 (node 2)'
+    value: (walsh_table if code_family == 'walsh' else gold_table)[2]
+    comment: 'code #2 (node 2)'
   states:
     bus_sink: false
     bus_source: false
@@ -323,8 +377,8 @@ blocks:
 - name: code_3
   id: variable
   parameters:
-    value: '[-1, +1, -1, -1, +1, -1, +1, -1, -1, +1, +1, +1, -1, +1, +1, -1, +1, -1, -1, +1, -1, -1, +1, +1, -1, -1, +1, +1, -1, -1, +1]'
-    comment: 'Gold code #3 (node 3)'
+    value: (walsh_table if code_family == 'walsh' else gold_table)[3]
+    comment: 'code #3 (node 3)'
   states:
     bus_sink: false
     bus_source: false
@@ -337,8 +391,8 @@ blocks:
 - name: code_4
   id: variable
   parameters:
-    value: '[+1, -1, -1, +1, +1, +1, +1, -1, -1, -1, -1, -1, -1, -1, -1, +1, -1, +1, -1, +1, +1, -1, +1, -1, +1, -1, +1, +1, -1, +1, +1]'
-    comment: 'Gold code #4 (node 4)'
+    value: (walsh_table if code_family == 'walsh' else gold_table)[4]
+    comment: 'code #4 (node 4)'
   states:
     bus_sink: false
     bus_source: false
@@ -420,15 +474,23 @@ blocks:
     - 640
     rotation: 0
     state: enabled
-- name: sym_table
-  id: variable
+- name: const_64qam
+  id: variable_constellation
   parameters:
-    value: list(const_bpsk.points()) + list(const_qpsk.points()) + list(const_16qam.points())
-    comment: 'combined table for the TX
+    type: calcdist
+    const_points: '[(-7-7j), (-7-5j), (-7-1j), (-7-3j), (-7+7j), (-7+5j), (-7+1j), (-7+3j), (-5-7j), (-5-5j), (-5-1j), (-5-3j), (-5+7j), (-5+5j), (-5+1j), (-5+3j), (-1-7j), (-1-5j), (-1-1j), (-1-3j), (-1+7j), (-1+5j), (-1+1j), (-1+3j), (-3-7j), (-3-5j), (-3-1j), (-3-3j), (-3+7j), (-3+5j), (-3+1j), (-3+3j), (7-7j), (7-5j), (7-1j), (7-3j), (7+7j), (7+5j), (7+1j), (7+3j), (5-7j), (5-5j), (5-1j), (5-3j), (5+7j), (5+5j), (5+1j), (5+3j), (1-7j), (1-5j), (1-1j), (1-3j), (1+7j), (1+5j), (1+1j), (1+3j), (3-7j), (3-5j), (3-1j), (3-3j), (3+7j), (3+5j), (3+1j), (3+3j)]'
+    sym_map: '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]'
+    rot_sym: '4'
+    dims: '1'
+    normalization: digital.constellation.POWER_NORMALIZATION
+    precision: '8'
+    npwr: '0.05'
+    soft_dec_lut: None
+    comment: 'Gray: index = bits
 
-      Chunks to Symbols blocks:
+      (I = bits 0-2, Q = bits 3-5)
 
-      0-1 BPSK, 2-5 QPSK, 6-21 16-QAM'
+      npwr 0.05: as 16-QAM'
   states:
     bus_sink: false
     bus_source: false
@@ -438,10 +500,30 @@ blocks:
     - 640
     rotation: 0
     state: enabled
+- name: sym_table
+  id: variable
+  parameters:
+    value: list(const_bpsk.points()) + list(const_qpsk.points()) + list(const_16qam.points()) + list(const_64qam.points())
+    comment: 'combined table for the TX
+
+      Chunks to Symbols blocks:
+
+      0-1 BPSK, 2-5 QPSK, 6-21 16-QAM,
+
+      22-85 64-QAM'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 640
+    rotation: 0
+    state: enabled
 - name: n1_title
   id: note
   parameters:
-    note: 'STATION 1   (Node ID 1, listens on Gold code #1 and #0)'
+    note: 'STATION 1   (Node ID 1, listens on code #1 and #0)'
     comment: ''
   states:
     bus_sink: false
@@ -459,9 +541,9 @@ blocks:
 
       the link layer) -> CDMA PHY Framer (48 preamble symbols, Golay-coded header, payload as constellation indices) -> one
 
-      lane per Gold code: Chunks to Symbols (BPSK / QPSK / 16-QAM), Repeat x31 and Multiply by the code = spreading -> Burst
+      lane per code: Chunks to Symbols (BPSK / QPSK / 16-QAM / 64-QAM), Repeat x sf and Multiply by the code = spreading ->
 
-      Combiner (adds the lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz'
+      Burst Combiner (adds the lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz'
     comment: ''
   states:
     bus_sink: false
@@ -475,8 +557,8 @@ blocks:
 - name: n1_mac_tx
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nMAC -> PHY (from app)\n\nEntry point of the physical layer.  The chat application's link layer calls\nsubmit(frame, code, mod) on this block; it publishes the MAC frame as a PDU\nwhose metadata says which Gold code to spread it with (= destination station,\n0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam,\nplus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded), and 'pwr': the\nburst's power in dB relative to full power (transmit power control, <= 0).\n'at' (TD-CDMA time slots): the chip index of the transmit stream at which the\nBurst Combiner must start this burst (a late burst is dropped, never shifted).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for\
-      \ cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"MAC -> PHY (from app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        _register(self.node_id,\
+    _source_code: "\"\"\"\nMAC -> PHY (from app)\n\nEntry point of the physical layer.  The chat application's link layer calls\nsubmit(frame, code, mod) on this block; it publishes the MAC frame as a PDU\nwhose metadata says which code to spread it with (= destination station,\n0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam | 64qam,\nplus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded), and 'pwr': the\nburst's power in dB relative to full power (transmit power control, <= 0).\n'at' (TD-CDMA time slots): the chip index of the transmit stream at which the\nBurst Combiner must start this burst (a late burst is dropped, never shifted).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n  \
+      \  for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"MAC -> PHY (from app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        _register(self.node_id,\
       \ \"mac_tx\", self)\n\n    def submit(self, frame, code, mod, gain_db=0.0, at=None):\n        meta = pmt.make_dict()\n        meta = pmt.dict_add(meta, pmt.intern(\"code\"), pmt.from_long(int(code)))\n        meta = pmt.dict_add(meta, pmt.intern(\"mod\"), pmt.intern(str(mod)))\n        meta = pmt.dict_add(meta, pmt.intern(\"pwr\"), pmt.from_double(float(gain_db)))\n        if at is not None:\n            meta = pmt.dict_add(meta, pmt.intern(\"at\"), pmt.from_long(int(at)))\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_u8vector(len(frame), list(frame))))\n"
     node_id: '1'
     comment: ''
@@ -576,13 +658,14 @@ blocks:
 - name: n1_framer
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nCDMA PHY Framer\n\nBuilds one burst per PDU and outputs it as constellation *indices* (one byte per\nsymbol) for the Chunks-to-Symbols blocks of the code lanes:\n\n  preamble   48 known BPSK symbols, different for every Gold code (burst detection,\n             timing, carrier phase and frequency estimation at the receiver)\n  header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,\n             2-bit modulation, 3-bit code rate, CRC-8\n  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5)\n             or 16-QAM (6-21) of the combined symbol table\n\nOutput metadata 'code' selects the lane (spreading code) downstream; 'pwr' (the\nburst's power, from the MAC) and 'at' (its start chip in a time slot) become stream\ntags that the Combiner applies.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated\
-      \ into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, gold_degree=5, preamble_bits=48, max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA PHY\
-      \ Framer\", in_sig=None, out_sig=None)\n        self.args = (int(gold_degree), int(preamble_bits), int(max_payload))\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from wavelink.grc_phy import FramerCore, phy_config\n        g, k, m = self.args\n        self.core = FramerCore(phy_config(4e6, 2, g, k, m))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        code = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"code\"), pmt.from_long(0)))\n        mod = pmt.symbol_to_string(pmt.dict_ref(meta, pmt.intern(\"mod\"), pmt.intern(\"bpskc\")))\n        rate = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"rate\"\
-      ), pmt.from_long(0)))\n        length = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"length\"), pmt.from_long(0)))\n        bits = np.asarray(pmt.u8vector_elements(vec), dtype=np.int8)\n        idx = self.core.indices(bits, length, code, mod, rate)\n        out = pmt.dict_add(pmt.make_dict(), pmt.intern(\"code\"), pmt.from_long(code))\n        for key in (\"pwr\", \"at\"):\n            v = pmt.dict_ref(meta, pmt.intern(key), pmt.PMT_NIL)\n            if not pmt.is_null(v):\n                out = pmt.dict_add(out, pmt.intern(key), v)\n        self.message_port_pub(self.port_out, pmt.cons(out, pmt.init_u8vector(len(idx), idx.tolist())))\n"
+    _source_code: "\"\"\"\nCDMA PHY Framer\n\nBuilds one burst per PDU and outputs it as constellation *indices* (one byte per\nsymbol) for the Chunks-to-Symbols blocks of the code lanes:\n\n  preamble   48 known BPSK symbols, different for every code (burst detection,\n             timing, carrier phase and frequency estimation at the receiver)\n  header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,\n             2-bit modulation, 3-bit code rate, CRC-8 (64-QAM uses the modulation/rate\n             combinations no other modulation has)\n  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5),\n             16-QAM (6-21) or 64-QAM (22-85) of the combined symbol table\n\nOutput metadata 'code' selects the lane (spreading code) downstream; 'pwr' (the\nburst's power, from the MAC) and 'at' (its start chip in a time slot) become stream\ntags that the Combiner applies.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio\
+      \ import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, gold_degree=5,\
+      \ preamble_bits=48, max_payload=1024, code_family=\"walsh\"):\n        gr.sync_block.__init__(self, name=\"CDMA PHY Framer\", in_sig=None, out_sig=None)\n        self.args = (int(gold_degree), int(preamble_bits), int(max_payload), str(code_family))\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from wavelink.grc_phy import FramerCore, phy_config\n        g, k, m, fam = self.args\n        self.core = FramerCore(phy_config(4e6, 2, g, k, m, codes=fam))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        code = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"code\"), pmt.from_long(0)))\n        mod = pmt.symbol_to_string(pmt.dict_ref(meta,\
+      \ pmt.intern(\"mod\"), pmt.intern(\"bpskc\")))\n        rate = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"rate\"), pmt.from_long(0)))\n        length = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"length\"), pmt.from_long(0)))\n        bits = np.asarray(pmt.u8vector_elements(vec), dtype=np.int8)\n        idx = self.core.indices(bits, length, code, mod, rate)\n        out = pmt.dict_add(pmt.make_dict(), pmt.intern(\"code\"), pmt.from_long(code))\n        for key in (\"pwr\", \"at\"):\n            v = pmt.dict_ref(meta, pmt.intern(key), pmt.PMT_NIL)\n            if not pmt.is_null(v):\n                out = pmt.dict_add(out, pmt.intern(key), v)\n        self.message_port_pub(self.port_out, pmt.cons(out, pmt.init_u8vector(len(idx), idx.tolist())))\n"
     gold_degree: gold_degree
     preamble_bits: preamble_bits
     max_payload: max_payload
+    code_family: code_family
     comment: ''
     affinity: ''
     alias: ''
@@ -1430,17 +1513,18 @@ blocks:
 - name: n1_despreader
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nCDMA Despreader\n\nInput: received samples after the RRC matched filter.\nFor this station's Gold code and the broadcast code it\n  1. correlates with the code-specific preamble (differential detector: works\n     with carrier frequency offset) -> burst start, timing, coarse CFO\n  2. removes the CFO, despreads (x code, sum over 31 chips) with fractional-delay\n     timing and an early-late DLL that follows the clock offset between radios\n  3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):\n     length, modulation, code rate, CRC-8\n  4. tracks the carrier phase over the payload (decision-directed loop anchored\n     on the known preamble and header)\nand outputs one PDU per burst: the despread payload symbols, normalised to the\nunit-energy constellation, with metadata mod / rate / length / code / snr_db /\nesn0_db / cfo_hz and sample_index (the receive sample at which the burst's preamble\nwas found: the TD-CDMA time slots are kept\
-      \ in these sample counts).  The stock\nConstellation Soft Decoder blocks downstream turn them into soft bits for the LDPC\nDecoder.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id,\
-      \ role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,\n                 max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA Despreader\", in_sig=[np.complex64], out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        self.set_output_multiple(16384)        # hand samples over in big chunks (less overhead)\n        self.core = None\n        try:\n            if _project():\n                from wavelink.grc_phy import DespreaderCore, phy_config\n                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload)\n                self.core = DespreaderCore(cfg, self.node_id, self._publish)\n                _register(self.node_id, \"despreader\", self.core)\n\
-      \        except ImportError:\n            pass\n\n    def _publish(self, f):\n        mod = \"bpsk\" if f.mod in (\"bpsk\", \"bpskc\") else f.mod\n        meta = pmt.make_dict()\n        for k, v in ((\"mod\", pmt.intern(mod)), (\"code\", pmt.from_long(int(f.code_idx))),\n                     (\"rate\", pmt.from_long(int(f.rate))), (\"length\", pmt.from_long(int(f.length))),\n                     (\"mcs\", pmt.intern(f.mcs)),\n                     (\"snr_db\", pmt.from_double(float(f.snr_db))),\n                     (\"esn0_db\", pmt.from_double(float(f.esn0_db))),\n                     (\"cfo_hz\", pmt.from_double(float(f.cfo_hz))),\n                     (\"metric\", pmt.from_double(float(f.metric))),\n                     (\"sample_index\", pmt.from_long(int(f.sample_index)))):\n            meta = pmt.dict_add(meta, pmt.intern(k), v)\n        s = f.symbols\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_c32vector(len(s), s.tolist())))\n\n    def start(self):\n \
-      \       if self.core is not None:\n            self.core.start()\n        return True\n\n    def stop(self):\n        if self.core is not None:\n            self.core.stop()\n        return True\n\n    def work(self, input_items, output_items):\n        if self.core is not None:\n            self.core.push(input_items[0])\n        return len(input_items[0])\n"
+    _source_code: "\"\"\"\nCDMA Despreader\n\nInput: received samples after the RRC matched filter.\nFor this station's code and the broadcast code (Walsh rows x one scrambling\nsequence, or Gold codes: the code_family parameter) it\n  1. correlates with the code-specific preamble (differential detector: works\n     with carrier frequency offset) -> burst start, timing, coarse CFO\n  2. removes the CFO, despreads (x code, sum over 32 or 31 chips) with fractional-\n     delay timing and an early-late DLL that follows the clock offset between radios\n  3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):\n     length, modulation, code rate, CRC-8\n  4. tracks the carrier phase over the payload (decision-directed loop anchored\n     on the known preamble and header)\nand outputs one PDU per burst: the despread payload symbols, normalised to the\nunit-energy constellation, with metadata mod / rate / length / code / snr_db /\nesn0_db / cfo_hz and sample_index (the receive\
+      \ sample at which the burst's preamble\nwas found: the TD-CDMA time slots are kept in these sample counts).  The stock\nConstellation Soft Decoder blocks downstream turn them into soft bits for the LDPC\nDecoder.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n       \
+      \ if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,\n                 max_payload=1024, code_family=\"walsh\"):\n        gr.sync_block.__init__(self, name=\"CDMA Despreader\", in_sig=[np.complex64], out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        self.set_output_multiple(16384)        # hand samples over in big chunks (less overhead)\n        self.core = None\n        try:\n            if _project():\n                from wavelink.grc_phy import DespreaderCore, phy_config\n                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload, codes=code_family)\n\
+      \                self.core = DespreaderCore(cfg, self.node_id, self._publish)\n                _register(self.node_id, \"despreader\", self.core)\n        except ImportError:\n            pass\n\n    def _publish(self, f):\n        mod = \"bpsk\" if f.mod in (\"bpsk\", \"bpskc\") else f.mod\n        meta = pmt.make_dict()\n        for k, v in ((\"mod\", pmt.intern(mod)), (\"code\", pmt.from_long(int(f.code_idx))),\n                     (\"rate\", pmt.from_long(int(f.rate))), (\"length\", pmt.from_long(int(f.length))),\n                     (\"mcs\", pmt.intern(f.mcs)),\n                     (\"snr_db\", pmt.from_double(float(f.snr_db))),\n                     (\"esn0_db\", pmt.from_double(float(f.esn0_db))),\n                     (\"cfo_hz\", pmt.from_double(float(f.cfo_hz))),\n                     (\"metric\", pmt.from_double(float(f.metric))),\n                     (\"sample_index\", pmt.from_long(int(f.sample_index)))):\n            meta = pmt.dict_add(meta, pmt.intern(k), v)\n\
+      \        s = f.symbols\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_c32vector(len(s), s.tolist())))\n\n    def start(self):\n        if self.core is not None:\n            self.core.start()\n        return True\n\n    def stop(self):\n        if self.core is not None:\n            self.core.stop()\n        return True\n\n    def work(self, input_items, output_items):\n        if self.core is not None:\n            self.core.push(input_items[0])\n        return len(input_items[0])\n"
     node_id: '1'
     samp_rate: samp_rate
     sps: sps
     gold_degree: gold_degree
     preamble_bits: preamble_bits
     max_payload: max_payload
+    code_family: code_family
     comment: ''
     affinity: ''
     alias: ''
@@ -1755,6 +1839,106 @@ blocks:
     - 2690
     rotation: 0
     state: enabled
+- name: n1_rx_qam64_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("mod")
+    v: pmt.intern("64qam")
+    invert: 'False'
+    comment: 64QAM bursts
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 938
+    - 2870
+    rotation: 0
+    state: enabled
+- name: n1_rx_qam64_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: complex
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: 'buffer holds a whole burst
+
+      (1 KB BPSK-1/2 = 16.5k symbols)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 2870
+    rotation: 0
+    state: enabled
+- name: n1_rx_qam64_soft
+  id: digital_constellation_soft_decoder_cf
+  parameters:
+    constellation: const_64qam
+    npwr: '-1'
+    minoutbuf: '32768'
+    comment: 6 soft bits per symbol
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1478
+    - 2870
+    rotation: 0
+    state: enabled
+- name: n1_rx_qam64_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: float
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: '6'
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1748
+    - 2870
+    rotation: 0
+    state: enabled
+- name: n1_rx_qam64_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: float
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2018
+    - 2870
+    rotation: 0
+    state: enabled
 - name: n1_ldpc_dec
   id: epy_block
   parameters:
@@ -1862,7 +2046,7 @@ blocks:
 - name: n2_title
   id: note
   parameters:
-    note: 'STATION 2   (Node ID 2, listens on Gold code #2 and #0)'
+    note: 'STATION 2   (Node ID 2, listens on code #2 and #0)'
     comment: ''
   states:
     bus_sink: false
@@ -1870,7 +2054,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 3050
+    - 3230
     rotation: 0
     state: enabled
 - name: n2_note_tx
@@ -1880,9 +2064,9 @@ blocks:
 
       the link layer) -> CDMA PHY Framer (48 preamble symbols, Golay-coded header, payload as constellation indices) -> one
 
-      lane per Gold code: Chunks to Symbols (BPSK / QPSK / 16-QAM), Repeat x31 and Multiply by the code = spreading -> Burst
+      lane per code: Chunks to Symbols (BPSK / QPSK / 16-QAM / 64-QAM), Repeat x sf and Multiply by the code = spreading ->
 
-      Combiner (adds the lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz'
+      Burst Combiner (adds the lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz'
     comment: ''
   states:
     bus_sink: false
@@ -1890,14 +2074,14 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 3140
+    - 3320
     rotation: 0
     state: enabled
 - name: n2_mac_tx
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nMAC -> PHY (from app)\n\nEntry point of the physical layer.  The chat application's link layer calls\nsubmit(frame, code, mod) on this block; it publishes the MAC frame as a PDU\nwhose metadata says which Gold code to spread it with (= destination station,\n0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam,\nplus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded), and 'pwr': the\nburst's power in dB relative to full power (transmit power control, <= 0).\n'at' (TD-CDMA time slots): the chip index of the transmit stream at which the\nBurst Combiner must start this burst (a late burst is dropped, never shifted).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for\
-      \ cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"MAC -> PHY (from app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        _register(self.node_id,\
+    _source_code: "\"\"\"\nMAC -> PHY (from app)\n\nEntry point of the physical layer.  The chat application's link layer calls\nsubmit(frame, code, mod) on this block; it publishes the MAC frame as a PDU\nwhose metadata says which code to spread it with (= destination station,\n0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam | 64qam,\nplus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded), and 'pwr': the\nburst's power in dB relative to full power (transmit power control, <= 0).\n'at' (TD-CDMA time slots): the chip index of the transmit stream at which the\nBurst Combiner must start this burst (a late burst is dropped, never shifted).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n  \
+      \  for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"MAC -> PHY (from app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        _register(self.node_id,\
       \ \"mac_tx\", self)\n\n    def submit(self, frame, code, mod, gain_db=0.0, at=None):\n        meta = pmt.make_dict()\n        meta = pmt.dict_add(meta, pmt.intern(\"code\"), pmt.from_long(int(code)))\n        meta = pmt.dict_add(meta, pmt.intern(\"mod\"), pmt.intern(str(mod)))\n        meta = pmt.dict_add(meta, pmt.intern(\"pwr\"), pmt.from_double(float(gain_db)))\n        if at is not None:\n            meta = pmt.dict_add(meta, pmt.intern(\"at\"), pmt.from_long(int(at)))\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_u8vector(len(frame), list(frame))))\n"
     node_id: '2'
     comment: ''
@@ -1911,7 +2095,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 3250
+    - 3430
     rotation: 0
     state: enabled
 - name: n2_tx_stream
@@ -1930,7 +2114,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 278
-    - 3250
+    - 3430
     rotation: 0
     state: enabled
 - name: n2_tx_crc
@@ -1950,7 +2134,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 548
-    - 3250
+    - 3430
     rotation: 0
     state: enabled
 - name: n2_tx_pdu
@@ -1969,7 +2153,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 818
-    - 3250
+    - 3430
     rotation: 0
     state: enabled
 - name: n2_ldpc_enc
@@ -1991,19 +2175,20 @@ blocks:
     bus_structure: null
     coordinate:
     - 1088
-    - 3250
+    - 3430
     rotation: 0
     state: enabled
 - name: n2_framer
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nCDMA PHY Framer\n\nBuilds one burst per PDU and outputs it as constellation *indices* (one byte per\nsymbol) for the Chunks-to-Symbols blocks of the code lanes:\n\n  preamble   48 known BPSK symbols, different for every Gold code (burst detection,\n             timing, carrier phase and frequency estimation at the receiver)\n  header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,\n             2-bit modulation, 3-bit code rate, CRC-8\n  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5)\n             or 16-QAM (6-21) of the combined symbol table\n\nOutput metadata 'code' selects the lane (spreading code) downstream; 'pwr' (the\nburst's power, from the MAC) and 'at' (its start chip in a time slot) become stream\ntags that the Combiner applies.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated\
-      \ into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, gold_degree=5, preamble_bits=48, max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA PHY\
-      \ Framer\", in_sig=None, out_sig=None)\n        self.args = (int(gold_degree), int(preamble_bits), int(max_payload))\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from wavelink.grc_phy import FramerCore, phy_config\n        g, k, m = self.args\n        self.core = FramerCore(phy_config(4e6, 2, g, k, m))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        code = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"code\"), pmt.from_long(0)))\n        mod = pmt.symbol_to_string(pmt.dict_ref(meta, pmt.intern(\"mod\"), pmt.intern(\"bpskc\")))\n        rate = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"rate\"\
-      ), pmt.from_long(0)))\n        length = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"length\"), pmt.from_long(0)))\n        bits = np.asarray(pmt.u8vector_elements(vec), dtype=np.int8)\n        idx = self.core.indices(bits, length, code, mod, rate)\n        out = pmt.dict_add(pmt.make_dict(), pmt.intern(\"code\"), pmt.from_long(code))\n        for key in (\"pwr\", \"at\"):\n            v = pmt.dict_ref(meta, pmt.intern(key), pmt.PMT_NIL)\n            if not pmt.is_null(v):\n                out = pmt.dict_add(out, pmt.intern(key), v)\n        self.message_port_pub(self.port_out, pmt.cons(out, pmt.init_u8vector(len(idx), idx.tolist())))\n"
+    _source_code: "\"\"\"\nCDMA PHY Framer\n\nBuilds one burst per PDU and outputs it as constellation *indices* (one byte per\nsymbol) for the Chunks-to-Symbols blocks of the code lanes:\n\n  preamble   48 known BPSK symbols, different for every code (burst detection,\n             timing, carrier phase and frequency estimation at the receiver)\n  header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,\n             2-bit modulation, 3-bit code rate, CRC-8 (64-QAM uses the modulation/rate\n             combinations no other modulation has)\n  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5),\n             16-QAM (6-21) or 64-QAM (22-85) of the combined symbol table\n\nOutput metadata 'code' selects the lane (spreading code) downstream; 'pwr' (the\nburst's power, from the MAC) and 'at' (its start chip in a time slot) become stream\ntags that the Combiner applies.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio\
+      \ import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, gold_degree=5,\
+      \ preamble_bits=48, max_payload=1024, code_family=\"walsh\"):\n        gr.sync_block.__init__(self, name=\"CDMA PHY Framer\", in_sig=None, out_sig=None)\n        self.args = (int(gold_degree), int(preamble_bits), int(max_payload), str(code_family))\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from wavelink.grc_phy import FramerCore, phy_config\n        g, k, m, fam = self.args\n        self.core = FramerCore(phy_config(4e6, 2, g, k, m, codes=fam))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        code = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"code\"), pmt.from_long(0)))\n        mod = pmt.symbol_to_string(pmt.dict_ref(meta,\
+      \ pmt.intern(\"mod\"), pmt.intern(\"bpskc\")))\n        rate = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"rate\"), pmt.from_long(0)))\n        length = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"length\"), pmt.from_long(0)))\n        bits = np.asarray(pmt.u8vector_elements(vec), dtype=np.int8)\n        idx = self.core.indices(bits, length, code, mod, rate)\n        out = pmt.dict_add(pmt.make_dict(), pmt.intern(\"code\"), pmt.from_long(code))\n        for key in (\"pwr\", \"at\"):\n            v = pmt.dict_ref(meta, pmt.intern(key), pmt.PMT_NIL)\n            if not pmt.is_null(v):\n                out = pmt.dict_add(out, pmt.intern(key), v)\n        self.message_port_pub(self.port_out, pmt.cons(out, pmt.init_u8vector(len(idx), idx.tolist())))\n"
     gold_degree: gold_degree
     preamble_bits: preamble_bits
     max_payload: max_payload
+    code_family: code_family
     comment: ''
     affinity: ''
     alias: ''
@@ -2015,7 +2200,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 3800
+    - 3980
     rotation: 0
     state: enabled
 - name: n2_lane0_select
@@ -2035,7 +2220,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 3400
+    - 3580
     rotation: 0
     state: enabled
 - name: n2_lane0_stream
@@ -2054,7 +2239,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 3400
+    - 3580
     rotation: 0
     state: enabled
 - name: n2_lane0_map
@@ -2076,7 +2261,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 3400
+    - 3580
     rotation: 0
     state: enabled
 - name: n2_lane0_repeat
@@ -2096,7 +2281,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 3400
+    - 3580
     rotation: 0
     state: enabled
 - name: n2_lane0_code
@@ -2118,7 +2303,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 3480
+    - 3660
     rotation: 0
     state: enabled
 - name: n2_lane0_spread
@@ -2138,7 +2323,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 3430
+    - 3610
     rotation: 0
     state: enabled
 - name: n2_lane0_len
@@ -2159,7 +2344,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 3430
+    - 3610
     rotation: 0
     state: enabled
 - name: n2_lane1_select
@@ -2179,7 +2364,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 3600
+    - 3780
     rotation: 0
     state: enabled
 - name: n2_lane1_stream
@@ -2198,7 +2383,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 3600
+    - 3780
     rotation: 0
     state: enabled
 - name: n2_lane1_map
@@ -2220,7 +2405,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 3600
+    - 3780
     rotation: 0
     state: enabled
 - name: n2_lane1_repeat
@@ -2240,7 +2425,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 3600
+    - 3780
     rotation: 0
     state: enabled
 - name: n2_lane1_code
@@ -2262,7 +2447,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 3680
+    - 3860
     rotation: 0
     state: enabled
 - name: n2_lane1_spread
@@ -2282,7 +2467,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 3630
+    - 3810
     rotation: 0
     state: enabled
 - name: n2_lane1_len
@@ -2303,7 +2488,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 3630
+    - 3810
     rotation: 0
     state: enabled
 - name: n2_lane2_select
@@ -2323,7 +2508,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 3800
+    - 3980
     rotation: 0
     state: enabled
 - name: n2_lane2_stream
@@ -2342,7 +2527,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 3800
+    - 3980
     rotation: 0
     state: enabled
 - name: n2_lane2_map
@@ -2364,7 +2549,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 3800
+    - 3980
     rotation: 0
     state: enabled
 - name: n2_lane2_repeat
@@ -2384,7 +2569,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 3800
+    - 3980
     rotation: 0
     state: enabled
 - name: n2_lane2_code
@@ -2406,7 +2591,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 3880
+    - 4060
     rotation: 0
     state: enabled
 - name: n2_lane2_spread
@@ -2426,7 +2611,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 3830
+    - 4010
     rotation: 0
     state: enabled
 - name: n2_lane2_len
@@ -2447,7 +2632,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 3830
+    - 4010
     rotation: 0
     state: enabled
 - name: n2_lane3_select
@@ -2467,7 +2652,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 4000
+    - 4180
     rotation: 0
     state: enabled
 - name: n2_lane3_stream
@@ -2486,7 +2671,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 4000
+    - 4180
     rotation: 0
     state: enabled
 - name: n2_lane3_map
@@ -2508,7 +2693,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 4000
+    - 4180
     rotation: 0
     state: enabled
 - name: n2_lane3_repeat
@@ -2528,7 +2713,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 4000
+    - 4180
     rotation: 0
     state: enabled
 - name: n2_lane3_code
@@ -2550,7 +2735,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 4080
+    - 4260
     rotation: 0
     state: enabled
 - name: n2_lane3_spread
@@ -2570,7 +2755,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 4030
+    - 4210
     rotation: 0
     state: enabled
 - name: n2_lane3_len
@@ -2591,7 +2776,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 4030
+    - 4210
     rotation: 0
     state: enabled
 - name: n2_lane4_select
@@ -2611,7 +2796,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 4200
+    - 4380
     rotation: 0
     state: enabled
 - name: n2_lane4_stream
@@ -2630,7 +2815,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 4200
+    - 4380
     rotation: 0
     state: enabled
 - name: n2_lane4_map
@@ -2652,7 +2837,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 4200
+    - 4380
     rotation: 0
     state: enabled
 - name: n2_lane4_repeat
@@ -2672,7 +2857,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 4200
+    - 4380
     rotation: 0
     state: enabled
 - name: n2_lane4_code
@@ -2694,7 +2879,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 4280
+    - 4460
     rotation: 0
     state: enabled
 - name: n2_lane4_spread
@@ -2714,7 +2899,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 4230
+    - 4410
     rotation: 0
     state: enabled
 - name: n2_lane4_len
@@ -2735,7 +2920,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 4230
+    - 4410
     rotation: 0
     state: enabled
 - name: n2_combiner
@@ -2762,7 +2947,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1928
-    - 3760
+    - 3940
     rotation: 0
     state: enabled
 - name: n2_tx_rrc
@@ -2785,7 +2970,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2198
-    - 3800
+    - 3980
     rotation: 0
     state: enabled
 - name: n2_tx_gain
@@ -2805,7 +2990,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2468
-    - 3800
+    - 3980
     rotation: 0
     state: enabled
 - name: n2_note_rx
@@ -2823,7 +3008,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 4450
+    - 4630
     rotation: 0
     state: enabled
 - name: n2_rx_mf
@@ -2845,23 +3030,24 @@ blocks:
     bus_structure: null
     coordinate:
     - 278
-    - 4560
+    - 4740
     rotation: 0
     state: enabled
 - name: n2_despreader
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nCDMA Despreader\n\nInput: received samples after the RRC matched filter.\nFor this station's Gold code and the broadcast code it\n  1. correlates with the code-specific preamble (differential detector: works\n     with carrier frequency offset) -> burst start, timing, coarse CFO\n  2. removes the CFO, despreads (x code, sum over 31 chips) with fractional-delay\n     timing and an early-late DLL that follows the clock offset between radios\n  3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):\n     length, modulation, code rate, CRC-8\n  4. tracks the carrier phase over the payload (decision-directed loop anchored\n     on the known preamble and header)\nand outputs one PDU per burst: the despread payload symbols, normalised to the\nunit-energy constellation, with metadata mod / rate / length / code / snr_db /\nesn0_db / cfo_hz and sample_index (the receive sample at which the burst's preamble\nwas found: the TD-CDMA time slots are kept\
-      \ in these sample counts).  The stock\nConstellation Soft Decoder blocks downstream turn them into soft bits for the LDPC\nDecoder.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id,\
-      \ role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,\n                 max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA Despreader\", in_sig=[np.complex64], out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        self.set_output_multiple(16384)        # hand samples over in big chunks (less overhead)\n        self.core = None\n        try:\n            if _project():\n                from wavelink.grc_phy import DespreaderCore, phy_config\n                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload)\n                self.core = DespreaderCore(cfg, self.node_id, self._publish)\n                _register(self.node_id, \"despreader\", self.core)\n\
-      \        except ImportError:\n            pass\n\n    def _publish(self, f):\n        mod = \"bpsk\" if f.mod in (\"bpsk\", \"bpskc\") else f.mod\n        meta = pmt.make_dict()\n        for k, v in ((\"mod\", pmt.intern(mod)), (\"code\", pmt.from_long(int(f.code_idx))),\n                     (\"rate\", pmt.from_long(int(f.rate))), (\"length\", pmt.from_long(int(f.length))),\n                     (\"mcs\", pmt.intern(f.mcs)),\n                     (\"snr_db\", pmt.from_double(float(f.snr_db))),\n                     (\"esn0_db\", pmt.from_double(float(f.esn0_db))),\n                     (\"cfo_hz\", pmt.from_double(float(f.cfo_hz))),\n                     (\"metric\", pmt.from_double(float(f.metric))),\n                     (\"sample_index\", pmt.from_long(int(f.sample_index)))):\n            meta = pmt.dict_add(meta, pmt.intern(k), v)\n        s = f.symbols\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_c32vector(len(s), s.tolist())))\n\n    def start(self):\n \
-      \       if self.core is not None:\n            self.core.start()\n        return True\n\n    def stop(self):\n        if self.core is not None:\n            self.core.stop()\n        return True\n\n    def work(self, input_items, output_items):\n        if self.core is not None:\n            self.core.push(input_items[0])\n        return len(input_items[0])\n"
+    _source_code: "\"\"\"\nCDMA Despreader\n\nInput: received samples after the RRC matched filter.\nFor this station's code and the broadcast code (Walsh rows x one scrambling\nsequence, or Gold codes: the code_family parameter) it\n  1. correlates with the code-specific preamble (differential detector: works\n     with carrier frequency offset) -> burst start, timing, coarse CFO\n  2. removes the CFO, despreads (x code, sum over 32 or 31 chips) with fractional-\n     delay timing and an early-late DLL that follows the clock offset between radios\n  3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):\n     length, modulation, code rate, CRC-8\n  4. tracks the carrier phase over the payload (decision-directed loop anchored\n     on the known preamble and header)\nand outputs one PDU per burst: the despread payload symbols, normalised to the\nunit-energy constellation, with metadata mod / rate / length / code / snr_db /\nesn0_db / cfo_hz and sample_index (the receive\
+      \ sample at which the burst's preamble\nwas found: the TD-CDMA time slots are kept in these sample counts).  The stock\nConstellation Soft Decoder blocks downstream turn them into soft bits for the LDPC\nDecoder.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n       \
+      \ if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,\n                 max_payload=1024, code_family=\"walsh\"):\n        gr.sync_block.__init__(self, name=\"CDMA Despreader\", in_sig=[np.complex64], out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        self.set_output_multiple(16384)        # hand samples over in big chunks (less overhead)\n        self.core = None\n        try:\n            if _project():\n                from wavelink.grc_phy import DespreaderCore, phy_config\n                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload, codes=code_family)\n\
+      \                self.core = DespreaderCore(cfg, self.node_id, self._publish)\n                _register(self.node_id, \"despreader\", self.core)\n        except ImportError:\n            pass\n\n    def _publish(self, f):\n        mod = \"bpsk\" if f.mod in (\"bpsk\", \"bpskc\") else f.mod\n        meta = pmt.make_dict()\n        for k, v in ((\"mod\", pmt.intern(mod)), (\"code\", pmt.from_long(int(f.code_idx))),\n                     (\"rate\", pmt.from_long(int(f.rate))), (\"length\", pmt.from_long(int(f.length))),\n                     (\"mcs\", pmt.intern(f.mcs)),\n                     (\"snr_db\", pmt.from_double(float(f.snr_db))),\n                     (\"esn0_db\", pmt.from_double(float(f.esn0_db))),\n                     (\"cfo_hz\", pmt.from_double(float(f.cfo_hz))),\n                     (\"metric\", pmt.from_double(float(f.metric))),\n                     (\"sample_index\", pmt.from_long(int(f.sample_index)))):\n            meta = pmt.dict_add(meta, pmt.intern(k), v)\n\
+      \        s = f.symbols\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_c32vector(len(s), s.tolist())))\n\n    def start(self):\n        if self.core is not None:\n            self.core.start()\n        return True\n\n    def stop(self):\n        if self.core is not None:\n            self.core.stop()\n        return True\n\n    def work(self, input_items, output_items):\n        if self.core is not None:\n            self.core.push(input_items[0])\n        return len(input_items[0])\n"
     node_id: '2'
     samp_rate: samp_rate
     sps: sps
     gold_degree: gold_degree
     preamble_bits: preamble_bits
     max_payload: max_payload
+    code_family: code_family
     comment: ''
     affinity: ''
     alias: ''
@@ -2873,7 +3059,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 548
-    - 4560
+    - 4740
     rotation: 0
     state: enabled
 - name: n2_rx_bpsk_select
@@ -2893,7 +3079,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 938
-    - 4560
+    - 4740
     rotation: 0
     state: enabled
 - name: n2_rx_bpsk_stream
@@ -2914,7 +3100,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1208
-    - 4560
+    - 4740
     rotation: 0
     state: enabled
 - name: n2_rx_bpsk_soft
@@ -2933,7 +3119,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1478
-    - 4560
+    - 4740
     rotation: 0
     state: enabled
 - name: n2_rx_bpsk_len
@@ -2954,7 +3140,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1748
-    - 4560
+    - 4740
     rotation: 0
     state: enabled
 - name: n2_rx_bpsk_pdu
@@ -2973,7 +3159,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2018
-    - 4560
+    - 4740
     rotation: 0
     state: enabled
 - name: n2_rx_qpsk_select
@@ -2993,7 +3179,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 938
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_qpsk_stream
@@ -3014,7 +3200,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1208
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_qpsk_soft
@@ -3033,7 +3219,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1478
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_qpsk_len
@@ -3054,7 +3240,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1748
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_qpsk_pdu
@@ -3073,7 +3259,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2018
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_qam16_select
@@ -3093,7 +3279,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 938
-    - 4920
+    - 5100
     rotation: 0
     state: enabled
 - name: n2_rx_qam16_stream
@@ -3114,7 +3300,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1208
-    - 4920
+    - 5100
     rotation: 0
     state: enabled
 - name: n2_rx_qam16_soft
@@ -3133,7 +3319,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1478
-    - 4920
+    - 5100
     rotation: 0
     state: enabled
 - name: n2_rx_qam16_len
@@ -3154,7 +3340,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1748
-    - 4920
+    - 5100
     rotation: 0
     state: enabled
 - name: n2_rx_qam16_pdu
@@ -3173,7 +3359,107 @@ blocks:
     bus_structure: null
     coordinate:
     - 2018
-    - 4920
+    - 5100
+    rotation: 0
+    state: enabled
+- name: n2_rx_qam64_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("mod")
+    v: pmt.intern("64qam")
+    invert: 'False'
+    comment: 64QAM bursts
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 938
+    - 5280
+    rotation: 0
+    state: enabled
+- name: n2_rx_qam64_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: complex
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: 'buffer holds a whole burst
+
+      (1 KB BPSK-1/2 = 16.5k symbols)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 5280
+    rotation: 0
+    state: enabled
+- name: n2_rx_qam64_soft
+  id: digital_constellation_soft_decoder_cf
+  parameters:
+    constellation: const_64qam
+    npwr: '-1'
+    minoutbuf: '32768'
+    comment: 6 soft bits per symbol
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1478
+    - 5280
+    rotation: 0
+    state: enabled
+- name: n2_rx_qam64_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: float
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: '6'
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1748
+    - 5280
+    rotation: 0
+    state: enabled
+- name: n2_rx_qam64_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: float
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2018
+    - 5280
     rotation: 0
     state: enabled
 - name: n2_ldpc_dec
@@ -3196,7 +3482,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2288
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_bytes
@@ -3215,7 +3501,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2558
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_crc
@@ -3237,7 +3523,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2828
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_rx_pdu
@@ -3256,7 +3542,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 3098
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n2_mac_rx
@@ -3277,13 +3563,13 @@ blocks:
     bus_structure: null
     coordinate:
     - 3368
-    - 4740
+    - 4920
     rotation: 0
     state: enabled
 - name: n3_title
   id: note
   parameters:
-    note: 'STATION 3   (Node ID 3, listens on Gold code #3 and #0)'
+    note: 'STATION 3   (Node ID 3, listens on code #3 and #0)'
     comment: ''
   states:
     bus_sink: false
@@ -3291,7 +3577,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 5280
+    - 5640
     rotation: 0
     state: enabled
 - name: n3_note_tx
@@ -3301,9 +3587,9 @@ blocks:
 
       the link layer) -> CDMA PHY Framer (48 preamble symbols, Golay-coded header, payload as constellation indices) -> one
 
-      lane per Gold code: Chunks to Symbols (BPSK / QPSK / 16-QAM), Repeat x31 and Multiply by the code = spreading -> Burst
+      lane per code: Chunks to Symbols (BPSK / QPSK / 16-QAM / 64-QAM), Repeat x sf and Multiply by the code = spreading ->
 
-      Combiner (adds the lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz'
+      Burst Combiner (adds the lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz'
     comment: ''
   states:
     bus_sink: false
@@ -3311,14 +3597,14 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 5370
+    - 5730
     rotation: 0
     state: enabled
 - name: n3_mac_tx
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nMAC -> PHY (from app)\n\nEntry point of the physical layer.  The chat application's link layer calls\nsubmit(frame, code, mod) on this block; it publishes the MAC frame as a PDU\nwhose metadata says which Gold code to spread it with (= destination station,\n0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam,\nplus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded), and 'pwr': the\nburst's power in dB relative to full power (transmit power control, <= 0).\n'at' (TD-CDMA time slots): the chip index of the transmit stream at which the\nBurst Combiner must start this burst (a late burst is dropped, never shifted).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for\
-      \ cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"MAC -> PHY (from app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        _register(self.node_id,\
+    _source_code: "\"\"\"\nMAC -> PHY (from app)\n\nEntry point of the physical layer.  The chat application's link layer calls\nsubmit(frame, code, mod) on this block; it publishes the MAC frame as a PDU\nwhose metadata says which code to spread it with (= destination station,\n0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam | 64qam,\nplus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded), and 'pwr': the\nburst's power in dB relative to full power (transmit power control, <= 0).\n'at' (TD-CDMA time slots): the chip index of the transmit stream at which the\nBurst Combiner must start this burst (a late burst is dropped, never shifted).\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n  \
+      \  for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1):\n        gr.sync_block.__init__(self, name=\"MAC -> PHY (from app)\", in_sig=None, out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        _register(self.node_id,\
       \ \"mac_tx\", self)\n\n    def submit(self, frame, code, mod, gain_db=0.0, at=None):\n        meta = pmt.make_dict()\n        meta = pmt.dict_add(meta, pmt.intern(\"code\"), pmt.from_long(int(code)))\n        meta = pmt.dict_add(meta, pmt.intern(\"mod\"), pmt.intern(str(mod)))\n        meta = pmt.dict_add(meta, pmt.intern(\"pwr\"), pmt.from_double(float(gain_db)))\n        if at is not None:\n            meta = pmt.dict_add(meta, pmt.intern(\"at\"), pmt.from_long(int(at)))\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_u8vector(len(frame), list(frame))))\n"
     node_id: '3'
     comment: ''
@@ -3332,7 +3618,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 5480
+    - 5840
     rotation: 0
     state: enabled
 - name: n3_tx_stream
@@ -3351,7 +3637,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 278
-    - 5480
+    - 5840
     rotation: 0
     state: enabled
 - name: n3_tx_crc
@@ -3371,7 +3657,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 548
-    - 5480
+    - 5840
     rotation: 0
     state: enabled
 - name: n3_tx_pdu
@@ -3390,7 +3676,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 818
-    - 5480
+    - 5840
     rotation: 0
     state: enabled
 - name: n3_ldpc_enc
@@ -3412,19 +3698,20 @@ blocks:
     bus_structure: null
     coordinate:
     - 1088
-    - 5480
+    - 5840
     rotation: 0
     state: enabled
 - name: n3_framer
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nCDMA PHY Framer\n\nBuilds one burst per PDU and outputs it as constellation *indices* (one byte per\nsymbol) for the Chunks-to-Symbols blocks of the code lanes:\n\n  preamble   48 known BPSK symbols, different for every Gold code (burst detection,\n             timing, carrier phase and frequency estimation at the receiver)\n  header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,\n             2-bit modulation, 3-bit code rate, CRC-8\n  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5)\n             or 16-QAM (6-21) of the combined symbol table\n\nOutput metadata 'code' selects the lane (spreading code) downstream; 'pwr' (the\nburst's power, from the MAC) and 'at' (its start chip in a time slot) become stream\ntags that the Combiner applies.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated\
-      \ into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, gold_degree=5, preamble_bits=48, max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA PHY\
-      \ Framer\", in_sig=None, out_sig=None)\n        self.args = (int(gold_degree), int(preamble_bits), int(max_payload))\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from wavelink.grc_phy import FramerCore, phy_config\n        g, k, m = self.args\n        self.core = FramerCore(phy_config(4e6, 2, g, k, m))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        code = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"code\"), pmt.from_long(0)))\n        mod = pmt.symbol_to_string(pmt.dict_ref(meta, pmt.intern(\"mod\"), pmt.intern(\"bpskc\")))\n        rate = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"rate\"\
-      ), pmt.from_long(0)))\n        length = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"length\"), pmt.from_long(0)))\n        bits = np.asarray(pmt.u8vector_elements(vec), dtype=np.int8)\n        idx = self.core.indices(bits, length, code, mod, rate)\n        out = pmt.dict_add(pmt.make_dict(), pmt.intern(\"code\"), pmt.from_long(code))\n        for key in (\"pwr\", \"at\"):\n            v = pmt.dict_ref(meta, pmt.intern(key), pmt.PMT_NIL)\n            if not pmt.is_null(v):\n                out = pmt.dict_add(out, pmt.intern(key), v)\n        self.message_port_pub(self.port_out, pmt.cons(out, pmt.init_u8vector(len(idx), idx.tolist())))\n"
+    _source_code: "\"\"\"\nCDMA PHY Framer\n\nBuilds one burst per PDU and outputs it as constellation *indices* (one byte per\nsymbol) for the Chunks-to-Symbols blocks of the code lanes:\n\n  preamble   48 known BPSK symbols, different for every code (burst detection,\n             timing, carrier phase and frequency estimation at the receiver)\n  header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,\n             2-bit modulation, 3-bit code rate, CRC-8 (64-QAM uses the modulation/rate\n             combinations no other modulation has)\n  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5),\n             16-QAM (6-21) or 64-QAM (22-85) of the combined symbol table\n\nOutput metadata 'code' selects the lane (spreading code) downstream; 'pwr' (the\nburst's power, from the MAC) and 'at' (its start chip in a time slot) become stream\ntags that the Combiner applies.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio\
+      \ import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, gold_degree=5,\
+      \ preamble_bits=48, max_payload=1024, code_family=\"walsh\"):\n        gr.sync_block.__init__(self, name=\"CDMA PHY Framer\", in_sig=None, out_sig=None)\n        self.args = (int(gold_degree), int(preamble_bits), int(max_payload), str(code_family))\n        self.port_in, self.port_out = pmt.intern(\"pdus\"), pmt.intern(\"pdus\")\n        self.message_port_register_in(self.port_in)\n        self.message_port_register_out(self.port_out)\n        self.set_msg_handler(self.port_in, self.handle)\n        self.core = None\n\n    def start(self):\n        _project()\n        from wavelink.grc_phy import FramerCore, phy_config\n        g, k, m, fam = self.args\n        self.core = FramerCore(phy_config(4e6, 2, g, k, m, codes=fam))\n        return True\n\n    def handle(self, msg):\n        if self.core is None:\n            self.start()\n        meta, vec = pmt.car(msg), pmt.cdr(msg)\n        code = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"code\"), pmt.from_long(0)))\n        mod = pmt.symbol_to_string(pmt.dict_ref(meta,\
+      \ pmt.intern(\"mod\"), pmt.intern(\"bpskc\")))\n        rate = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"rate\"), pmt.from_long(0)))\n        length = pmt.to_long(pmt.dict_ref(meta, pmt.intern(\"length\"), pmt.from_long(0)))\n        bits = np.asarray(pmt.u8vector_elements(vec), dtype=np.int8)\n        idx = self.core.indices(bits, length, code, mod, rate)\n        out = pmt.dict_add(pmt.make_dict(), pmt.intern(\"code\"), pmt.from_long(code))\n        for key in (\"pwr\", \"at\"):\n            v = pmt.dict_ref(meta, pmt.intern(key), pmt.PMT_NIL)\n            if not pmt.is_null(v):\n                out = pmt.dict_add(out, pmt.intern(key), v)\n        self.message_port_pub(self.port_out, pmt.cons(out, pmt.init_u8vector(len(idx), idx.tolist())))\n"
     gold_degree: gold_degree
     preamble_bits: preamble_bits
     max_payload: max_payload
+    code_family: code_family
     comment: ''
     affinity: ''
     alias: ''
@@ -3436,7 +3723,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 6030
+    - 6390
     rotation: 0
     state: enabled
 - name: n3_lane0_select
@@ -3456,7 +3743,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 5630
+    - 5990
     rotation: 0
     state: enabled
 - name: n3_lane0_stream
@@ -3475,7 +3762,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 5630
+    - 5990
     rotation: 0
     state: enabled
 - name: n3_lane0_map
@@ -3497,7 +3784,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 5630
+    - 5990
     rotation: 0
     state: enabled
 - name: n3_lane0_repeat
@@ -3517,7 +3804,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 5630
+    - 5990
     rotation: 0
     state: enabled
 - name: n3_lane0_code
@@ -3539,7 +3826,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 5710
+    - 6070
     rotation: 0
     state: enabled
 - name: n3_lane0_spread
@@ -3559,7 +3846,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 5660
+    - 6020
     rotation: 0
     state: enabled
 - name: n3_lane0_len
@@ -3580,7 +3867,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 5660
+    - 6020
     rotation: 0
     state: enabled
 - name: n3_lane1_select
@@ -3600,7 +3887,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 5830
+    - 6190
     rotation: 0
     state: enabled
 - name: n3_lane1_stream
@@ -3619,7 +3906,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 5830
+    - 6190
     rotation: 0
     state: enabled
 - name: n3_lane1_map
@@ -3641,7 +3928,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 5830
+    - 6190
     rotation: 0
     state: enabled
 - name: n3_lane1_repeat
@@ -3661,7 +3948,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 5830
+    - 6190
     rotation: 0
     state: enabled
 - name: n3_lane1_code
@@ -3683,7 +3970,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 5910
+    - 6270
     rotation: 0
     state: enabled
 - name: n3_lane1_spread
@@ -3703,7 +3990,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 5860
+    - 6220
     rotation: 0
     state: enabled
 - name: n3_lane1_len
@@ -3724,7 +4011,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 5860
+    - 6220
     rotation: 0
     state: enabled
 - name: n3_lane2_select
@@ -3744,7 +4031,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 6030
+    - 6390
     rotation: 0
     state: enabled
 - name: n3_lane2_stream
@@ -3763,7 +4050,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 6030
+    - 6390
     rotation: 0
     state: enabled
 - name: n3_lane2_map
@@ -3785,7 +4072,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 6030
+    - 6390
     rotation: 0
     state: enabled
 - name: n3_lane2_repeat
@@ -3805,7 +4092,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 6030
+    - 6390
     rotation: 0
     state: enabled
 - name: n3_lane2_code
@@ -3827,7 +4114,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 6110
+    - 6470
     rotation: 0
     state: enabled
 - name: n3_lane2_spread
@@ -3847,7 +4134,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 6060
+    - 6420
     rotation: 0
     state: enabled
 - name: n3_lane2_len
@@ -3868,7 +4155,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 6060
+    - 6420
     rotation: 0
     state: enabled
 - name: n3_lane3_select
@@ -3888,7 +4175,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 6230
+    - 6590
     rotation: 0
     state: enabled
 - name: n3_lane3_stream
@@ -3907,7 +4194,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 6230
+    - 6590
     rotation: 0
     state: enabled
 - name: n3_lane3_map
@@ -3929,7 +4216,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 6230
+    - 6590
     rotation: 0
     state: enabled
 - name: n3_lane3_repeat
@@ -3949,7 +4236,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 6230
+    - 6590
     rotation: 0
     state: enabled
 - name: n3_lane3_code
@@ -3971,7 +4258,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 6310
+    - 6670
     rotation: 0
     state: enabled
 - name: n3_lane3_spread
@@ -3991,7 +4278,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 6260
+    - 6620
     rotation: 0
     state: enabled
 - name: n3_lane3_len
@@ -4012,7 +4299,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 6260
+    - 6620
     rotation: 0
     state: enabled
 - name: n3_lane4_select
@@ -4032,7 +4319,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 308
-    - 6430
+    - 6790
     rotation: 0
     state: enabled
 - name: n3_lane4_stream
@@ -4051,7 +4338,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 578
-    - 6430
+    - 6790
     rotation: 0
     state: enabled
 - name: n3_lane4_map
@@ -4073,7 +4360,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 848
-    - 6430
+    - 6790
     rotation: 0
     state: enabled
 - name: n3_lane4_repeat
@@ -4093,7 +4380,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 6430
+    - 6790
     rotation: 0
     state: enabled
 - name: n3_lane4_code
@@ -4115,7 +4402,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1118
-    - 6510
+    - 6870
     rotation: 0
     state: enabled
 - name: n3_lane4_spread
@@ -4135,7 +4422,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1388
-    - 6460
+    - 6820
     rotation: 0
     state: enabled
 - name: n3_lane4_len
@@ -4156,7 +4443,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1598
-    - 6460
+    - 6820
     rotation: 0
     state: enabled
 - name: n3_combiner
@@ -4183,7 +4470,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1928
-    - 5990
+    - 6350
     rotation: 0
     state: enabled
 - name: n3_tx_rrc
@@ -4206,7 +4493,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2198
-    - 6030
+    - 6390
     rotation: 0
     state: enabled
 - name: n3_tx_gain
@@ -4226,7 +4513,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2468
-    - 6030
+    - 6390
     rotation: 0
     state: enabled
 - name: n3_note_rx
@@ -4244,7 +4531,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 8
-    - 6680
+    - 7040
     rotation: 0
     state: enabled
 - name: n3_rx_mf
@@ -4266,23 +4553,24 @@ blocks:
     bus_structure: null
     coordinate:
     - 278
-    - 6790
+    - 7150
     rotation: 0
     state: enabled
 - name: n3_despreader
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nCDMA Despreader\n\nInput: received samples after the RRC matched filter.\nFor this station's Gold code and the broadcast code it\n  1. correlates with the code-specific preamble (differential detector: works\n     with carrier frequency offset) -> burst start, timing, coarse CFO\n  2. removes the CFO, despreads (x code, sum over 31 chips) with fractional-delay\n     timing and an early-late DLL that follows the clock offset between radios\n  3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):\n     length, modulation, code rate, CRC-8\n  4. tracks the carrier phase over the payload (decision-directed loop anchored\n     on the known preamble and header)\nand outputs one PDU per burst: the despread payload symbols, normalised to the\nunit-energy constellation, with metadata mod / rate / length / code / snr_db /\nesn0_db / cfo_hz and sample_index (the receive sample at which the burst's preamble\nwas found: the TD-CDMA time slots are kept\
-      \ in these sample counts).  The stock\nConstellation Soft Decoder blocks downstream turn them into soft bits for the LDPC\nDecoder.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n        if _project():\n            from wavelink.grc_phy import register\n            register(node_id,\
-      \ role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,\n                 max_payload=1024):\n        gr.sync_block.__init__(self, name=\"CDMA Despreader\", in_sig=[np.complex64], out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        self.set_output_multiple(16384)        # hand samples over in big chunks (less overhead)\n        self.core = None\n        try:\n            if _project():\n                from wavelink.grc_phy import DespreaderCore, phy_config\n                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload)\n                self.core = DespreaderCore(cfg, self.node_id, self._publish)\n                _register(self.node_id, \"despreader\", self.core)\n\
-      \        except ImportError:\n            pass\n\n    def _publish(self, f):\n        mod = \"bpsk\" if f.mod in (\"bpsk\", \"bpskc\") else f.mod\n        meta = pmt.make_dict()\n        for k, v in ((\"mod\", pmt.intern(mod)), (\"code\", pmt.from_long(int(f.code_idx))),\n                     (\"rate\", pmt.from_long(int(f.rate))), (\"length\", pmt.from_long(int(f.length))),\n                     (\"mcs\", pmt.intern(f.mcs)),\n                     (\"snr_db\", pmt.from_double(float(f.snr_db))),\n                     (\"esn0_db\", pmt.from_double(float(f.esn0_db))),\n                     (\"cfo_hz\", pmt.from_double(float(f.cfo_hz))),\n                     (\"metric\", pmt.from_double(float(f.metric))),\n                     (\"sample_index\", pmt.from_long(int(f.sample_index)))):\n            meta = pmt.dict_add(meta, pmt.intern(k), v)\n        s = f.symbols\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_c32vector(len(s), s.tolist())))\n\n    def start(self):\n \
-      \       if self.core is not None:\n            self.core.start()\n        return True\n\n    def stop(self):\n        if self.core is not None:\n            self.core.stop()\n        return True\n\n    def work(self, input_items, output_items):\n        if self.core is not None:\n            self.core.push(input_items[0])\n        return len(input_items[0])\n"
+    _source_code: "\"\"\"\nCDMA Despreader\n\nInput: received samples after the RRC matched filter.\nFor this station's code and the broadcast code (Walsh rows x one scrambling\nsequence, or Gold codes: the code_family parameter) it\n  1. correlates with the code-specific preamble (differential detector: works\n     with carrier frequency offset) -> burst start, timing, coarse CFO\n  2. removes the CFO, despreads (x code, sum over 32 or 31 chips) with fractional-\n     delay timing and an early-late DLL that follows the clock offset between radios\n  3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):\n     length, modulation, code rate, CRC-8\n  4. tracks the carrier phase over the payload (decision-directed loop anchored\n     on the known preamble and header)\nand outputs one PDU per burst: the despread payload symbols, normalised to the\nunit-energy constellation, with metadata mod / rate / length / code / snr_db /\nesn0_db / cfo_hz and sample_index (the receive\
+      \ sample at which the burst's preamble\nwas found: the TD-CDMA time slots are kept in these sample counts).  The stock\nConstellation Soft Decoder blocks downstream turn them into soft bits for the LDPC\nDecoder.\n\"\"\"\nimport os\nimport sys\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\ndef _project():\n    \"\"\"Make the wavelink package importable (this file is generated into grc/ or build/grc/).\"\"\"\n    here = os.path.dirname(os.path.abspath(globals().get(\"__file__\", os.path.join(os.getcwd(), \"x\"))))\n    for cand in (here, os.path.join(here, \"..\"), os.path.join(here, \"..\", \"..\"),\n                 os.getcwd(), os.path.join(os.getcwd(), \"..\")):\n        if os.path.isdir(os.path.join(cand, \"wavelink\")):\n            cand = os.path.abspath(cand)\n            if cand not in sys.path:\n                sys.path.insert(0, cand)\n            return True\n    return \"wavelink\" in sys.modules\n\n\ndef _register(node_id, role, obj):\n    try:\n       \
+      \ if _project():\n            from wavelink.grc_phy import register\n            register(node_id, role, obj)\n    except ImportError:\n        pass                     # opened in GNU Radio Companion outside the project: ports only\n\n\nclass blk(gr.sync_block):\n    def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,\n                 max_payload=1024, code_family=\"walsh\"):\n        gr.sync_block.__init__(self, name=\"CDMA Despreader\", in_sig=[np.complex64], out_sig=None)\n        self.node_id = int(node_id)\n        self.port = pmt.intern(\"pdus\")\n        self.message_port_register_out(self.port)\n        self.set_output_multiple(16384)        # hand samples over in big chunks (less overhead)\n        self.core = None\n        try:\n            if _project():\n                from wavelink.grc_phy import DespreaderCore, phy_config\n                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload, codes=code_family)\n\
+      \                self.core = DespreaderCore(cfg, self.node_id, self._publish)\n                _register(self.node_id, \"despreader\", self.core)\n        except ImportError:\n            pass\n\n    def _publish(self, f):\n        mod = \"bpsk\" if f.mod in (\"bpsk\", \"bpskc\") else f.mod\n        meta = pmt.make_dict()\n        for k, v in ((\"mod\", pmt.intern(mod)), (\"code\", pmt.from_long(int(f.code_idx))),\n                     (\"rate\", pmt.from_long(int(f.rate))), (\"length\", pmt.from_long(int(f.length))),\n                     (\"mcs\", pmt.intern(f.mcs)),\n                     (\"snr_db\", pmt.from_double(float(f.snr_db))),\n                     (\"esn0_db\", pmt.from_double(float(f.esn0_db))),\n                     (\"cfo_hz\", pmt.from_double(float(f.cfo_hz))),\n                     (\"metric\", pmt.from_double(float(f.metric))),\n                     (\"sample_index\", pmt.from_long(int(f.sample_index)))):\n            meta = pmt.dict_add(meta, pmt.intern(k), v)\n\
+      \        s = f.symbols\n        self.message_port_pub(self.port, pmt.cons(meta, pmt.init_c32vector(len(s), s.tolist())))\n\n    def start(self):\n        if self.core is not None:\n            self.core.start()\n        return True\n\n    def stop(self):\n        if self.core is not None:\n            self.core.stop()\n        return True\n\n    def work(self, input_items, output_items):\n        if self.core is not None:\n            self.core.push(input_items[0])\n        return len(input_items[0])\n"
     node_id: '3'
     samp_rate: samp_rate
     sps: sps
     gold_degree: gold_degree
     preamble_bits: preamble_bits
     max_payload: max_payload
+    code_family: code_family
     comment: ''
     affinity: ''
     alias: ''
@@ -4294,7 +4582,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 548
-    - 6790
+    - 7150
     rotation: 0
     state: enabled
 - name: n3_rx_bpsk_select
@@ -4314,7 +4602,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 938
-    - 6790
+    - 7150
     rotation: 0
     state: enabled
 - name: n3_rx_bpsk_stream
@@ -4335,7 +4623,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1208
-    - 6790
+    - 7150
     rotation: 0
     state: enabled
 - name: n3_rx_bpsk_soft
@@ -4354,7 +4642,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1478
-    - 6790
+    - 7150
     rotation: 0
     state: enabled
 - name: n3_rx_bpsk_len
@@ -4375,7 +4663,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1748
-    - 6790
+    - 7150
     rotation: 0
     state: enabled
 - name: n3_rx_bpsk_pdu
@@ -4394,7 +4682,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2018
-    - 6790
+    - 7150
     rotation: 0
     state: enabled
 - name: n3_rx_qpsk_select
@@ -4414,7 +4702,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 938
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_qpsk_stream
@@ -4435,7 +4723,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1208
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_qpsk_soft
@@ -4454,7 +4742,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1478
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_qpsk_len
@@ -4475,7 +4763,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1748
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_qpsk_pdu
@@ -4494,7 +4782,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2018
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_qam16_select
@@ -4514,7 +4802,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 938
-    - 7150
+    - 7510
     rotation: 0
     state: enabled
 - name: n3_rx_qam16_stream
@@ -4535,7 +4823,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1208
-    - 7150
+    - 7510
     rotation: 0
     state: enabled
 - name: n3_rx_qam16_soft
@@ -4554,7 +4842,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1478
-    - 7150
+    - 7510
     rotation: 0
     state: enabled
 - name: n3_rx_qam16_len
@@ -4575,7 +4863,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 1748
-    - 7150
+    - 7510
     rotation: 0
     state: enabled
 - name: n3_rx_qam16_pdu
@@ -4594,7 +4882,107 @@ blocks:
     bus_structure: null
     coordinate:
     - 2018
-    - 7150
+    - 7510
+    rotation: 0
+    state: enabled
+- name: n3_rx_qam64_select
+  id: pdu_pdu_filter
+  parameters:
+    k: pmt.intern("mod")
+    v: pmt.intern("64qam")
+    invert: 'False'
+    comment: 64QAM bursts
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 938
+    - 7690
+    rotation: 0
+    state: enabled
+- name: n3_rx_qam64_stream
+  id: pdu_pdu_to_tagged_stream
+  parameters:
+    type: complex
+    tag: packet_len
+    minoutbuf: '32768'
+    comment: 'buffer holds a whole burst
+
+      (1 KB BPSK-1/2 = 16.5k symbols)'
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1208
+    - 7690
+    rotation: 0
+    state: enabled
+- name: n3_rx_qam64_soft
+  id: digital_constellation_soft_decoder_cf
+  parameters:
+    constellation: const_64qam
+    npwr: '-1'
+    minoutbuf: '32768'
+    comment: 6 soft bits per symbol
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1478
+    - 7690
+    rotation: 0
+    state: enabled
+- name: n3_rx_qam64_len
+  id: blocks_tagged_stream_multiply_length
+  parameters:
+    type: float
+    lengthtagname: '"packet_len"'
+    vlen: '1'
+    c: '6'
+    minoutbuf: '32768'
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1748
+    - 7690
+    rotation: 0
+    state: enabled
+- name: n3_rx_qam64_pdu
+  id: pdu_tagged_stream_to_pdu
+  parameters:
+    type: float
+    tag: packet_len
+    comment: ''
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2018
+    - 7690
     rotation: 0
     state: enabled
 - name: n3_ldpc_dec
@@ -4617,7 +5005,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2288
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_bytes
@@ -4636,7 +5024,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2558
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_crc
@@ -4658,7 +5046,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 2828
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_rx_pdu
@@ -4677,7 +5065,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 3098
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: n3_mac_rx
@@ -4698,7 +5086,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 3368
-    - 6970
+    - 7330
     rotation: 0
     state: enabled
 - name: note_channel
@@ -5046,6 +5434,30 @@ connections:
   - pdus
   - n1_ldpc_dec
   - pdus
+- - n1_despreader
+  - pdus
+  - n1_rx_qam64_select
+  - pdus
+- - n1_rx_qam64_select
+  - pdus
+  - n1_rx_qam64_stream
+  - pdus
+- - n1_rx_qam64_stream
+  - '0'
+  - n1_rx_qam64_soft
+  - '0'
+- - n1_rx_qam64_soft
+  - '0'
+  - n1_rx_qam64_len
+  - '0'
+- - n1_rx_qam64_len
+  - '0'
+  - n1_rx_qam64_pdu
+  - '0'
+- - n1_rx_qam64_pdu
+  - pdus
+  - n1_ldpc_dec
+  - pdus
 - - n1_ldpc_dec
   - pdus
   - n1_rx_bytes
@@ -5326,6 +5738,30 @@ connections:
   - pdus
   - n2_ldpc_dec
   - pdus
+- - n2_despreader
+  - pdus
+  - n2_rx_qam64_select
+  - pdus
+- - n2_rx_qam64_select
+  - pdus
+  - n2_rx_qam64_stream
+  - pdus
+- - n2_rx_qam64_stream
+  - '0'
+  - n2_rx_qam64_soft
+  - '0'
+- - n2_rx_qam64_soft
+  - '0'
+  - n2_rx_qam64_len
+  - '0'
+- - n2_rx_qam64_len
+  - '0'
+  - n2_rx_qam64_pdu
+  - '0'
+- - n2_rx_qam64_pdu
+  - pdus
+  - n2_ldpc_dec
+  - pdus
 - - n2_ldpc_dec
   - pdus
   - n2_rx_bytes
@@ -5603,6 +6039,30 @@ connections:
   - n3_rx_qam16_pdu
   - '0'
 - - n3_rx_qam16_pdu
+  - pdus
+  - n3_ldpc_dec
+  - pdus
+- - n3_despreader
+  - pdus
+  - n3_rx_qam64_select
+  - pdus
+- - n3_rx_qam64_select
+  - pdus
+  - n3_rx_qam64_stream
+  - pdus
+- - n3_rx_qam64_stream
+  - '0'
+  - n3_rx_qam64_soft
+  - '0'
+- - n3_rx_qam64_soft
+  - '0'
+  - n3_rx_qam64_len
+  - '0'
+- - n3_rx_qam64_len
+  - '0'
+  - n3_rx_qam64_pdu
+  - '0'
+- - n3_rx_qam64_pdu
   - pdus
   - n3_ldpc_dec
   - pdus

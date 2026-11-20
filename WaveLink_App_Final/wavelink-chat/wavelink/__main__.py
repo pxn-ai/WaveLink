@@ -15,15 +15,27 @@ import signal
 import sys
 import time
 
-from .config import PhyConfig, BROADCAST_ADDR, MAX_NODE_ID, code_index_for
+from .config import PhyConfig, BROADCAST_ADDR, MAX_NODE_ID, CODE_FAMILIES, code_index_for
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NAMES = ["Alice", "Bob", "Carol", "Dave", "Erin", "Frank", "Grace", "Heidi"]
 FEC_CHOICES = ["auto", "off", "1/2", "2/3", "3/4", "5/6"]
+MOD_CHOICES = ["auto", "bpsk", "qpsk", "16qam", "64qam"]
+
+
+def resolve_codes(a) -> str:
+    """--codes: Walsh codes with time slots (the default), Gold codes with spread ALOHA (bursts from
+    different stations arrive at any code phase, where Walsh codes are not orthogonal)."""
+    mac = getattr(a, "mac", "tdcdma")
+    codes = getattr(a, "codes", None) or ("gold" if mac == "aloha" else "walsh")
+    if codes == "walsh" and mac == "aloha":
+        raise SystemExit("--codes walsh needs time slots (--mac tdcdma): with spread ALOHA bursts arrive at any "
+                         "code phase, where Walsh codes are not orthogonal.  Use --codes gold with --mac aloha.")
+    return codes
 
 
 def phy_from_args(a) -> PhyConfig:
-    cfg = PhyConfig.from_profile(a.profile, samp_rate=a.rate, sps=a.sps, gold_degree=a.gold)
+    cfg = PhyConfig.from_profile(a.profile, samp_rate=a.rate, sps=a.sps, gold_degree=a.gold, codes=resolve_codes(a))
     cfg.center_freq = a.freq
     cfg.rf_bandwidth = a.bw or cfg.samp_rate
     cfg.tx_atten_db = a.tx_atten
@@ -63,18 +75,21 @@ def add_phy_args(p):
     g.add_argument("--uhd-args", default="", help='UHD device args, default "type=ant,addr=<uri ip>"')
     g.add_argument("--freq", type=float, default=2.5e9, help="carrier frequency in Hz")
     g.add_argument("--profile", default="fast", choices=["fast", "robust"],
-                   help="fast = 2 Mchip/s (BPSK/QPSK/16-QAM 65/129/258 kb/s); robust = 1 Mchip/s (32/65/129 kb/s)")
-    g.add_argument("--mod", default="auto", choices=["auto", "bpsk", "qpsk", "16qam"],
-                   help="payload modulation; auto picks per link from the receiver's reported SNR")
+                   help="fast = 2 Mchip/s (32-chip Walsh codes: BPSK/QPSK/16-QAM/64-QAM 62/125/250/375 kb/s "
+                        "uncoded); robust = 1 Mchip/s (half that)")
+    g.add_argument("--mod", default="auto", choices=MOD_CHOICES,
+                   help="payload modulation; auto picks per link from the receiver's reported SNR "
+                        "(64-QAM: TD-CDMA, or spread ALOHA when asked for)")
     g.add_argument("--fec", default="auto", choices=FEC_CHOICES, help="LDPC code rate: auto picks per link from the receiver's reported SNR; off = uncoded")
     add_pc_args(g)
     add_mac_args(g)
     g.add_argument("--mcs", default="bpsk-1/2",
-                   help="tx/rx/selftest only: modulation-coding of the frames, e.g. bpsk-1/2, 16qam-3/4, bpsk")
+                   help="tx/rx/selftest only: modulation-coding of the frames, e.g. bpsk-1/2, 16qam-3/4, 64qam-5/6, bpsk")
     g.add_argument("--rate", type=float, default=None, help="sample rate in S/s (default from profile)")
     g.add_argument("--bw", type=float, default=0, help="RF filter bandwidth (default = sample rate)")
     g.add_argument("--sps", type=int, default=None, help="samples per chip (default from profile)")
-    g.add_argument("--gold", type=int, default=None, choices=[5, 6, 7], help="Gold code degree: 5=31, 6=63, 7=127 chips")
+    g.add_argument("--gold", type=int, default=None, choices=[5, 6, 7],
+                   help="code degree n: 2^n-chip Walsh codes (32/64/128) or 2^n - 1-chip Gold codes (31/63/127)")
     g.add_argument("--tx-atten", type=float, default=10.0, help="TX attenuation dB (0 = full power)")
     g.add_argument("--rx-gain", type=float, default=40.0, help="RX gain dB (manual mode)")
     g.add_argument("--gain-mode", default="manual", choices=["manual", "slow_attack", "fast_attack"])
@@ -92,6 +107,10 @@ def add_mac_args(g):
     g.add_argument("--relay", default="on", choices=["on", "off"],
                    help="TD-CDMA: pass on messages for stations that can't hear each other, and use other "
                         "stations to reach those we can't hear (also switchable on the radio dashboard)")
+    g.add_argument("--codes", default=None, choices=CODE_FAMILIES,
+                   help="spreading codes, the same on every station: walsh = 32-chip Walsh codes under one "
+                        "scrambling sequence, orthogonal inside a time slot (default with --mac tdcdma); gold = "
+                        "31-chip Gold codes (default and required with --mac aloha)")
 
 
 def add_pc_args(g):
@@ -100,7 +119,8 @@ def add_pc_args(g):
                         "receiver needs (reported back in ACKs and beacons)")
     g.add_argument("--pc-target", type=float, default=None, metavar="DB",
                    help="Es/N0 a receiver should hear us at (default: what the fastest modulation needs + 3 dB = "
-                        "25.5 dB; 17 protects weak neighbours more but makes strong links coded and slower)")
+                        "30.5 dB with TD-CDMA (uncoded 64-QAM), 25.5 dB with spread ALOHA (uncoded 16-QAM); "
+                        "17 protects weak neighbours more but makes strong links coded and slower)")
 
 
 def link_gains(air, specs):
@@ -121,7 +141,7 @@ def grc_station_radio(fg, node_id: int, tx_buffer: int):
     tb = fg.tb
     cfg = phy_config(getattr(tb, "samp_rate", 4e6), getattr(tb, "sps", 2), getattr(tb, "gold_degree", 5),
                      getattr(tb, "preamble_bits", 48), getattr(tb, "max_payload", 1024),
-                     getattr(tb, "center_freq", 2.5e9))
+                     getattr(tb, "center_freq", 2.5e9), codes=str(getattr(tb, "code_family", "gold")))
     return GrcPhyRadio(fg, node_id, cfg, tx_buffer=tx_buffer)
 
 
@@ -140,9 +160,13 @@ def cmd_run(a):
         if a.uri.startswith("fake:"):              # fake ANTSDR: the flowgraph's radio blocks talk to `fake-air`
             from . import fake_antsdr
             fake_antsdr.install(default_slot=a.id)
+        codes = resolve_codes(a)
         fg = open_grc(a.grc, dict(node_id=a.id, uri=a.uri, center_freq=a.freq, rx_gain=a.rx_gain,
-                                  tx_atten=a.tx_atten, tx_buffer=a.tx_buffer))
+                                  tx_atten=a.tx_atten, tx_buffer=a.tx_buffer, code_family=codes))
         radio = grc_station_radio(fg, a.id, a.tx_buffer)
+        if radio.cfg.codes != codes:
+            print(f"warning: {a.grc} has no code_family parameter: it runs {radio.cfg.codes} codes, not {codes} "
+                  f"(rebuild it with tools/make_grc.py)")
         mode = "grc"
     else:
         cfg = phy_from_args(a)
@@ -207,7 +231,7 @@ def cmd_sim(a):
     from .radio_sim import SimAir
     from .node import Node
     from .web.server import serve
-    cfg = PhyConfig.from_profile(a.profile, samp_rate=a.rate, sps=a.sps, gold_degree=a.gold)
+    cfg = PhyConfig.from_profile(a.profile, samp_rate=a.rate, sps=a.sps, gold_degree=a.gold, codes=resolve_codes(a))
     air = SimAir(cfg, ebn0_db=a.ebn0, self_leak_db=a.self_leak, speed=a.speed, seed=a.seed)
     nodes = []
     for i in range(1, a.nodes + 1):
@@ -233,8 +257,9 @@ def cmd_sim(a):
         n.start()
         serve(n, a.host, a.port + n.addr - 1)
     print(f"WaveLink Chat, simulated air: {a.nodes} stations, Es/N0 {a.ebn0} dB on a 0 dB link (+/-3 dB per link), "
-          f"profile {cfg.profile}: {cfg.sf}-chip Gold codes at {cfg.chip_rate/1e6:.0f} Mchip/s, "
-          f"BPSK/QPSK/16-QAM {cfg.symbol_rate/1e3:.0f}/{2*cfg.symbol_rate/1e3:.0f}/{4*cfg.symbol_rate/1e3:.0f} kb/s "
+          f"profile {cfg.profile}: {cfg.sf}-chip {cfg.codes.capitalize()} codes at {cfg.chip_rate/1e6:.0f} Mchip/s, "
+          f"BPSK/QPSK/16-QAM/64-QAM {cfg.symbol_rate/1e3:.0f}/{2*cfg.symbol_rate/1e3:.0f}/{4*cfg.symbol_rate/1e3:.0f}/"
+          f"{6*cfg.symbol_rate/1e3:.0f} kb/s "
           f"uncoded, LDPC rates 1/2-5/6, mod={a.mod} fec={a.fec}, power control {a.power_control}, "
           f"MAC {nodes[0].mac.mode}, relaying {a.relay}")
     for spec in a.link_gain or ():
@@ -251,7 +276,7 @@ def cmd_grc_sim(a):
     from .node import Node
     from .web.server import serve
     from .grc_phy import REGISTRY
-    fg = open_grc(a.grc, {})
+    fg = open_grc(a.grc, {"code_family": resolve_codes(a)})
     tb = fg.tb
     if a.noise is not None and hasattr(tb, "set_noise"):
         tb.set_noise(a.noise)
@@ -371,7 +396,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("run", help="run one station with its web UI (PHY = grc/cdma_phy.grc)")
-    r.add_argument("--id", type=int, required=True, help=f"station address 1..{MAX_NODE_ID} (= its Gold code)")
+    r.add_argument("--id", type=int, required=True, help=f"station address 1..{MAX_NODE_ID} (= its spreading code)")
     r.add_argument("--name", default="")
     r.add_argument("--port", type=int, default=8080)
     r.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to open the UI from other PCs")
@@ -403,7 +428,7 @@ def main(argv=None):
     s.add_argument("--data", default="data")
     s.add_argument("--ack-timeout", type=float, default=0.35)
     s.add_argument("--profile", default="fast", choices=["fast", "robust"])
-    s.add_argument("--mod", default="auto", choices=["auto", "bpsk", "qpsk", "16qam"])
+    s.add_argument("--mod", default="auto", choices=MOD_CHOICES)
     s.add_argument("--fec", default="auto", choices=FEC_CHOICES, help="LDPC code rate: auto picks per link from the receiver's reported SNR; off = uncoded")
     s.add_argument("--gold", type=int, default=None, choices=[5, 6, 7])
     s.add_argument("--sps", type=int, default=None)
@@ -428,7 +453,7 @@ def main(argv=None):
     gs.add_argument("--cfo", type=float, default=None, help="carrier offset in Hz")
     gs.add_argument("--ack-timeout", type=float, default=0.5)
     gs.add_argument("--ack-gap", type=float, default=0.15)
-    gs.add_argument("--mod", default="auto", choices=["auto", "bpsk", "qpsk", "16qam"])
+    gs.add_argument("--mod", default="auto", choices=MOD_CHOICES)
     gs.add_argument("--fec", default="auto", choices=FEC_CHOICES, help="LDPC code rate: auto picks per link from the receiver's reported SNR; off = uncoded")
     add_pc_args(gs)
     add_mac_args(gs)

@@ -3,8 +3,8 @@ MAC -> PHY (from app)
 
 Entry point of the physical layer.  The chat application's link layer calls
 submit(frame, code, mod) on this block; it publishes the MAC frame as a PDU
-whose metadata says which Gold code to spread it with (= destination station,
-0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam,
+whose metadata says which code to spread it with (= destination station,
+0 = broadcast) and which modulation and coding to use: bpsk | qpsk | 16qam | 64qam,
 plus an LDPC code rate, e.g. '16qam-3/4' (no rate = uncoded), and 'pwr': the
 burst's power in dB relative to full power (transmit power control, <= 0).
 'at' (TD-CDMA time slots): the chip index of the transmit stream at which the

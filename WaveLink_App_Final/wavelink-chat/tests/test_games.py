@@ -31,7 +31,7 @@ NAMES = ["Alice", "Bob", "Carol", "Dave"]
 
 
 def make_stations(n, ebn0, key=None, seed=3, mac="tdcdma"):
-    cfg = PhyConfig.from_profile("fast")
+    cfg = PhyConfig.from_profile("fast", codes="gold" if mac == "aloha" else None)
     air = SimAir(cfg, ebn0_db=ebn0, seed=seed)
     tmp = tempfile.mkdtemp(prefix="games-")
     nodes = []

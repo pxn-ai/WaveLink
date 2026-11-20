@@ -103,8 +103,10 @@ function avatarHtml(addr, cls = "", name = null) {
   if (av.kind === "emoji" && av.emoji) return `<span class="${cls} emo" style="background:hsl(${h} 45% 40%)">${esc(av.emoji)}</span>`;
   return `<span class="${cls}" style="background:hsl(${h} 45% 40%)">${esc(nm.trim().slice(0, 1).toUpperCase())}</span>`;
 }
-const BPS = { bpsk: 1, bpskc: 1, qpsk: 2, "16qam": 4 };
-const BASENAME = { bpsk: "BPSK", bpskc: "BPSK", qpsk: "QPSK", "16qam": "16-QAM" };
+const BPS = { bpsk: 1, bpskc: 1, qpsk: 2, "16qam": 4, "64qam": 6 };
+const BASENAME = { bpsk: "BPSK", bpskc: "BPSK", qpsk: "QPSK", "16qam": "16-QAM", "64qam": "64-QAM" };
+// spreading codes: Walsh rows under one scrambling sequence (TD-CDMA), or Gold codes
+const codeFamily = (p) => (p?.codes === "walsh" ? "Walsh" : "Gold");
 const RATEFRAC = { "1/2": 0.5, "2/3": 2 / 3, "3/4": 0.75, "5/6": 5 / 6 };
 const RATEGLYPH = { "1/2": "½", "2/3": "⅔", "3/4": "¾", "5/6": "⅚" };
 // modulation-and-coding names from the link layer: "16qam-3/4", "qpsk-1/2", "16qam" (uncoded)
@@ -216,10 +218,10 @@ function renderMe() {
   $("#meSub").textContent = `node ${S.me.addr} · ${({ sim: "simulation (numpy PHY)", "grc-sim": "GNU Radio PHY · simulated channel", grc: "GNU Radio PHY · ANTSDR" })[S.me.mode] || "ANTSDR"}${S.me.enc ? " · encrypted (key " + S.me.key_id + ")" : ""}`;
   avatar($("#meAvatar"), `u:${S.me.addr}`); $("#meAvatar").classList.remove("on");
   const p = S.phy;
-  $("#phyLine").textContent = `${(p.center_freq / 1e9).toFixed(3)} GHz · DS-CDMA · ${p.sf}-chip Gold · BPSK/QPSK/16-QAM + LDPC ${(p.bit_rate / 2e3).toFixed(0)}–${(4 * p.bit_rate / 1e3).toFixed(0)} kb/s · my code #${S.me.addr}`;
+  $("#phyLine").textContent = `${(p.center_freq / 1e9).toFixed(3)} GHz · DS-CDMA · ${p.sf}-chip ${codeFamily(p)} · BPSK/QPSK/16-QAM/64-QAM + LDPC ${(p.bit_rate / 2e3).toFixed(0)}–${(6 * p.bit_rate / 1e3).toFixed(0)} kb/s · my code #${S.me.addr}`;
   document.title = `${S.me.name} · WaveLink Chat`;
   const ab = $("#aboutStation");
-  if (ab) ab.textContent = `${S.me.name} is node ${S.me.addr} on Gold code #${S.me.addr}: DS-CDMA over ANTSDR E200 and GNU Radio at ${(p.center_freq / 1e9).toFixed(1)} GHz.`;
+  if (ab) ab.textContent = `${S.me.name} is node ${S.me.addr} on ${codeFamily(p)} code #${S.me.addr}: DS-CDMA over ANTSDR E200 and GNU Radio at ${(p.center_freq / 1e9).toFixed(1)} GHz.`;
 }
 const sortKey = (m) => m.ts ?? 0;
 function lastMsg(chat) {
@@ -764,8 +766,10 @@ function renderDash() {
   }
   const p = S.phy;
   const rows = { "carrier": `${(p.center_freq / 1e9).toFixed(4)} GHz`, "sample rate": `${p.samp_rate / 1e6} MS/s`, "chip rate": `${p.chip_rate / 1e6} Mchip/s`,
-    "profile": p.profile, "spreading": `${p.sf}-chip Gold (deg ${p.gold_degree})`, "processing gain": `${p.processing_gain_db} dB`,
-    "BPSK / QPSK / 16-QAM": `${(p.bit_rate / 1e3).toFixed(1)} / ${(2 * p.bit_rate / 1e3).toFixed(1)} / ${(4 * p.bit_rate / 1e3).toFixed(1)} kb/s uncoded`,
+    "profile": p.profile,
+    "spreading": p.codes === "walsh" ? `${p.sf}-chip Walsh × scrambling (orthogonal in a slot)` : `${p.sf}-chip Gold (deg ${p.gold_degree})`,
+    "processing gain": `${p.processing_gain_db} dB`,
+    "BPSK / QPSK / 16-QAM / 64-QAM": `${(p.bit_rate / 1e3).toFixed(1)} / ${(2 * p.bit_rate / 1e3).toFixed(1)} / ${(4 * p.bit_rate / 1e3).toFixed(1)} / ${(6 * p.bit_rate / 1e3).toFixed(1)} kb/s uncoded`,
     "FEC": "LDPC, 5G NR base graph 1, rate ½ ⅔ ¾ ⅚ (adaptive)",
     "pulse": `RRC α=${p.rolloff}`, "preamble": `${p.preamble_bits} bits`, "max burst": `${p.max_phy_payload} B` };
   $("#phyTbl").innerHTML = Object.entries(rows).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
@@ -792,6 +796,10 @@ function drawConst(pts, mod) {
   mod = mcsBase(mod);
   if (mod === "qpsk") ref = [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([i, q]) => [i / Math.SQRT2, q / Math.SQRT2]);
   if (mod === "16qam") { ref = []; for (const i of [-3, -1, 1, 3]) for (const q of [-3, -1, 1, 3]) ref.push([i / Math.sqrt(10), q / Math.sqrt(10)]); }
+  if (mod === "64qam") {
+    const lv = [-7, -5, -3, -1, 1, 3, 5, 7].map((v) => v / Math.sqrt(42));
+    ref = []; for (const i of lv) for (const q of lv) ref.push([i, q]);
+  }
   c.strokeStyle = css("--ink2"); c.setLineDash([3, 3]);
   for (const [i, q] of ref) { c.beginPath(); c.arc(cx + i * sc, cy - q * sc, 4, 0, 7); c.stroke(); }
   c.setLineDash([]);

@@ -1,9 +1,19 @@
-"""Gold spreading codes and code-specific preamble patterns.
+"""Spreading codes (Walsh x scrambling, or Gold) and code-specific preamble patterns.
 
-Every station owns one Gold code (index = node address) and listens on it plus
-on the broadcast code (index 0).  Gold codes of length N = 2^n - 1 have a
-three-valued periodic cross-correlation {-1, -t(n), t(n)-2}, which keeps
-the interference between simultaneously active links low.
+Every station owns one code (index = node address) and listens on it plus on the broadcast code
+(index 0).  Two families (PhyConfig.codes):
+
+walsh (default): 2^n-chip rows of a Hadamard matrix, every one multiplied by the same scrambling
+    sequence.  Sent together, chip- and symbol-synchronously, they are exactly orthogonal: in a
+    TD-CDMA slot one station sends to every destination at once, and the codes of the slot don't
+    interfere at all.  (Gold codes do: codes 1 and 0 cross-correlate at 7/31 at zero lag, so next
+    to a burst on code 0 the receiver of code 1 keeps ~13 dB SIR whatever the SNR.)  Walsh rows
+    alone correlate badly off the peak (row 0 is all ones), which the scrambling sequence fixes; it
+    and the rows used for codes 0-4 were found by tools/walsh_search.py: balanced codes, every
+    even/odd correlation sidelobe and cross-correlation off the peak at most 12/32 (the five Gold
+    codes in use reach 13/31 and 15/31).
+gold: Gold codes of length N = 2^n - 1, with a three-valued periodic cross-correlation
+    {-1, -t(n), t(n)-2} at every code phase: for bursts that arrive at any phase (spread ALOHA).
 """
 from __future__ import annotations
 
@@ -83,6 +93,48 @@ def gold_codes(n: int) -> np.ndarray:
     bal = np.abs(arr.astype(int).sum(axis=1) * 2 - N)
     order = np.argsort(bal, kind="stable")
     return (1 - 2 * arr[order]).astype(np.float32)
+
+
+# Walsh x scrambling, 32 chips: the scrambling sequence, and the Hadamard rows of codes 0..4
+# (tools/walsh_search.py).  Further codes (node ids above 4, numpy PHY only) take the other rows.
+WALSH_SCRAMBLE_32 = "++--++++++----+--+++-++++---+-+-"
+WALSH_ROWS_32 = (24, 20, 21, 16, 17)
+
+
+def hadamard(n_chips: int) -> np.ndarray:
+    """Sylvester Hadamard matrix (+/-1), n_chips a power of two."""
+    h = np.ones((1, 1), dtype=np.int8)
+    while h.shape[0] < n_chips:
+        h = np.block([[h, h], [h, -h]])
+    return h
+
+
+def even_odd_sidelobe(c: np.ndarray) -> int:
+    """Largest |even| or |odd| periodic autocorrelation of a +/-1 code off the peak."""
+    n = c.size
+    a = np.correlate(c.astype(np.int64), c.astype(np.int64), mode="full")   # a[n-1+t] = sum c[m] c[m+t]
+    return int(max(max(abs(a[n - 1 + t] + a[t - 1]), abs(a[n - 1 + t] - a[t - 1])) for t in range(1, n)))
+
+
+@lru_cache(maxsize=None)
+def walsh_codes(n: int) -> np.ndarray:
+    """All 2^n Walsh x scrambling codes of degree n as a (2^n, 2^n) array of +/-1, the best first."""
+    N = 1 << n
+    if n == 5:
+        s = np.array([1 if ch == "+" else -1 for ch in WALSH_SCRAMBLE_32], dtype=np.int8)
+        first = list(WALSH_ROWS_32)
+    else:                                                # (other lengths: an m-sequence plus one chip)
+        s = (1 - 2 * np.concatenate([preferred_pair(n)[0], [0]])).astype(np.int8)
+        first = []
+    c = hadamard(N) * s[None, :]
+    rest = sorted((k for k in range(N) if k not in first),
+                  key=lambda k: (abs(int(c[k].astype(int).sum())), even_odd_sidelobe(c[k]), k))
+    return c[first + rest].astype(np.float32)
+
+
+def spreading_codes(cfg) -> np.ndarray:
+    """The codes of a PhyConfig: (num_codes, sf) array of +/-1."""
+    return walsh_codes(cfg.gold_degree) if cfg.codes == "walsh" else gold_codes(cfg.gold_degree)
 
 
 @lru_cache(maxsize=None)

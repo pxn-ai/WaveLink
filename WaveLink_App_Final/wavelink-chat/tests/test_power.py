@@ -15,7 +15,11 @@
 3. Near-far on the simulated air: Alice, Carol and Dave sit together (24 dB stronger paths), Bob is
    across the room.  While Alice sends a long file to Carol, Bob sends 40 KB to Dave (modulation
    adapting as usual).  At full power Alice drowns Bob at Dave; with power control Alice arrives
-   at about 25.5 dB instead of 46 and Bob gets through.
+   at about 25.5 dB instead of 46 and Bob gets through.  (Spread ALOHA is asynchronous: these
+   stations use Gold codes.)
+
+Parts 1 and 3 are spread ALOHA (its ladder tops out at uncoded 16-QAM); part 1 also checks that
+TD-CDMA aims 5 dB higher, at what uncoded 64-QAM needs.
 """
 from __future__ import annotations
 
@@ -99,6 +103,12 @@ def part1():
           (alice.pc_target_db(), t(fec_policy="off"), t(mod_policy="qpsk"), t(mod_policy="16qam", fec_policy="3/4"),
            pinned.pc_target_db()) == (25.5, 25.5, 18.5, 15.5, 17.0),
           f"{alice.pc_target_db()} dB; --fec off 25.5, --mod qpsk 18.5, --mod 16qam --fec 3/4 15.5, --pc-target 17")
+    td = M.LinkLayer(FakeRadio(), 2)
+    td.tdma = types.SimpleNamespace()                 # (the ladder only asks whether there are slots)
+    a64 = M.LinkLayer(FakeRadio(), 2, mod_policy="64qam")
+    check("TD-CDMA climbs to uncoded 64-QAM (target 30.5 dB); spread ALOHA only with --mod 64qam",
+          (td.ladder[-1], td.pc_target_db(), alice.ladder[-1], a64.ladder[-1]) == ("64qam", 30.5, "16qam", "64qam"),
+          f"TD-CDMA {td.ladder[-1]} {td.pc_target_db()} dB, ALOHA {alice.ladder[-1]}, --mod 64qam {a64.ladder[-1]}")
     # Carol hears Alice's beacon at 40 dB (full power); her beacon reports it; Alice backs off
     alice.send_beacon(b"{}")
     deliver(alice, carol, 40.0)
@@ -320,7 +330,7 @@ def part3():
     print("3. near-far on the simulated air (4 stations; takes a few minutes)")
     from wavelink.node import Node
     from wavelink.radio_sim import SimAir
-    cfg = PhyConfig.from_profile("fast")
+    cfg = PhyConfig.from_profile("fast", codes="gold")
     air = SimAir(cfg, ebn0_db=22, seed=7)
     tmp = tempfile.mkdtemp(prefix="pc-")
     # (the near-far problem of spread ALOHA: with TD-CDMA only one station transmits at a time)

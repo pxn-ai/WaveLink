@@ -18,9 +18,12 @@ class PhyConfig:
     rx_gain_db: float = 40.0          # ANTSDR RX gain when gain_mode == manual
     rx_gain_mode: str = "manual"      # manual | slow_attack | fast_attack
 
-    # --- DS-CDMA / BPSK ----------------------------------------------------
+    # --- DS-CDMA ------------------------------------------------------------
     sps: int = 4                      # samples per chip
-    gold_degree: int = 5              # 5 -> 31-chip Gold codes (33 codes)
+    gold_degree: int = 5              # code degree n: 2^n-chip Walsh codes (32) or 2^n-1-chip Gold codes (31)
+    codes: str = "walsh"              # walsh: Walsh rows x one scrambling sequence, exactly orthogonal
+                                      # when sent together (a TD-CDMA slot); gold: Gold codes, for
+                                      # bursts that arrive at any code phase (spread ALOHA)
     rolloff: float = 0.35             # RRC excess bandwidth
     rrc_span: int = 8                 # RRC filter span in chips (each side = span/2)
     preamble_bits: int = 48           # known, code-specific preamble symbols
@@ -32,10 +35,14 @@ class PhyConfig:
     max_phy_payload: int = 512        # bytes carried by one PHY burst
 
     # ---------------------------------------------------------------------------
+    def __post_init__(self):
+        if self.codes not in CODE_FAMILIES:
+            raise ValueError(f"codes must be one of {', '.join(CODE_FAMILIES)}, not {self.codes!r}")
+
     @property
     def sf(self) -> int:
-        """Spreading factor (chips per bit)."""
-        return (1 << self.gold_degree) - 1
+        """Spreading factor (chips per symbol): 2^n Walsh, 2^n - 1 Gold."""
+        return (1 << self.gold_degree) - (0 if self.codes == "walsh" else 1)
 
     @property
     def chip_rate(self) -> float:
@@ -51,7 +58,7 @@ class PhyConfig:
 
     @property
     def num_codes(self) -> int:
-        return (1 << self.gold_degree) + 1
+        return (1 << self.gold_degree) + (0 if self.codes == "walsh" else 1)
 
     @property
     def max_node_id(self) -> int:
@@ -76,19 +83,20 @@ class PhyConfig:
         return d
 
 
-# Speed profiles.  Every station in a network must use the same profile.
-# Both keep 31-chip Gold codes (good isolation between simultaneous links).
-#   robust: 1 Mchip/s (4 samples/chip): BPSK 32 / QPSK 65 / 16-QAM 129 kb/s
-#   fast:   2 Mchip/s (2 samples/chip): BPSK 65 / QPSK 129 / 16-QAM 258 kb/s
-# The payload modulation (BPSK/QPSK/16-QAM) is chosen per frame by the link layer.
+# Speed profiles.  Every station in a network must use the same profile (and code family).
+# Uncoded rates with 32-chip Walsh codes (31-chip Gold codes: 3 % more):
+#   robust: 1 Mchip/s (4 samples/chip): BPSK 31 / QPSK 62 / 16-QAM 125 / 64-QAM 188 kb/s
+#   fast:   2 Mchip/s (2 samples/chip): BPSK 62 / QPSK 125 / 16-QAM 250 / 64-QAM 375 kb/s
+# The payload modulation and LDPC code rate are chosen per frame by the link layer.
 PROFILES = {
     "robust": dict(phy=dict(samp_rate=4e6, sps=4, gold_degree=5, max_phy_payload=512)),
     "fast":   dict(phy=dict(samp_rate=4e6, sps=2, gold_degree=5, max_phy_payload=1024)),
 }
 
+CODE_FAMILIES = ("walsh", "gold")
 BROADCAST_ADDR = 0xFF
-BROADCAST_CODE = 0          # Gold-code index used for broadcast / beacons
-MAX_NODE_ID = 30            # node id N uses Gold code index N (1..30)
+BROADCAST_CODE = 0          # code index used for broadcast / beacons
+MAX_NODE_ID = 30            # node id N uses code index N (1..30)
 
 
 def code_index_for(addr: int) -> int:

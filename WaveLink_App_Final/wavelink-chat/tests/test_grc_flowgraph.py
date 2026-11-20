@@ -1,5 +1,6 @@
 """Run grc/cdma_phy_sim.grc (3 station PHYs + channel) on real GNU Radio:
-    python -m tests.test_grc_flowgraph
+    python -m tests.test_grc_flowgraph                # Walsh codes (the flowgraph's default)
+    python -m tests.test_grc_flowgraph --codes gold   # Gold codes
 Requires GNU Radio 3.10 with grcc on PATH.  Also checks that a burst's power (transmit power
 control: MAC -> PHY 'pwr' metadata -> PDU to Tagged Stream -> Burst Combiner) arrives as set."""
 import os
@@ -14,7 +15,9 @@ GRC = os.path.join(os.path.dirname(__file__), "..", "grc", "cdma_phy_sim.grc")
 
 
 def main():
-    fg = open_flowgraph(GRC, {})
+    codes = sys.argv[sys.argv.index("--codes") + 1] if "--codes" in sys.argv else "walsh"
+    fg = open_flowgraph(GRC, {"code_family": codes})
+    print(f"code family: {getattr(fg.tb, 'code_family', '?')}, sf {getattr(fg.tb, 'sf', '?')}")
     print("stations registered:", sorted(REGISTRY), {k: sorted(v) for k, v in REGISTRY.items()})
     inbox = {n: [] for n in REGISTRY}
     for n, reg in REGISTRY.items():
@@ -34,7 +37,8 @@ def main():
     # phase 1: one burst at a time, every modulation, coded and uncoded, unicast and broadcast
     for src, dst, mod, size in ((1, 2, "bpsk", 300), (1, 2, "qpsk-1/2", 1000), (1, 2, "16qam", 1010),
                                 (1, 2, "16qam-3/4", 1020), (3, 2, "qpsk-3/4", 600), (2, 3, "16qam-5/6", 800),
-                                (3, 1, "16qam-2/3", 700), (2, 0, "qpsk-1/2", 120), (1, 3, "bpsk-1/2", 400)):
+                                (3, 1, "16qam-2/3", 700), (2, 0, "qpsk-1/2", 120), (1, 3, "bpsk-1/2", 400),
+                                (1, 2, "64qam", 1000), (3, 2, "64qam-3/4", 900), (2, 1, "64qam-5/6", 1000)):
         send(src, dst, dst, mod, size, "alone")
         time.sleep(1.0)
     # phase 1b: the same link at full power, -10 dB and -20 dB (transmit power control)
@@ -43,7 +47,7 @@ def main():
         power.append((g, send(1, 2, 2, "qpsk-1/2", 300, f"{g:+.0f} dB", gain_db=g)))
         time.sleep(1.0)
     # phase 2: three stations transmit at the same time on three different codes: each link sees
-    # the other two as interference (SINR ~12 dB) - uncoded 16-QAM would need ~20 dB
+    # the other two as interference (with Gold codes SINR ~12 dB) - uncoded 16-QAM would need ~20 dB
     send(1, 2, 2, "16qam-1/2", 1000, "3 at once")
     send(3, 1, 1, "16qam-1/2", 1000, "3 at once")
     send(2, 3, 3, "qpsk-3/4", 1000, "3 at once")

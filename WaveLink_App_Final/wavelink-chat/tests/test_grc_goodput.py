@@ -15,7 +15,8 @@ GRC = os.path.join(os.path.dirname(__file__), "..", "grc", "cdma_phy_sim.grc")
 def run(kb=100, noise=0.5, fec="auto", fg=None):
     tb = fg.tb
     tb.set_noise(noise)
-    cfg = phy_config(tb.samp_rate, tb.sps, tb.gold_degree, tb.preamble_bits, tb.max_payload)
+    cfg = phy_config(tb.samp_rate, tb.sps, tb.gold_degree, tb.preamble_bits, tb.max_payload,
+                     codes=getattr(tb, "code_family", "gold"))
     macs = {}
     for n in (1, 2):
         r = GrcPhyRadio(fg, n, cfg, tx_buffer=int(tb.tx_buffer))
@@ -47,7 +48,7 @@ def run(kb=100, noise=0.5, fec="auto", fg=None):
 if __name__ == "__main__":
     kb = int(sys.argv[1]) if len(sys.argv) > 1 else 100
     noise = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5
-    fg = open_flowgraph(GRC, {})
+    fg = open_flowgraph(GRC, {"code_family": "gold"})    # (the link layer on its own is spread ALOHA)
     for n, reg in REGISTRY.items():
         reg["mac_rx"].handler = lambda meta, data: None
     fg.start()

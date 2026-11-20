@@ -49,11 +49,13 @@ def register(node_id: int, role: str, obj):
 
 
 def phy_config(samp_rate: float, sps: int, gold_degree: int = 5, preamble_bits: int = 48,
-               max_payload: int = 1024, center_freq: float = 2.5e9) -> PhyConfig:
-    """The PhyConfig matching the flowgraph's variables."""
+               max_payload: int = 1024, center_freq: float = 2.5e9, codes: str = "gold") -> PhyConfig:
+    """The PhyConfig matching the flowgraph's variables (codes: its code_family parameter; a
+    flowgraph without one is from before the Walsh codes, so Gold)."""
     return PhyConfig(samp_rate=float(samp_rate), sps=int(sps), gold_degree=int(gold_degree),
                      preamble_bits=int(preamble_bits), max_phy_payload=int(max_payload),
-                     center_freq=float(center_freq), rf_bandwidth=float(samp_rate), profile="grc")
+                     center_freq=float(center_freq), rf_bandwidth=float(samp_rate), profile="grc",
+                     codes=str(codes))
 
 
 # ============================================================================ block cores

@@ -8,7 +8,7 @@ from wavelink.mac import LinkLayer, PRIO_BULK, PRIO_HIGH
 
 
 def build(n, ebn0=18.0, speed=50.0, seed=1):
-    cfg = PhyConfig()
+    cfg = PhyConfig(codes="gold")             # (the link layer on its own is spread ALOHA: asynchronous)
     air = SimAir(cfg, ebn0_db=ebn0, speed=speed, seed=seed)
     nodes, inbox = {}, {}
     for a in range(1, n + 1):

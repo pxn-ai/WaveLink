@@ -37,7 +37,7 @@ blocks:
 - name: note_about
   id: note
   parameters:
-    note: DS-CDMA from stock GNU Radio blocks. Two users send random BPSK bits, each spread by its own 31-chip Gold code (the same codes the chat system gives node 1 and node 2). The sum plus noise is despread with code 1, code 2, and an unused code 3. Despreading with the right code recovers +/-1; the wrong code gives only noise. Compare the narrow BPSK spectrum with the 31x wider spread spectrum. (Rectangular chips, perfect sync, for teaching.)
+    note: DS-CDMA from stock GNU Radio blocks. Two users send random BPSK bits, each spread by its own 31-chip Gold code (the codes the chat system gives node 1 and node 2 with spread ALOHA). The sum plus noise is despread with code 1, code 2, and an unused code 3. Despreading with the right code recovers +/-1; the wrong code gives only noise. Compare the narrow BPSK spectrum with the 31x wider spread spectrum. (Rectangular chips, perfect sync, for teaching.)
     comment: ''
   states:
     bus_sink: false

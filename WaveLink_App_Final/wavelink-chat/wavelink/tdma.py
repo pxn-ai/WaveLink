@@ -5,9 +5,11 @@ next to a receiver drowns a far one (the near-far problem: after despreading a 3
 code still leaks ~1/31 of its power into the other codes), and a station's own transmitter
 deafens its receiver, so ACKs need pauses.  TD-CDMA gives every station its own time slot in a
 repeating cycle.  In its slot a station transmits, at one power, to all the others at once: one
-burst per destination, each spread with that destination's Gold code (CDMA inside the slot),
-plus its slot header on the broadcast code.  Everybody else listens.  So at any moment only one
-transmitter is on the air: no near-far, nobody deaf, and every ACK rides in a slot header.
+burst per destination, each spread with that destination's code (CDMA inside the slot), plus its
+slot header on the broadcast code.  The bursts start together and stay on one symbol grid, so the
+default Walsh codes are exactly orthogonal there (wavelink/codes.py).  Everybody else listens.  So
+at any moment only one transmitter is on the air: no near-far, nobody deaf, and every ACK rides in
+a slot header.
 
 Cycle (all positions in ticks of 0.25 ms)::
 
@@ -367,8 +369,14 @@ class Tdma:
         return self.radio.now()
 
     def _blen(self, n_body: int, mcs: str) -> int:
-        """Samples a frame with an n_body-byte MAC body occupies."""
-        return self.radio.burst_len(n_body + (0 if getattr(self.radio, "provides_crc", False) else 4), mcs)
+        """Samples a frame with an n_body-byte MAC body occupies.  With Walsh codes, whole symbols
+        (the filter tail runs into the next burst on its code, or the guard): every burst of a slot
+        then starts on the slot's symbol grid, where the codes of the slot are orthogonal."""
+        n = self.radio.burst_len(n_body + (0 if getattr(self.radio, "provides_crc", False) else 4), mcs)
+        cfg = getattr(self.radio, "cfg", None)
+        if getattr(cfg, "codes", "gold") == "walsh":
+            n -= n % (cfg.sf * cfg.sps)
+        return n
 
     def _d_guess(self) -> int:
         g = getattr(self.radio, "tx_rx_guess", None)

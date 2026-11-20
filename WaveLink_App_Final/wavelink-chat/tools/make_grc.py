@@ -18,14 +18,18 @@ import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
-from wavelink.codes import gold_codes  # noqa: E402
+from wavelink.codes import gold_codes, walsh_codes  # noqa: E402
 
 OUT = os.path.join(HERE, "..", "grc")
 EPY = os.path.join(HERE, "epy")
 GRC_VERSION = "3.10.12.0"
-SF = 31
 LANE_CODES = (0, 1, 2, 3, 4)            # broadcast + node ids 1..4
-MODS = (("bpsk", 1, "const_bpsk"), ("qpsk", 2, "const_qpsk"), ("16qam", 4, "const_16qam"))
+MODS = (("bpsk", 1, "const_bpsk"), ("qpsk", 2, "const_qpsk"), ("16qam", 4, "const_16qam"),
+        ("64qam", 6, "const_64qam"))
+BRANCH_ID = {"16qam": "qam16", "64qam": "qam64"}       # block ids of the RX branches
+# the code family is a flowgraph parameter (the app passes --codes): Walsh rows under one
+# scrambling sequence, orthogonal inside a TD-CDMA slot (default), or Gold codes (spread ALOHA)
+CODE_FAMILY = ("code_family", "Codes (walsh / gold)", "str", "walsh", "c")
 
 
 def epy_source(name: str) -> str:
@@ -109,16 +113,21 @@ def wrap(text, width=95):
     return "\n".join(textwrap.wrap(text, width))
 
 
+def code_table(codes) -> str:
+    return "[" + ", ".join("[" + ", ".join(f"{v:+.0f}" for v in codes[k]) + "]" for k in LANE_CODES) + "]"
+
+
 def phy_variables(x, y, samp_rate="4e6", sps="2"):
-    """Variables shared by every station: rates, pulse shape, Gold codes, constellations."""
-    g = gold_codes(5)
+    """Variables shared by every station: rates, pulse shape, spreading codes, constellations."""
     pam = [-3, -1, 3, 1]                                   # Gray order: 00 01 10 11
     qam = [complex(pam[(k >> 2) & 3], pam[k & 3]) for k in range(16)]
+    pam8 = [-7, -5, -1, -3, 7, 5, 1, 3]                    # Gray order: 000 001 ... 111
+    qam64 = [complex(pam8[(k >> 3) & 7], pam8[k & 7]) for k in range(64)]
     row1 = [
         ("samp_rate", samp_rate, "ANTSDR sample rate (S/s)"),
         ("sps", sps, "samples per chip"),
         ("chip_rate", "samp_rate / sps", ""),
-        ("sf", str(SF), "spreading factor =\nGold code length"),
+        ("sf", "32 if code_family == 'walsh' else 31", "spreading factor = code\nlength (Walsh 32, Gold 31)"),
         ("gold_degree", "5", ""),
         ("preamble_bits", "48", ""),
         ("max_payload", "1024", "max bytes per burst\n(MAC frame + CRC-32)"),
@@ -134,12 +143,17 @@ def phy_variables(x, y, samp_rate="4e6", sps="2"):
             comment="root-raised-cosine chip pulse"),
         blk("tx_scale", "variable", (x + 460, y + 110),
             value="0.25 / (sum(t * t for t in rrc_taps) / sps) ** 0.5",
-            comment="RMS 0.25 per code lane:\nheadroom for 16-QAM peaks\nand several lanes at once"),
+            comment="RMS 0.25 per code lane:\nheadroom for 16/64-QAM peaks\nand several lanes at once"),
+        blk("walsh_table", "variable", (x + 920, y + 110), value=code_table(walsh_codes(5)),
+            comment="codes #0-4: Walsh rows x one\nscrambling sequence (32 chips;\n"
+                    "orthogonal when the bursts\nstart together, as in a slot)"),
+        blk("gold_table", "variable", (x + 1380, y + 110), value=code_table(gold_codes(5)),
+            comment="codes #0-4: Gold codes\n(31 chips; spread ALOHA)"),
     ]
     for k in LANE_CODES:
         B.append(blk(f"code_{k}", "variable", (x + 330 * k, y + 230),
-                     value="[" + ", ".join(f"{v:+.0f}" for v in g[k]) + "]",
-                     comment=("Gold code #0 (broadcast)" if k == 0 else f"Gold code #{k} (node {k})")))
+                     value=f"(walsh_table if code_family == 'walsh' else gold_table)[{k}]",
+                     comment=("code #0 (broadcast)" if k == 0 else f"code #{k} (node {k})")))
     B += [
         blk("const_bpsk", "variable_constellation", (x, y + 350), type="calcdist",
             const_points="[1+0j, -1+0j]", sym_map="[0, 1]", rot_sym="2", dims="1",
@@ -155,10 +169,17 @@ def phy_variables(x, y, samp_rate="4e6", sps="2"):
             normalization="digital.constellation.POWER_NORMALIZATION", precision="8", npwr="0.05",
             soft_dec_lut="None", comment="Gray: index = bits\n(I = bits 0-1, Q = bits 2-3)\n"
                                          "npwr 0.05: soft bits shaped\nfor ~13 dB (max-log-like)"),
-        blk("sym_table", "variable", (x + 900, y + 350),
-            value="list(const_bpsk.points()) + list(const_qpsk.points()) + list(const_16qam.points())",
+        blk("const_64qam", "variable_constellation", (x + 900, y + 350), type="calcdist",
+            const_points="[" + ", ".join(cplx(z) for z in qam64) + "]",
+            sym_map="[" + ", ".join(str(k) for k in range(64)) + "]", rot_sym="4", dims="1",
+            normalization="digital.constellation.POWER_NORMALIZATION", precision="8", npwr="0.05",
+            soft_dec_lut="None", comment="Gray: index = bits\n(I = bits 0-2, Q = bits 3-5)\n"
+                                         "npwr 0.05: as 16-QAM"),
+        blk("sym_table", "variable", (x + 1200, y + 350),
+            value="list(const_bpsk.points()) + list(const_qpsk.points()) + list(const_16qam.points())"
+                  " + list(const_64qam.points())",
             comment="combined table for the TX\nChunks to Symbols blocks:\n"
-                    "0-1 BPSK, 2-5 QPSK, 6-21 16-QAM"),
+                    "0-1 BPSK, 2-5 QPSK, 6-21 16-QAM,\n22-85 64-QAM"),
     ]
     return B
 
@@ -179,9 +200,9 @@ def station_phy(p, x0, y0, node_id, with_notes=True):
         B.append(note(n("note_tx"), (x0, ty - 110), wrap(
             "TRANSMITTER: MAC frame -> CRC-32 -> LDPC Encoder (5G NR code, rate 1/2, 2/3, 3/4, 5/6 or uncoded, "
             "chosen per frame by the link layer) -> CDMA PHY Framer (48 preamble symbols, Golay-coded header, "
-            "payload as constellation indices) -> one lane per Gold code: Chunks to Symbols (BPSK / QPSK / "
-            "16-QAM), Repeat x31 and Multiply by the code = spreading -> Burst Combiner (adds the lanes, "
-            "zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz", 120)))
+            "payload as constellation indices) -> one lane per code: Chunks to Symbols (BPSK / QPSK / "
+            "16-QAM / 64-QAM), Repeat x sf and Multiply by the code = spreading -> Burst Combiner (adds the "
+            "lanes, zero-fills) -> RRC pulse shaping -> ANTSDR at 2.5 GHz", 120)))
     B += [
         epy(n("mac_tx"), "mac_tx", (x0, ty), node_id=node_id),
         blk(n("tx_stream"), "pdu_pdu_to_tagged_stream", (x0 + COL, ty), type="byte", tag="packet_len"),
@@ -196,7 +217,7 @@ def station_phy(p, x0, y0, node_id, with_notes=True):
     ly = ty + 150
     mid = ly + (len(LANE_CODES) // 2) * LANE
     B.append(epy(n("framer"), "framer", (x0, mid), gold_degree="gold_degree",
-                 preamble_bits="preamble_bits", max_payload="max_payload"))
+                 preamble_bits="preamble_bits", max_payload="max_payload", code_family="code_family"))
     lx = x0 + COL + 30
     for i, k in enumerate(LANE_CODES):
         y = ly + i * LANE
@@ -242,13 +263,14 @@ def station_phy(p, x0, y0, node_id, with_notes=True):
         blk(n("rx_mf"), "fft_filter_xxx", (x0 + COL, ry), type="ccf", decim="1", taps="rrc_taps",
             samp_delay="0", nthreads="1", comment="RRC matched filter"),
         epy(n("despreader"), "despreader", (x0 + 2 * COL, ry), node_id=node_id, samp_rate="samp_rate",
-            sps="sps", gold_degree="gold_degree", preamble_bits="preamble_bits", max_payload="max_payload"),
+            sps="sps", gold_degree="gold_degree", preamble_bits="preamble_bits", max_payload="max_payload",
+            code_family="code_family"),
     ]
     C += [(n("rx_mf"), 0, n("despreader"), 0)]
     bx = x0 + 3 * COL + 120
     for j, (m, bps, const) in enumerate(MODS):
         y = ry + j * BRANCH
-        D = lambda s: n(f"rx_{m.replace('16qam', 'qam16')}_{s}")   # noqa: E731,B023
+        D = lambda s: n(f"rx_{BRANCH_ID.get(m, m)}_{s}")   # noqa: E731,B023
         B += [
             blk(D("select"), "pdu_pdu_filter", (bx, y), k='pmt.intern("mod")', v=f'pmt.intern("{m}")',
                 invert="False", comment=f"{m.upper()} bursts"),
@@ -274,7 +296,7 @@ def station_phy(p, x0, y0, node_id, with_notes=True):
     ]
     C += [(n("ldpc_dec"), "pdus", n("rx_bytes"), "pdus"), (n("rx_bytes"), 0, n("rx_crc"), 0),
           (n("rx_crc"), 0, n("rx_pdu"), 0), (n("rx_pdu"), "pdus", n("mac_rx"), "pdus")]
-    layout = dict(tx_sink=tx_sink_xy, rx_source=(x0, ry), bottom=ry + 3 * BRANCH, right=bx + 10 * COL)
+    layout = dict(tx_sink=tx_sink_xy, rx_source=(x0, ry), bottom=ry + len(MODS) * BRANCH, right=bx + 10 * COL)
     return B, C, n("tx_gain"), n("rx_mf"), layout
 
 
@@ -283,15 +305,16 @@ def cdma_phy():
     B = [note("note_about", (8, 90), wrap(
         "PHYSICAL LAYER of one WaveLink Chat station. The chat app compiles this file with grcc, runs it and "
         "attaches its link layer to the 'MAC -> PHY' and 'PHY -> MAC' blocks. Every station uses the same "
-        "file with its own Node ID (1-4 = its Gold code). ANTSDR E200 with the Pluto (libiio) firmware, "
-        "carrier 2.5 GHz, DS-CDMA with 31-chip Gold codes, payload BPSK, QPSK or 16-QAM chosen per frame "
-        "by the link layer.", 150))]
-    params = [("node_id", "Node ID (= Gold code)", "intx", "1", "i"),
+        "file with its own Node ID (1-4 = its code). ANTSDR E200 with the Pluto (libiio) firmware, "
+        "carrier 2.5 GHz, DS-CDMA with 32-chip Walsh codes under one scrambling sequence (code_family "
+        "'walsh', the default: orthogonal inside a TD-CDMA slot) or 31-chip Gold codes ('gold', for spread "
+        "ALOHA), payload BPSK, QPSK, 16-QAM or 64-QAM chosen per frame by the link layer.", 150))]
+    params = [("node_id", "Node ID (= its code)", "intx", "1", "i"),
               ("uri", "ANTSDR URI", "str", "ip:192.168.1.10", "u"),
               ("center_freq", "Carrier (Hz)", "eng_float", "2.5e9", "f"),
               ("rx_gain", "RX gain (dB)", "eng_float", "40", "g"),
               ("tx_atten", "TX attenuation (dB)", "eng_float", "10", "a"),
-              ("tx_buffer", "TX buffer (samples)", "intx", "65536", "b")]
+              ("tx_buffer", "TX buffer (samples)", "intx", "65536", "b"), CODE_FAMILY]
     for i, (name, label, typ, val, sid) in enumerate(params):
         B.append(blk(name, "parameter", (8 + 240 * i, 170), label=label, type=typ, value=val,
                      short_id=sid, hide="none"))
@@ -311,7 +334,7 @@ def cdma_phy():
     ]
     C += [(tx_out, 0, "antsdr_tx", 0), ("antsdr_rx", 0, rx_in, 0)]
     return flowgraph("cdma_phy", "WaveLink Chat - physical layer (ANTSDR E200)",
-                     "DS-CDMA BPSK/QPSK/16-QAM physical layer of one station", B, C, gui=False)
+                     "DS-CDMA BPSK/QPSK/16-QAM/64-QAM physical layer of one station", B, C, gui=False)
 
 
 # ============================================================================ 2. three stations, simulated channel
@@ -326,6 +349,8 @@ def cdma_phy_sim(nodes=(1, 2, 3)):
         blk("noise", "variable", (220, 170), value="0.01", comment="channel noise voltage"),
         blk("cfo_hz", "variable", (420, 170), value="300", comment="carrier offset (Hz)"),
     ]
+    name, label, typ, val, sid = CODE_FAMILY
+    B.append(blk(name, "parameter", (620, 170), label=label, type=typ, value=val, short_id=sid, hide="none"))
     B += phy_variables(8, 290, samp_rate="1e6", sps="2")   # 3 PHYs share one Python process
     C = []
     txs, rxs = [], []
@@ -333,7 +358,7 @@ def cdma_phy_sim(nodes=(1, 2, 3)):
     right = 0
     for i, nid in enumerate(nodes):
         B.append(note(f"n{nid}_title", (8, y0 - 200),
-                      f"STATION {nid}   (Node ID {nid}, listens on Gold code #{nid} and #0)"))
+                      f"STATION {nid}   (Node ID {nid}, listens on code #{nid} and #0)"))
         sb, sc, tx_out, rx_in, lay = station_phy(f"n{nid}_", 8, y0, str(nid), with_notes=True)
         B += sb
         C += sc
@@ -364,8 +389,8 @@ def phy_concept():
     c1, c2, c3 = ([int(v) for v in g[i]] for i in (1, 2, 3))
     B = [blk("note_about", "note", (8, 100), note=(
         "DS-CDMA from stock GNU Radio blocks. Two users send random BPSK bits, each spread by its own "
-        "31-chip Gold code (the same codes the chat system gives node 1 and node 2). The sum plus noise "
-        "is despread with code 1, code 2, and an unused code 3. Despreading with the right code "
+        "31-chip Gold code (the codes the chat system gives node 1 and node 2 with spread ALOHA). The sum "
+        "plus noise is despread with code 1, code 2, and an unused code 3. Despreading with the right code "
         "recovers +/-1; the wrong code gives only noise. Compare the narrow BPSK spectrum with the "
         "31x wider spread spectrum. (Rectangular chips, perfect sync, for teaching.)"))]
     B += [

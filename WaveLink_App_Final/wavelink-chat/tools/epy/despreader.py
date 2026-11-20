@@ -2,11 +2,12 @@
 CDMA Despreader
 
 Input: received samples after the RRC matched filter.
-For this station's Gold code and the broadcast code it
+For this station's code and the broadcast code (Walsh rows x one scrambling
+sequence, or Gold codes: the code_family parameter) it
   1. correlates with the code-specific preamble (differential detector: works
      with carrier frequency offset) -> burst start, timing, coarse CFO
-  2. removes the CFO, despreads (x code, sum over 31 chips) with fractional-delay
-     timing and an early-late DLL that follows the clock offset between radios
+  2. removes the CFO, despreads (x code, sum over 32 or 31 chips) with fractional-
+     delay timing and an early-late DLL that follows the clock offset between radios
   3. decodes the header coherently (two Golay(24,12) words, soft ML decoding):
      length, modulation, code rate, CRC-8
   4. tracks the carrier phase over the payload (decision-directed loop anchored
@@ -23,7 +24,7 @@ Decoder.
 
 class blk(gr.sync_block):
     def __init__(self, node_id=1, samp_rate=4e6, sps=2, gold_degree=5, preamble_bits=48,
-                 max_payload=1024):
+                 max_payload=1024, code_family="walsh"):
         gr.sync_block.__init__(self, name="CDMA Despreader", in_sig=[np.complex64], out_sig=None)
         self.node_id = int(node_id)
         self.port = pmt.intern("pdus")
@@ -33,7 +34,7 @@ class blk(gr.sync_block):
         try:
             if _project():
                 from wavelink.grc_phy import DespreaderCore, phy_config
-                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload)
+                cfg = phy_config(samp_rate, sps, gold_degree, preamble_bits, max_payload, codes=code_family)
                 self.core = DespreaderCore(cfg, self.node_id, self._publish)
                 _register(self.node_id, "despreader", self.core)
         except ImportError:

@@ -4,12 +4,13 @@ CDMA PHY Framer
 Builds one burst per PDU and outputs it as constellation *indices* (one byte per
 symbol) for the Chunks-to-Symbols blocks of the code lanes:
 
-  preamble   48 known BPSK symbols, different for every Gold code (burst detection,
+  preamble   48 known BPSK symbols, different for every code (burst detection,
              timing, carrier phase and frequency estimation at the receiver)
   header     48 BPSK symbols: two Golay(24,12) codewords of 11-bit length,
-             2-bit modulation, 3-bit code rate, CRC-8
-  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5)
-             or 16-QAM (6-21) of the combined symbol table
+             2-bit modulation, 3-bit code rate, CRC-8 (64-QAM uses the modulation/rate
+             combinations no other modulation has)
+  payload    the LDPC Encoder's bits, Gray-mapped to BPSK (index 0-1), QPSK (2-5),
+             16-QAM (6-21) or 64-QAM (22-85) of the combined symbol table
 
 Output metadata 'code' selects the lane (spreading code) downstream; 'pwr' (the
 burst's power, from the MAC) and 'at' (its start chip in a time slot) become stream
@@ -19,9 +20,9 @@ tags that the Combiner applies.
 
 
 class blk(gr.sync_block):
-    def __init__(self, gold_degree=5, preamble_bits=48, max_payload=1024):
+    def __init__(self, gold_degree=5, preamble_bits=48, max_payload=1024, code_family="walsh"):
         gr.sync_block.__init__(self, name="CDMA PHY Framer", in_sig=None, out_sig=None)
-        self.args = (int(gold_degree), int(preamble_bits), int(max_payload))
+        self.args = (int(gold_degree), int(preamble_bits), int(max_payload), str(code_family))
         self.port_in, self.port_out = pmt.intern("pdus"), pmt.intern("pdus")
         self.message_port_register_in(self.port_in)
         self.message_port_register_out(self.port_out)
@@ -31,8 +32,8 @@ class blk(gr.sync_block):
     def start(self):
         _project()
         from wavelink.grc_phy import FramerCore, phy_config
-        g, k, m = self.args
-        self.core = FramerCore(phy_config(4e6, 2, g, k, m))
+        g, k, m, fam = self.args
+        self.core = FramerCore(phy_config(4e6, 2, g, k, m, codes=fam))
         return True
 
     def handle(self, msg):

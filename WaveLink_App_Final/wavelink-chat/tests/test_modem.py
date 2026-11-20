@@ -1,4 +1,7 @@
-"""Modem tests: run with  python -m tests.test_modem  (prints a small report)."""
+"""Modem tests: run with  python -m tests.test_modem  (prints a small report).
+
+The default codes are Walsh rows x a scrambling sequence (TD-CDMA: bursts start on the symbol grid
+of a slot).  The tests with asynchronous senders (spread ALOHA) use Gold codes, as the app does."""
 import math
 import time
 import numpy as np
@@ -94,7 +97,8 @@ def false_alarms():
 
 
 def multiuser():
-    cfg = PhyConfig()
+    """Two senders at once, at unrelated chip phases (spread ALOHA: Gold codes)."""
+    cfg = PhyConfig(codes="gold")
     mod = Modulator(cfg)
     rng = np.random.default_rng(5)
     pa = b"to node 1: " + bytes(rng.integers(0, 256, 150, dtype=np.uint8))
@@ -129,8 +133,8 @@ def multicode_tx():
 
 
 def same_code():
-    """Two senders to the SAME receiver at the same time (asynchronous code phases)."""
-    cfg = PhyConfig()
+    """Two senders to the SAME receiver at the same time (asynchronous code phases, Gold codes)."""
+    cfg = PhyConfig(codes="gold")
     mod = Modulator(cfg)
     rng = np.random.default_rng(9)
     ok = 0
@@ -147,6 +151,49 @@ def same_code():
     print(f"  same code, two overlapping senders: {ok}/{2*trials} bursts decoded")
 
 
+def slot_codes():
+    """TD-CDMA: in its slot one station sends to up to four destinations at once, every burst
+    starting at the same chip.  Walsh rows stay exactly orthogonal there; Gold codes leave each
+    receiver the other bursts' cross-correlation (about 12 dB SIR whatever the SNR)."""
+    rng = np.random.default_rng(1)
+    res = {}
+    for fam in ("gold", "walsh"):
+        cfg = PhyConfig(codes=fam)
+        mod = Modulator(cfg)
+
+        def slot(codes, mcs):
+            bursts = []
+            for c in codes:
+                p = bytes(rng.integers(0, 256, 300, dtype=np.uint8))
+                bursts.append((c, p, mod.modulate(p, c, mcs)))
+            n = max(b.size for _, _, b in bursts)
+            y = np.zeros(n + 4000, complex)
+            for _, _, b in bursts:
+                y[2000:2000 + b.size] += b                     # same start: chip and symbol aligned
+            rms = math.sqrt(np.mean(np.abs(bursts[0][2]) ** 2))
+            y = channel(y, cfg.samp_rate, cfo=1500, phase=0.7)
+            y += noise_for(cfg, 45, rms) / math.sqrt(2) * (rng.standard_normal(y.size) + 1j * rng.standard_normal(y.size))
+            return bursts, y.astype(np.complex64)
+
+        sir = []
+        for k in (1, 2, 4):                                    # Es/N0 at code 1's receiver, QPSK-1/2 bursts
+            bursts, y = slot([1, 0, 2, 3][:k], "qpsk-1/2")
+            got = []
+            Demodulator(cfg, [1], on_frame=got.append).process(y)
+            ok = [g.esn0_db for g in got if g.payload == bursts[0][1]]
+            sir.append(ok[0] if ok else float("nan"))
+        bursts, y = slot([1, 2, 3, 4], "64qam")                  # four uncoded 64-QAM bursts at once
+        dec = 0
+        for c, p, _ in bursts:
+            got = []
+            Demodulator(cfg, [c], on_frame=got.append).process(y)
+            dec += any(g.payload == p for g in got)
+        res[fam] = (sir, dec)
+        print(f"  one slot, {cfg.sf}-chip {fam:5s} codes: Es/N0 at code 1 with 1 / 2 / 4 codes: "
+              + " / ".join(f"{s:.1f}" for s in sir) + f" dB; 4 uncoded 64-QAM bursts at once: {dec}/4 decoded")
+    assert res["walsh"][1] == 4 and min(res["walsh"][0]) > 30, res
+
+
 def throughput():
     cfg = PhyConfig()
     rng = np.random.default_rng(0)
@@ -161,13 +208,15 @@ def throughput():
 
 if __name__ == "__main__":
     cfg = PhyConfig()
-    print(f"PHY: {cfg.sf}-chip Gold codes, {cfg.chip_rate/1e6:.2f} Mchip/s, {cfg.symbol_rate/1e3:.2f} kbit/s, "
-          f"processing gain {10*math.log10(cfg.sf):.1f} dB")
+    print(f"PHY: {cfg.sf}-chip {cfg.codes.capitalize()} codes, {cfg.chip_rate/1e6:.2f} Mchip/s, "
+          f"{cfg.symbol_rate/1e3:.2f} ksym/s, processing gain {10*math.log10(cfg.sf):.1f} dB")
     test_clean_and_impairments()
     false_alarms()
     multicode_tx()
+    slot_codes()
     multiuser()
     same_code()
     sweep("bpsk")                          # uncoded differential BPSK
     sweep("qpsk-1/2", (2, 3, 4, 6))        # LDPC rate 1/2: twice the bit rate, ~6 dB less SNR
+    sweep("64qam-3/4", (15, 17, 19))       # 4.5 bits per symbol
     throughput()

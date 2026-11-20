@@ -1,17 +1,21 @@
 """PHY cores of the GNU Radio flowgraph, with the stock blocks imitated in numpy:
     python -m tests.test_grc_cores
-LDPC encoder -> framer -> table lookup (Chunks to Symbols) -> repeat x31 * code -> combiner
+LDPC encoder -> framer -> table lookup (Chunks to Symbols) -> repeat x sf * code -> combiner
 -> RRC interp -> channel -> RRC matched filter -> despreader -> Constellation Soft Decoder
-(GNU Radio's exact LLR formula) -> LDPC decoder -> bytes
+(GNU Radio's exact LLR formula) -> LDPC decoder -> bytes.  Both code families (Walsh, the
+default, and Gold), every modulation up to 64-QAM.
 """
 import math
 import zlib
 import numpy as np
 
-from wavelink.codes import gold_codes, rrc_taps
+from wavelink.codes import spreading_codes, rrc_taps
 from wavelink.grc_phy import (FramerCore, CombinerCore, DespreaderCore, LdpcEncoderCore, LdpcDecoderCore,
                                phy_config)
-from wavelink.modem import SYMBOL_TABLE, BPSK_POINTS, QPSK_POINTS, QAM16_POINTS
+from wavelink.modem import SYMBOL_TABLE, BPSK_POINTS, QPSK_POINTS, QAM16_POINTS, QAM64_POINTS
+
+PTS = {"bpsk": BPSK_POINTS, "qpsk": QPSK_POINTS, "16qam": QAM16_POINTS, "64qam": QAM64_POINTS}
+NPWR = {"16qam": 0.05, "64qam": 0.05}                     # as the flowgraph's constellations (else 1.0)
 
 
 def gr_soft_decoder(z, pts, npwr):
@@ -31,9 +35,10 @@ def nearest_index(z, pts):
     return np.argmin(np.abs(z[:, None] - pts[None, :]), axis=1)
 
 
-def main():
-    cfg = phy_config(4e6, 2, 5, 48, 1024)
-    codes = gold_codes(5)
+def main(fam="walsh"):
+    print(f"== {fam} codes")
+    cfg = phy_config(4e6, 2, 5, 48, 1024, codes=fam)
+    codes = spreading_codes(cfg)
     framer = FramerCore(cfg)
     enc, dec = LdpcEncoderCore(cfg), LdpcDecoderCore()
     comb = CombinerCore(cfg.chip_rate, 131072, cfg.samp_rate)
@@ -41,9 +46,12 @@ def main():
     desp = DespreaderCore(cfg, 2, got.append)
     rng = np.random.default_rng(4)
     frames = []
-    # two bursts on different codes at the same time (node 2 and node 3) + one broadcast later
-    for code, mod in ((2, "16qam-3/4"), (3, "qpsk-1/2"), (2, "bpsk"), (0, "qpsk-1/2"), (2, "16qam"),
-                      (2, "qpsk-5/6"), (2, "bpsk-1/2")):
+    # bursts on codes 2, 3 and 0 starting together (as in a TD-CDMA slot), then more on code 2
+    plan = [(2, "16qam-3/4"), (3, "qpsk-1/2"), (2, "bpsk"), (0, "qpsk-1/2"), (2, "16qam"),
+            (2, "qpsk-5/6"), (2, "bpsk-1/2"), (2, "64qam-5/6"), (2, "64qam")]
+    if fam == "walsh":          # uncoded 64-QAM while codes 3 and 0 carry bursts too: orthogonal codes
+        plan.insert(0, (2, "64qam"))
+    for code, mod in plan:
         body = bytes(rng.integers(0, 256, 700, dtype=np.uint8))
         frame = body + zlib.crc32(body).to_bytes(4, "little")      # stands in for the CRC32 block
         bits, m_, rate = enc.encode(frame, mod)                    # LDPC Encoder block
@@ -64,8 +72,6 @@ def main():
     mf = np.convolve(rx, h).astype(np.complex64)              # stands in for the FFT filter block
     for i in range(0, mf.size, 16384):
         desp.demod.process(mf[i:i + 16384])
-    pts = {"bpsk": BPSK_POINTS, "qpsk": QPSK_POINTS, "16qam": QAM16_POINTS}
-    bps = {"bpsk": 1, "qpsk": 2, "16qam": 4}
     want = [(c, m, f) for c, m, f in frames if c in (2, 0)]
     print(f"despreader (node 2) found {len(got)} frames; expected {len(want)} (codes 2 and 0, not code 3)")
     ok = 0
@@ -75,26 +81,23 @@ def main():
     for f in got:
         frame = by_key[(f.code_idx, f.mcs if f.mcs != "bpskc" else "bpsk")].pop(0)
         mm = "bpsk" if f.mod in ("bpsk", "bpskc") else f.mod
-        npwr = 0.05 if mm == "16qam" else 1.0                  # as the flowgraph's constellations
-        soft = gr_soft_decoder(f.symbols, pts[mm], npwr)       # stock Constellation Soft Decoder
+        soft = gr_soft_decoder(f.symbols, PTS[mm], NPWR.get(mm, 1.0))   # stock Constellation Soft Decoder
         data, fec_ok, it = dec.decode(soft, f.length, mm, f.rate)   # LDPC Decoder block
         good = data == frame and zlib.crc32(data[:-4]).to_bytes(4, "little") == data[-4:]
         ok += good
         print(f"  code {f.code_idx} {f.mcs:9}  Es/N0 {f.esn0_db:5.1f} dB  CFO {f.cfo_hz:+5.0f} Hz  "
               f"{len(f.symbols)} symbols  LDPC iterations {it}  -> {'OK' if good else 'BAD'}")
-    print("combiner: bursts", comb.bursts, " max concurrent codes seen in output: 2")
-    assert ok == len(want), "decode mismatch"
+    print("combiner: bursts", comb.bursts, " max concurrent codes seen in output: 3")
+    assert ok == len(want) == len(got), "decode mismatch"
     interop(cfg, codes, h, rng)
-    print("GRC PHY cores: PASS")
 
 
 def interop(cfg, codes, h, rng):
     """A numpy-PHY station (--phy numpy) and a GRC-PHY station understand each other, coded or not."""
     from wavelink.mac import add_crc, check_crc
     from wavelink.modem import Modulator, Demodulator
-    pts = {"bpsk": BPSK_POINTS, "qpsk": QPSK_POINTS, "16qam": QAM16_POINTS}
     results = []
-    for mcs in ("bpsk", "qpsk-3/4", "16qam-1/2"):
+    for mcs in ("bpsk", "qpsk-3/4", "16qam-1/2", "64qam-3/4", "64qam"):
         body = bytes(rng.integers(0, 256, 400, dtype=np.uint8))
         # numpy PHY -> GRC PHY: despreader + stock soft decoder + LDPC Decoder block
         got = []
@@ -106,7 +109,7 @@ def interop(cfg, codes, h, rng):
         if got:
             f = got[0]
             mm = "bpsk" if f.mod in ("bpsk", "bpskc") else f.mod
-            soft = gr_soft_decoder(f.symbols, pts[mm], 0.05 if mm == "16qam" else 1.0)
+            soft = gr_soft_decoder(f.symbols, PTS[mm], NPWR.get(mm, 1.0))
             data, _, _ = LdpcDecoderCore().decode(soft, f.length, mm, f.rate)
             a = data[:-4] == body and zlib.crc32(data[:-4]).to_bytes(4, "little") == data[-4:]
         # GRC PHY -> numpy PHY: LDPC Encoder + Framer blocks, stock CRC32 byte order
@@ -126,4 +129,6 @@ def interop(cfg, codes, h, rng):
 
 
 if __name__ == "__main__":
-    main()
+    main("walsh")
+    main("gold")
+    print("GRC PHY cores: PASS")

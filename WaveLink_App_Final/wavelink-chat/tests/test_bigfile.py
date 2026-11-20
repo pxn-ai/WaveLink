@@ -12,7 +12,7 @@ from wavelink.mac import LinkLayer, PRIO_BULK
 
 
 def main(mb=2.0, profile="fast", ebn0=28.0, mod="auto", fec="auto"):
-    cfg = PhyConfig.from_profile(profile)
+    cfg = PhyConfig.from_profile(profile, codes="gold")   # (the link layer on its own is spread ALOHA)
     air = SimAir(cfg, ebn0_db=ebn0, speed=1.0, seed=7)
     got = []
     ra, rb = air.add_node(1), air.add_node(2)

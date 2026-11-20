@@ -62,7 +62,8 @@ class Net:
         """self_leak: how much stronger a station hears its own transmitter than a 0 dB link (the
         simulator's default 3 dB lets it receive while sending; on the ANTSDRs it is ~25 dB or more).
         hw: the settings `run` uses on hardware (spread ALOHA: half-duplex pause, ACK gap)."""
-        self.cfg = PhyConfig.from_profile(profile)
+        # (spread ALOHA is asynchronous: Gold codes, as `run` uses with --mac aloha)
+        self.cfg = PhyConfig.from_profile(profile, codes="gold" if mode == "aloha" else None)
         self.air = SimAir(self.cfg, ebn0_db=ebn0, seed=seed, speed=1000, self_leak_db=self_leak)
         self.mode, self.relay, self.pc, self.hw = mode, relay, pc, hw
         self.check_from = None                    # air time from which overlapping slots are errors

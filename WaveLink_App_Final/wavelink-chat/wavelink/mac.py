@@ -128,28 +128,45 @@ PC_PATH_FALL_DB_S = 0.5                # the path estimate (best recent report) 
 # frames + about 1 dB margin, information bits per symbol).  Measured with the full receiver
 # (detection, header, tracking, LDPC decoder) on the numpy PHY: coded QPSK below ~5 dB is limited
 # by burst detection, not by the code.  Uncoded rates are the old BPSK/QPSK/16-QAM thresholds.
+# 64-QAM (Walsh codes, 1 KB frames, carrier offset up to 12 kHz, 20 ppm clock offset): 95-100 %
+# delivered at 13 / 15 / 17 / 18 dB at rate 1/2 / 2/3 / 3/4 / 5/6 and at 26 dB uncoded, all from 1 dB
+# more; the table adds 1-1.5 dB.
 MCS_TABLE = [
     ("bpsk-1/2", 5.0, 0.5), ("bpsk-3/4", 6.0, 0.75), ("bpsk-5/6", 7.0, 0.833), ("bpsk", 13.0, 1.0),
     ("qpsk-1/2", 5.0, 1.0), ("qpsk-3/4", 6.0, 1.5), ("qpsk-5/6", 7.0, 1.667), ("qpsk", 15.5, 2.0),
     ("16qam-1/2", 9.5, 2.0), ("16qam-2/3", 11.0, 2.667), ("16qam-3/4", 12.5, 3.0),
     ("16qam-5/6", 14.0, 3.333), ("16qam", 22.5, 4.0),
+    ("64qam-1/2", 14.0, 3.0), ("64qam-2/3", 16.5, 4.0), ("64qam-3/4", 17.5, 4.5),
+    ("64qam-5/6", 19.0, 5.0), ("64qam", 27.5, 6.0),
 ]
 MCS_THRESH = {m: t for m, t, _ in MCS_TABLE}
 MCS_BITS = {m: b for m, _, b in MCS_TABLE}
-# automatic ladder (both --mod and --fec auto): every step is faster than the one below
+# automatic ladder (both --mod and --fec auto): every step is faster than the one below, and needs
+# more SNR.  (64-QAM 2/3 carries what uncoded 16-QAM does at 6 dB less SNR, so the latter is out;
+# 64-QAM 1/2 carries no more than 16-QAM 3/4 and needs more.)
 AUTO_LADDER = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16qam-3/4",
-               "16qam-5/6", "16qam"]
+               "16qam-5/6", "64qam-2/3", "64qam-3/4", "64qam-5/6", "64qam"]
+# Spread ALOHA (--mac aloha) uses 64-QAM only when --mod 64qam asks for it.  Its stations send
+# whenever they like, so each link's power is interference for the others (asynchronous Gold
+# codes leak ~1/31 of it into each other): 64-QAM would raise everybody's power-control target
+# by 5 dB (a worse near-far problem) for a rate that rarely survives while others are on the
+# air.  It keeps the ladder it had: up to uncoded 16-QAM.
+AUTO_LADDER_ALOHA = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16qam-3/4",
+                     "16qam-5/6", "16qam"]
 
 
-def mcs_ladder(mod_policy: str = "auto", fec_policy: str = "auto") -> list[str]:
+def mcs_ladder(mod_policy: str = "auto", fec_policy: str = "auto", qam64: bool = True) -> list[str]:
     """MCS entries allowed by --mod / --fec, slowest first.  Coded entries need the 'rate' form
-    ('16qam-3/4'); fec 'off' keeps the uncoded ones."""
+    ('16qam-3/4'); fec 'off' keeps the uncoded ones.  qam64=False (spread ALOHA): 64-QAM only
+    with --mod 64qam."""
     if mod_policy == "auto" and fec_policy == "auto":
-        return list(AUTO_LADDER)
+        return list(AUTO_LADDER if qam64 else AUTO_LADDER_ALOHA)
     out = []
     for m, _, _ in MCS_TABLE:
         mod, _, rate = m.partition("-")
         if mod_policy != "auto" and mod != mod_policy:
+            continue
+        if mod_policy == "auto" and mod == "64qam" and not qam64:
             continue
         if fec_policy == "off" and rate:
             continue
@@ -319,6 +336,9 @@ class LinkLayer:
             else:
                 from .tdma import Tdma
                 self.tdma = Tdma(self, relay=relay)
+        if self.tdma is None and getattr(getattr(radio, "cfg", None), "codes", "gold") == "walsh":
+            self.log("spread ALOHA with Walsh codes: bursts from different stations arrive at any code phase, "
+                     "where Walsh codes are not orthogonal (use --codes gold with --mac aloha)")
 
     def tdcdma_unsupported(self) -> str | None:
         r = self.radio
@@ -347,7 +367,7 @@ class LinkLayer:
     # ================================================================ adaptive modulation + coding
     @property
     def ladder(self) -> list[str]:
-        key = (self.mod_policy, self.fec_policy)
+        key = (self.mod_policy, self.fec_policy, self.tdma is not None)
         if getattr(self, "_ladder_key", None) != key:
             self._ladder_key, self._ladder = key, mcs_ladder(*key)
         return self._ladder
@@ -422,8 +442,9 @@ class LinkLayer:
         return self._pc_on and getattr(self.radio, "supports_tx_gain", False)
 
     def pc_target_db(self) -> float:
-        """Es/N0 a receiver should hear us at: what the fastest allowed entry needs (uncoded 16-QAM
-        with --mod/--fec auto) + 3 dB, unless --pc-target says otherwise."""
+        """Es/N0 a receiver should hear us at: what the fastest allowed entry needs (with --mod/--fec
+        auto: uncoded 64-QAM in TD-CDMA, uncoded 16-QAM in spread ALOHA) + 3 dB, unless --pc-target
+        says otherwise."""
         if self.pc_target is not None:
             return self.pc_target
         return MCS_THRESH[self.ladder[-1]] + PC_MARGIN_DB
@@ -434,7 +455,7 @@ class LinkLayer:
             return "set with --pc-target"
         top = self.ladder[-1]
         mod, _, rate = top.partition("-")
-        name = {"bpsk": "BPSK", "qpsk": "QPSK", "16qam": "16-QAM"}.get(mod, mod)
+        name = {"bpsk": "BPSK", "qpsk": "QPSK", "16qam": "16-QAM", "64qam": "64-QAM"}.get(mod, mod)
         return f"{'uncoded ' if not rate else ''}{name}{' ' + rate if rate else ''} + {PC_MARGIN_DB:g} dB"
 
     def pc_extra_db(self, dst: int) -> float:

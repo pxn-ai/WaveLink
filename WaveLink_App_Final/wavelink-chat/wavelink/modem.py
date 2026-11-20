@@ -6,11 +6,11 @@ Burst structure (one PHY frame)::
     | preamble: 48 known BPSK symbols | header: 48 BPSK symbols        | payload                      |
       (code specific)                   2 x Golay(24,12) of             E coded bits (LDPC, 5G NR BG1)
                                         len(11) mod(2) rate(3) CRC-8    or the plain bits (uncoded),
-                                                                        BPSK / QPSK / 16-QAM
+                                                                        BPSK / QPSK / 16-QAM / 64-QAM
 
-Every symbol is spread by a 2^n-1 chip Gold code, every chip is RRC pulse shaped (sps
-samples/chip).  The spreading code is the *destination's* code, so a station only ever
-despreads bursts addressed to it (plus broadcasts).
+Every symbol is spread by the destination's code (a 32-chip Walsh code under the common scrambling
+sequence, or a 31-chip Gold code: codes.py), every chip is RRC pulse shaped (sps samples/chip).  A
+station only ever despreads bursts addressed to it (plus broadcasts).
 
 Receiver chain (streaming):
 
@@ -34,7 +34,7 @@ import time
 import numpy as np
 
 from .config import PhyConfig
-from .codes import gold_codes, preamble_patterns, rrc_taps
+from .codes import spreading_codes, preamble_patterns, rrc_taps
 from . import golay, ldpc
 
 HEADER_BITS = 24          # information bits of the header
@@ -45,10 +45,14 @@ HEADER_SYMS = 48          # header symbols on air (two Golay(24,12) codewords)
 #   qpsk  (1), 16qam (2): coherent Gray-mapped payload, phase anchored on preamble + header
 #   bpskc (3): coherent BPSK payload (LDPC-coded BPSK, and uncoded BPSK on the GNU Radio PHY)
 # Code rate (3-bit header field): 0 = uncoded, 1..4 = LDPC rate 1/2, 2/3, 3/4, 5/6.
+# 64-QAM takes header codes that were never used: modulation field 0 (differential BPSK, never
+# coded) with rate field 1..4 = 64-QAM rate 1/2..5/6, and 5 = uncoded 64-QAM (header_code).
 MODS = {"bpsk": 0, "qpsk": 1, "16qam": 2, "bpskc": 3}
 MOD_NAMES = {v: k for k, v in MODS.items()}
-BITS_PER_SYM = {"bpsk": 1, "qpsk": 2, "16qam": 4, "bpskc": 1}
+BITS_PER_SYM = {"bpsk": 1, "qpsk": 2, "16qam": 4, "bpskc": 1, "64qam": 6}
 _PAM4 = np.array([-3, -1, 3, 1], dtype=np.float64) / np.sqrt(10)   # Gray: 00 01 10 11 -> -3 -1 +3 +1
+# Gray: index = bits (MSB first) -> level; levels -7 -5 -3 -1 1 3 5 7 carry 000 001 011 010 110 111 101 100
+_PAM8 = np.array([-7, -5, -1, -3, 7, 5, 1, 3], dtype=np.float64) / np.sqrt(42)
 
 # Constellation points in *index order*: point[k] carries the bits of k (MSB first).
 # These are exactly the points the GNU Radio flowgraph gives its Chunks-to-Symbols
@@ -56,10 +60,23 @@ _PAM4 = np.array([-3, -1, 3, 1], dtype=np.float64) / np.sqrt(10)   # Gray: 00 01
 BPSK_POINTS = np.array([1, -1], dtype=np.complex64)
 QPSK_POINTS = (np.array([1 + 1j, 1 - 1j, -1 + 1j, -1 - 1j]) / np.sqrt(2)).astype(np.complex64)
 QAM16_POINTS = np.array([_PAM4[(k >> 2) & 3] + 1j * _PAM4[k & 3] for k in range(16)], dtype=np.complex64)
-POINTS = {"bpsk": BPSK_POINTS, "bpskc": BPSK_POINTS, "qpsk": QPSK_POINTS, "16qam": QAM16_POINTS}
-# combined table used by the TX Chunks-to-Symbols block: [BPSK | QPSK | 16-QAM]
-SYMBOL_TABLE = np.concatenate([BPSK_POINTS, QPSK_POINTS, QAM16_POINTS])
-TABLE_OFFSET = {"bpsk": 0, "bpskc": 0, "qpsk": 2, "16qam": 6}
+QAM64_POINTS = np.array([_PAM8[(k >> 3) & 7] + 1j * _PAM8[k & 7] for k in range(64)], dtype=np.complex64)
+POINTS = {"bpsk": BPSK_POINTS, "bpskc": BPSK_POINTS, "qpsk": QPSK_POINTS, "16qam": QAM16_POINTS,
+          "64qam": QAM64_POINTS}
+# combined table used by the TX Chunks-to-Symbols block: [BPSK | QPSK | 16-QAM | 64-QAM]
+SYMBOL_TABLE = np.concatenate([BPSK_POINTS, QPSK_POINTS, QAM16_POINTS, QAM64_POINTS])
+TABLE_OFFSET = {"bpsk": 0, "bpskc": 0, "qpsk": 2, "16qam": 6, "64qam": 22}
+
+
+def header_code(mod: str, rate: int) -> int:
+    """The 5 header bits after the length: modulation (2 bits) and code rate (3 bits)."""
+    if mod == "64qam":
+        return rate if rate else 5
+    return (MODS[mod] << 3) | rate
+
+
+# header code -> (modulation, rate); anything else is a damaged or foreign header
+HEADER_DECODE = {header_code(m, r): (m, r) for m in BITS_PER_SYM for r in ldpc.RATES if not (m == "bpsk" and r)}
 
 
 # ----------------------------------------------------------------------------- MCS names
@@ -69,7 +86,7 @@ def split_mcs(mcs: str) -> tuple[str, int]:
     rate = ldpc.RATE_CODES[r] if r else 0
     if mod == "bpsk" and rate:
         mod = "bpskc"
-    if mod not in MODS:
+    if mod not in BITS_PER_SYM:
         raise ValueError(f"unknown modulation {mcs!r}")
     return mod, rate
 
@@ -88,7 +105,7 @@ def payload_symbols(n_bytes: int, mod: str, rate: int) -> int:
 
 
 def header_bits(length: int, mod: str, rate: int) -> np.ndarray:
-    word = (length << 5) | (MODS[mod] << 3) | rate
+    word = (length << 5) | header_code(mod, rate)
     hdr = word.to_bytes(2, "big")
     hdr += bytes([crc8(hdr)])
     return bytes_to_bits(hdr)
@@ -109,7 +126,7 @@ def bits_to_index(u: np.ndarray, mod: str) -> np.ndarray:
 
 
 def map_bits(u: np.ndarray, mod: str) -> np.ndarray:
-    """Gray-mapped BPSK / QPSK / 16-QAM symbols with unit average energy."""
+    """Gray-mapped BPSK / QPSK / 16-QAM / 64-QAM symbols with unit average energy."""
     if mod == "bpskc":
         return (1.0 - 2.0 * u).astype(np.complex128)
     if mod == "qpsk":
@@ -118,6 +135,9 @@ def map_bits(u: np.ndarray, mod: str) -> np.ndarray:
     if mod == "16qam":
         b = u.reshape(-1, 4).astype(np.int64)
         return _PAM4[2 * b[:, 0] + b[:, 1]] + 1j * _PAM4[2 * b[:, 2] + b[:, 3]]
+    if mod == "64qam":
+        b = u.reshape(-1, 6).astype(np.int64)
+        return _PAM8[4 * b[:, 0] + 2 * b[:, 1] + b[:, 2]] + 1j * _PAM8[4 * b[:, 3] + 2 * b[:, 4] + b[:, 5]]
     raise ValueError(mod)
 
 
@@ -141,10 +161,19 @@ def slice_bits(z: np.ndarray, mod: str) -> tuple[np.ndarray, np.ndarray]:
         q0, q1, rq = pam(z.imag)
         bits = np.stack([i0, i1, q0, q1], axis=1).ravel().astype(np.int8)
         return bits, ri + 1j * rq
+    if mod == "64qam":
+        def pam8(x):
+            n = np.clip(np.round((x * _S42 + 7) / 2), 0, 7).astype(np.int64)   # levels -7..7 -> 0..7
+            g = n ^ (n >> 1)                                                  # Gray code = the bits
+            return (g >> 2) & 1, (g >> 1) & 1, g & 1, (2 * n - 7) / _S42
+        a0, a1, a2, ri = pam8(z.real)
+        b0, b1, b2, rq = pam8(z.imag)
+        bits = np.stack([a0, a1, a2, b0, b1, b2], axis=1).ravel().astype(np.int8)
+        return bits, ri + 1j * rq
     raise ValueError(mod)
 
 
-_S2, _S10 = np.sqrt(2.0), np.sqrt(10.0)
+_S2, _S10, _S42 = np.sqrt(2.0), np.sqrt(10.0), np.sqrt(42.0)
 
 
 def nearest_point(z: np.ndarray, mod: str) -> np.ndarray:
@@ -155,6 +184,10 @@ def nearest_point(z: np.ndarray, mod: str) -> np.ndarray:
         f = z.view(np.float64) if z.dtype == np.complex128 else z.astype(np.complex128).view(np.float64)
         lv = np.clip(np.rint((f * _S10 + 3.0) * 0.5), 0.0, 3.0)
         return ((2.0 * lv - 3.0) / _S10).view(np.complex128)
+    if mod == "64qam":
+        f = z.view(np.float64) if z.dtype == np.complex128 else z.astype(np.complex128).view(np.float64)
+        lv = np.clip(np.rint((f * _S42 + 7.0) * 0.5), 0.0, 7.0)
+        return ((2.0 * lv - 7.0) / _S42).view(np.complex128)
     return np.sign(z.real).astype(np.complex128)
 
 
@@ -203,7 +236,7 @@ def bits_to_bytes(bits: np.ndarray) -> bytes:
 class Modulator:
     def __init__(self, cfg: PhyConfig):
         self.cfg = cfg
-        self.codes = gold_codes(cfg.gold_degree)
+        self.codes = spreading_codes(cfg)
         self.pre = preamble_patterns(self.codes.shape[0], cfg.preamble_bits)
         self.h = rrc_taps(cfg.sps, cfg.rolloff, cfg.rrc_span)
 
@@ -318,7 +351,7 @@ class Demodulator:
         self.cfg = cfg
         self.matched_filter = matched_filter     # False: input is already RRC-filtered
         self.decode = decode
-        self.codes = gold_codes(cfg.gold_degree)
+        self.codes = spreading_codes(cfg)
         self.pre = preamble_patterns(self.codes.shape[0], cfg.preamble_bits)
         self.h = rrc_taps(cfg.sps, cfg.rolloff, cfg.rrc_span).astype(np.float32)
         self.P = cfg.samples_per_symbol
@@ -630,9 +663,8 @@ class Demodulator:
             m2, _ = golay.decode(soft[24:])
             hdr = bits_to_bytes(np.concatenate([m1, m2]))
             word = int.from_bytes(hdr[:2], "big")
-            length, mcode, rate = word >> 5, (word >> 3) & 3, word & 7
-            mod = MOD_NAMES[mcode]
-            if (crc8(hdr[:2]) != hdr[2] or rate not in ldpc.RATES or (mod == "bpsk" and rate)
+            length, mr = word >> 5, HEADER_DECODE.get(word & 31)
+            if (crc8(hdr[:2]) != hdr[2] or mr is None
                     or not self.min_payload <= length <= self.cfg.max_phy_payload):
                 self.stats["header_fail"] += 1
                 self.on_reject("header_crc", st.code_idx)
@@ -640,6 +672,7 @@ class Demodulator:
                 if self._win is not None:                # where the next burst starts is unknown now
                     st.chain.append((t0_abs, t0_abs + self.max_frame_symbols * P))
                 return "done"
+            mod, rate = mr
             p[3] = K + HEADER_SYMS + payload_symbols(length, mod, rate)
             p[5] = (mod, rate, length, header_symbols(length, mod, rate))
             rec[1] = t0_abs + p[3] * P
@@ -702,7 +735,8 @@ class Demodulator:
         2. One gather despreads every symbol at every timing offset in
            [-R, R] samples -> matrix S[k, offset].
         3. DLL: early/late energy per block of W symbols (cumulative sums),
-           choosing the timing offset per block (tracks clock drift).
+           choosing the timing offset per block (tracks clock drift); then one
+           straight line through its estimates gives the timing used.
         4. Carrier: preamble phase/frequency fit; the header is read coherently
            from it.  The payload then follows residual drift with a block-wise
            tracker whose reference is the known preamble + header and, after them,
@@ -753,6 +787,7 @@ class Demodulator:
         y = np.empty(nsym, dtype=np.complex128)
         half = _FD_TAPS // 2
         lim = R0 + drift
+        blocks = []                                                       # (symbols, offsets, Dv, timing estimate)
         for k0 in range(0, nsym, W):
             ks = np.arange(k0, min(k0 + W, nsym))
             n0 = int(np.floor(tau))
@@ -769,6 +804,33 @@ class Demodulator:
             l = float(np.sum(np.abs(yl) ** 2))
             disc = (e - l) / (e + l + 1e-30)
             tau = float(np.clip(tau - 0.6 * d * disc, -lim, lim))
+            blocks.append((ks, o, Dv, tau))
+        # ---- second pass: one straight line through the DLL's estimates ---------------
+        # The clock offset is constant over a burst, so the timing drifts linearly.  A line
+        # fitted through the per-block estimates averages out their jitter, which matters when
+        # other codes in the same slot carry symbols too: their symbols make the early/late
+        # energies noisy, and despreading a few percent of a chip off lets them leak into this
+        # code.  Only payload blocks count: bursts sent together have the same header, whose
+        # leakage adds up instead of averaging out.
+        hb = K + HEADER_SYMS
+        pay = [b for b in blocks if b[0][0] >= hb]
+        if len(pay) >= 4:
+            kc = np.array([b[0][0] + (b[0].size - 1) / 2 for b in pay])     # block centres (symbols)
+            te = np.array([b[3] for b in pay])
+            sl, ic = np.polyfit(kc, te, 1)
+            r = np.abs(te - (ic + sl * kc))
+            keep = r <= 3 * float(np.median(r)) + 0.02                     # drop outliers, fit again
+            if 4 <= keep.sum() < keep.size:
+                sl, ic = np.polyfit(kc[keep], te[keep], 1)
+            kc = np.array([b[0][0] + (b[0].size - 1) / 2 for b in blocks])
+            for (ks, o, Dv, _), kk in zip(blocks, kc):
+                t = float(np.clip(ic + sl * kk, -lim, lim))
+                n0 = int(np.floor(t))
+                j = n0 - half + 1 - int(o[0])                             # offset n0-half+1 in Dv
+                if 0 <= j <= o.size - _FD_TAPS:
+                    y[ks] = Dv[:, j:j + _FD_TAPS] @ _fd_filter(t - n0)
+                else:
+                    y[ks] = despread_int(ks, np.arange(n0 - half + 1, n0 + half + 1)) @ _fd_filter(t - n0)
 
         # ---- carrier: phase + frequency from the known symbols ------------------------
         # (the preamble; once the header is decoded, preamble + header = 96 symbols, which

@@ -8,11 +8,12 @@
 # WaveLink Chat — multi-node DS-CDMA messaging over ANTSDR E200 + GNU Radio
 
 By team **WaveLink** for the Communication Design Project (2026). A WhatsApp-style chat for 2–4 stations. Every
-station is one PC with one ANTSDR E200. All stations share **2.5 GHz** using **direct-sequence CDMA** (31-chip Gold
-codes) with **BPSK, QPSK or 16-QAM** payloads protected by **LDPC forward error correction** (the 5G NR code, rates ½
-to ⅚, chosen per link). The stations take turns in **time slots**, and in its slot a station reaches every other
-station at once, one code each (**TD-CDMA**, section 3); the original spread-ALOHA access, every link on the air
-whenever it likes, is still there with `--mac aloha`.
+station is one PC with one ANTSDR E200. All stations share **2.5 GHz** using **direct-sequence CDMA** (32-chip
+**Walsh codes under one scrambling sequence**, exactly orthogonal inside a time slot) with **BPSK, QPSK, 16-QAM or
+64-QAM** payloads protected by **LDPC forward error correction** (the 5G NR code, rates ½ to ⅚, chosen per link). The
+stations take turns in **time slots**, and in its slot a station reaches every other station at once, one code each
+(**TD-CDMA**, section 3); the original spread-ALOHA access, every link on the air whenever it likes, is still there
+with `--mac aloha` (with 31-chip Gold codes, which work at any code phase).
 
 **The physical layer is a GNU Radio Companion flowgraph** (`grc/cdma_phy.grc`). When a station starts, the app
 compiles it with `grcc`, runs it, and attaches its link layer and web UI to the flowgraph's two interface blocks.
@@ -36,8 +37,8 @@ compiles it with `grcc`, runs it, and attaches its link layer and web UI to the 
  │                               │  group ACKs, relaying; or spread ALOHA
  ├────────── MAC -> PHY ─────────┤  ← Embedded Python blocks in the .grc (grc_phy.py)
  │ Physical layer                │
- │  grc/cdma_phy.grc             │  GNU Radio flowgraph: CRC-32, LDPC encoder, framing, Gold-code
- │  (compiled with grcc at start)│  spreading lanes, RRC, ANTSDR (Pluto) sink/source, despreading,
+ │  grc/cdma_phy.grc             │  GNU Radio flowgraph: CRC-32, LDPC encoder, framing, spreading
+ │  (compiled with grcc at start)│  lanes (Walsh/Gold), RRC, ANTSDR (Pluto) sink/source, despreading,
  │                               │  constellation soft decoders, LDPC decoder, CRC check
  └───────────────────────────────┘
 ```
@@ -47,11 +48,11 @@ compiles it with `grcc`, runs it, and attaches its link layer and web UI to the 
 | Brief requirement | Where / how |
 |---|---|
 | **Mid-evaluation**: simplex text TX → RX | `python -m wavelink tx …` and `python -m wavelink rx …` (section 5.2) |
-| Digital modulation | DS-CDMA with 31-chip Gold codes, RRC α = 0.35. BPSK preamble and Golay-coded header; payload **BPSK, QPSK or 16-QAM** with **LDPC rate ½, ⅔, ¾, ⅚ or uncoded**, chosen per link from the receiver's measured SNR (adaptive modulation and coding) |
+| Digital modulation | DS-CDMA with 32-chip Walsh codes × a scrambling sequence (orthogonal inside a TD-CDMA slot; 31-chip Gold codes with spread ALOHA), RRC α = 0.35. BPSK preamble and Golay-coded header; payload **BPSK, QPSK, 16-QAM or 64-QAM** with **LDPC rate ½, ⅔, ¾, ⅚ or uncoded**, chosen per link from the receiver's measured SNR (adaptive modulation and coding) |
 | GNU Radio based | The PHY is `grc/cdma_phy.grc`, built from stock GNU Radio blocks plus seven Embedded Python blocks; the app compiles and runs it (section 5.5) |
 | Two transceivers, real two-way link | ANTSDR E200 on each PC; every station sends in its own time slot to all the others at once (TD-CDMA), or whenever it likes (spread ALOHA); ACKs flow on the reverse link |
 | Packetization and reassembly | 1,009-byte fragments (`fast`), up to 65,535 per message (≈ 66 MB) — `mac.py` |
-| Unique addressing | Node ID 1–4 = its Gold code (PHY: one code lane per station in the flowgraph) + `dst` byte checked in every frame (MAC) |
+| Unique addressing | Node ID 1–4 = its spreading code (PHY: one code lane per station in the flowgraph) + `dst` byte checked in every frame (MAC) |
 | CRC error detection | CRC-8 on the PHY header; CRC-32 on every frame (stock **Stream CRC32** blocks in the flowgraph) — bad frames are dropped |
 | Error correction (extra) | **LDPC** (3GPP 5G NR base graph 1) on every payload, soft-decision min-sum decoding; extended **Golay (24,12)** on the header. Up to **4.8× goodput** on a 14 dB link, ~9 dB coding gain at rate ½ (section 2.2) |
 | ACK-based reliable delivery | Selective-repeat ARQ: cumulative + selective (SACK) acknowledgements, fast loss detection, timeouts, duplicate detection. With TD-CDMA the ACKs ride in the slot headers and a group message is acknowledged by every member |
@@ -70,10 +71,10 @@ compiles it with `grcc`, runs it, and attaches its link layer and web UI to the 
 | Carrier | 2.500 GHz (`--freq`) | same |
 | Sample rate / RF bandwidth | 4 MS/s / 4 MHz | same |
 | Chip rate | 2 Mchip/s (2 samples/chip) | 1 Mchip/s (4 samples/chip) |
-| Spreading | 31-chip Gold codes, processing gain 14.9 dB | same |
-| Symbol rate | 64.5 ksymbol/s | 32 ksymbol/s |
-| Payload bit rate, uncoded BPSK / QPSK / 16-QAM | **64.5 / 129 / 258 kb/s** | 32 / 65 / 129 kb/s |
-| Payload bit rate with LDPC | 32 kb/s (BPSK ½) … **215 kb/s (16-QAM ⅚)** | half |
+| Spreading | 32-chip Walsh codes × one scrambling sequence, processing gain 15.1 dB (`--codes walsh`, the default with TD-CDMA); 31-chip Gold codes, 14.9 dB (`--codes gold`, the default and the only choice with spread ALOHA) | same |
+| Symbol rate | 62.5 ksymbol/s (Gold: 64.5) | 31.25 ksymbol/s (Gold: 32.3) |
+| Payload bit rate, uncoded BPSK / QPSK / 16-QAM / 64-QAM | **62.5 / 125 / 250 / 375 kb/s** (Gold: 3 % more) | 31 / 62.5 / 125 / 188 kb/s |
+| Payload bit rate with LDPC | 31 kb/s (BPSK ½) … **312 kb/s (64-QAM ⅚)** | half |
 | Forward error correction | LDPC, 5G NR base graph 1, rate ½ ⅔ ¾ ⅚ (or uncoded), one codeword per frame | same |
 | Max frame payload | 1,024 bytes (MAC frame + CRC-32) | 512 bytes |
 | Pulse shape | Root-raised cosine, α = 0.35, 8-chip span | same |
@@ -83,9 +84,38 @@ station are compatible on air, coded or uncoded (`tests.test_grc_cores` checks b
 
 **Burst:** 48 known preamble symbols (BPSK, code-specific) · header: 24 bits (11-bit length, 2-bit modulation,
 3-bit code rate, CRC-8) sent as **two extended Golay (24,12) codewords = 48 coherent BPSK symbols** · payload: the
-LDPC codeword (or the plain bits of an uncoded frame), Gray-mapped to BPSK, QPSK or 16-QAM, padded to a multiple of
-16 symbols. The receiver reads modulation and code rate from each header, so both can change on every frame.
-(Uncoded BPSK is differentially coded on the numpy PHY and coherent on the GRC PHY; coded BPSK is always coherent.)
+LDPC codeword (or the plain bits of an uncoded frame), Gray-mapped to BPSK, QPSK, 16-QAM or 64-QAM, padded to a
+multiple of 16 symbols. The receiver reads modulation and code rate from each header, so both can change on every
+frame. (Uncoded BPSK is differentially coded on the numpy PHY and coherent on the GRC PHY; coded BPSK is always
+coherent. 64-QAM uses the header values nothing else did: modulation 0, differential BPSK, which is never coded,
+with code rate 1–4 for 64-QAM ½–⅚ and 5 for uncoded 64-QAM, so a station from before 64-QAM rejects such a header
+instead of misreading it.)
+
+**Spreading codes** (`wavelink/codes.py`, `--codes`, the same on every station):
+
+- **Walsh × scrambling** (default, with TD-CDMA): code *k* = a row of the 32 × 32 Hadamard matrix, chip by chip ×
+  one common scrambling sequence. In a TD-CDMA slot one station sends to every destination at once and every burst
+  starts on the slot's symbol grid (3.1), so the codes are **exactly orthogonal**: the other bursts of the slot leave
+  nothing behind after despreading. Walsh rows alone correlate badly off the peak (row 0 is all ones); the scrambling
+  sequence fixes that. It and the five rows used for codes 0–4 were searched for (`tools/walsh_search.py`):
+  balanced codes, every even/odd autocorrelation sidelobe and cross-correlation at any lag at most 12/32 (the Gold
+  codes in use reach 13/31 and 15/31).
+- **Gold** (`--codes gold`; spread ALOHA): 31 chips, a three-valued cross-correlation at *every* code phase, which
+  bursts from different stations arriving at any phase need. Walsh codes would not do there (at other phases they
+  are not orthogonal), so `--mac aloha` uses Gold codes and refuses `--codes walsh`. At zero lag the Gold codes are
+  *not* orthogonal: code 1 cross-correlates with codes 0, 2 and 4 at 7/31, so in a slot that also carries the header
+  (code 0) node 1's receiver keeps only ~13 dB SIR, whatever the SNR.
+
+| One station, bursts on 1 / 2 / 4 codes starting together, Es/N0 45 dB (`tests.test_modem`) | Es/N0 at code 1's receiver | 4 uncoded 64-QAM bursts at once |
+|---|---|---|
+| Walsh × scrambling | **44.9 / 44.2 / 41.4 dB** | **4/4 decoded** |
+| Gold | 45.1 / 12.6 / 9.8 dB | 1/4 decoded |
+
+Exact orthogonality needs exact timing: despread a few percent of a chip off, and the neighbouring chips of the
+other codes leak in. With four codes at once the receiver's early–late timing loop jitters by 0.1–0.2 sample (their
+symbols add noise to its early and late energies), which left 39.6 dB and 2 of the 4 uncoded 64-QAM bursts; fitting
+one straight line through the loop's estimates over the whole burst (receiver step 5 below) gives the numbers
+above.
 
 ### 2.1 The flowgraph (`grc/cdma_phy.grc`)
 
@@ -98,12 +128,12 @@ parameters (node ID, ANTSDR URI, carrier, gains) and runs it. The link layer tal
 TX  MAC -> PHY ─► PDU to Tagged Stream ─► Stream CRC32 (append) ─► Tagged Stream to PDU ─► LDPC Encoder
     ─► CDMA PHY Framer
     ─► 5 code lanes (code 0 = broadcast, 1–4 = nodes), each:
-         PDU Filter (code = k) ─► PDU to Tagged Stream ─► Chunks to Symbols (BPSK/QPSK/16-QAM table)
-         ─► Repeat ×31 ─► Multiply ◄─ Vector Source (Gold code k) ─► Tagged Stream Multiply Length
+         PDU Filter (code = k) ─► PDU to Tagged Stream ─► Chunks to Symbols (BPSK/QPSK/16-QAM/64-QAM table)
+         ─► Repeat ×sf ─► Multiply ◄─ Vector Source (code k) ─► Tagged Stream Multiply Length
     ─► CDMA Burst Combiner ─► Interpolating FIR (RRC, ×2) ─► Multiply Const ─► PlutoSDR Sink (ANTSDR TX1)
 
 RX  PlutoSDR Source (ANTSDR RX1) ─► FFT Filter (RRC matched filter) ─► CDMA Despreader
-    ─► 3 modulation branches (BPSK, QPSK, 16-QAM), each:
+    ─► 4 modulation branches (BPSK, QPSK, 16-QAM, 64-QAM), each:
          PDU Filter (mod) ─► PDU to Tagged Stream ─► Constellation Soft Decoder (soft bits)
          ─► Tagged Stream Multiply Length (× bits/symbol) ─► Tagged Stream to PDU
     ─► LDPC Decoder ─► PDU to Tagged Stream ─► Stream CRC32 (check, bad frames dropped)
@@ -114,14 +144,18 @@ RX  PlutoSDR Source (ANTSDR RX1) ─► FFT Filter (RRC matched filter) ─► C
 |---|---|---|
 | MAC → PHY, PHY → MAC | Embedded Python | Hand frames between the app and the flowgraph as PDUs (metadata: `code`, `mod` = modulation and coding, e.g. `16qam-3/4`, `pwr` = power backoff, `at` = the chip the burst must start on; on RX also SNR, CFO, LDPC iterations and the frame's receive sample index) |
 | LDPC Encoder | Embedded Python | 5G NR LDPC encoding of frame + CRC-32, rate matching to the requested rate, 5G bit interleaver (section 2.2) |
-| CDMA PHY Framer | Embedded Python | Builds the burst as constellation **indices**: preamble, Golay-coded header, coded payload bits → symbol numbers in `sym_table` (0–1 BPSK, 2–5 QPSK, 6–21 16-QAM) |
+| CDMA PHY Framer | Embedded Python | Builds the burst as constellation **indices**: preamble, Golay-coded header, coded payload bits → symbol numbers in `sym_table` (0–1 BPSK, 2–5 QPSK, 6–21 16-QAM, 22–85 64-QAM) |
 | CDMA Burst Combiner | Embedded Python | Adds the 5 code lanes chip by chip (several stations served at once) and sends zeros between bursts, so the ANTSDR always has samples. A burst tagged with `at` starts exactly on that chip (time slots); one that arrives after its chip is dropped and counted |
 | CDMA Despreader | Embedded Python | Synchronisation: preamble correlation on this node's code and the broadcast code (with TD-CDMA only where the slot plan says bursts can start), CFO estimate, fractional-delay despreading with DLL timing, Golay header decode, carrier tracking. Outputs the corrected payload symbols with the burst's receive sample index |
 | LDPC Decoder | Embedded Python | Undoes interleaving and rate matching, layered normalised min-sum decoding with early stop; uncoded frames get hard decisions |
-| Everything else | Stock GNU Radio | CRC-32, spreading (Repeat × Gold code), Chunks to Symbols, pulse shaping, ANTSDR sink/source, matched filter, **Constellation Soft Decoder** with `variable_constellation` objects (soft bits for the LDPC decoder), length-tag handling |
+| Everything else | Stock GNU Radio | CRC-32, spreading (Repeat × code), Chunks to Symbols, pulse shaping, ANTSDR sink/source, matched filter, **Constellation Soft Decoder** with `variable_constellation` objects (soft bits for the LDPC decoder), length-tag handling |
+
+The code family is the flowgraph parameter `code_family` (`walsh` or `gold`; the app passes `--codes`): the
+variables `sf` (32 or 31) and `code_0` … `code_4` pick their values from the tables `walsh_table` and `gold_table`,
+and the Framer and Despreader get it as a block parameter.
 
 Modulation and coding switching: the link layer chooses modulation and code rate for each frame (adaptive, or
-restricted with `--mod` / `--fec`) and puts it in the PDU's `mod` field (`qpsk-1/2`, `16qam-3/4`, `16qam`, …). The
+restricted with `--mod` / `--fec`) and puts it in the PDU's `mod` field (`qpsk-1/2`, `16qam-3/4`, `64qam`, …). The
 LDPC Encoder encodes at that rate, the Framer maps the bits to the right part of the symbol table and writes
 modulation and rate into the header. On receive, the Despreader reads the header and tags the PDU with modulation,
 rate and length; a PDU Filter routes it to the matching Constellation Soft Decoder, and the LDPC Decoder uses the
@@ -148,7 +182,8 @@ parity checks.
 3. **Rate matching** (5G redundancy version 0): the first 2 Z information bits are punctured (as in 5G), fillers are
    skipped, and the first E bits are sent, E = K / R rounded up to whole symbols. Every rate is a prefix of the same
    mother codeword, so one matrix serves rates ½, ⅔, ¾ and ⅚ — the decoder just uses fewer rows at higher rates.
-4. The **5G bit interleaver** (Qm rows) spreads each codeword across the bit positions of the QPSK/16-QAM symbols.
+4. The **5G bit interleaver** (Qm rows) spreads each codeword across the bit positions of the QPSK/16-QAM/64-QAM
+   symbols.
 
 **Decoder:** soft bits from a max-log demapper (numpy PHY) or the stock Constellation Soft Decoder (GRC PHY), then
 **layered normalised min-sum** (α = 0.75): row layers that share no variables are merged, every layer is processed as
@@ -163,18 +198,33 @@ and the carrier frequency is re-estimated over all 96 known symbols, which keeps
 
 **Adaptive modulation and coding.** Each ACK carries the SNR the receiver measured on the frame that requested it.
 The sender picks the fastest entry of this table whose SNR requirement is met (`mac.MCS_TABLE`; despread symbol SNR
-for ~100 % delivery of 1 KB frames plus ~0.5–1 dB margin, measured with the full receiver):
+for ~100 % delivery of 1 KB frames plus ~0.5–1 dB margin, measured with the full receiver; rates for the `fast`
+profile with Walsh codes, 3 % more with Gold codes):
 
 | Rung | Info bits/symbol | `fast` profile | Needs Es/N0 |
 |---|---|---|---|
-| QPSK ½ (also ACKs, beacons, broadcasts) | 1.0 | 65 kb/s | — (floor; works from ~4–5 dB) |
-| QPSK ¾ | 1.5 | 97 kb/s | 6.0 dB |
-| QPSK ⅚ | 1.67 | 108 kb/s | 7.0 dB |
-| 16-QAM ½ | 2.0 | 129 kb/s | 9.5 dB |
-| 16-QAM ⅔ | 2.67 | 172 kb/s | 11.0 dB |
-| 16-QAM ¾ | 3.0 | 194 kb/s | 12.5 dB |
-| 16-QAM ⅚ | 3.33 | 215 kb/s | 14.0 dB |
-| 16-QAM uncoded | 4.0 | 258 kb/s | 22.5 dB |
+| QPSK ½ (also ACKs, beacons, broadcasts) | 1.0 | 62.5 kb/s | — (floor; works from ~4–5 dB) |
+| QPSK ¾ | 1.5 | 94 kb/s | 6.0 dB |
+| QPSK ⅚ | 1.67 | 104 kb/s | 7.0 dB |
+| 16-QAM ½ | 2.0 | 125 kb/s | 9.5 dB |
+| 16-QAM ⅔ | 2.67 | 167 kb/s | 11.0 dB |
+| 16-QAM ¾ | 3.0 | 188 kb/s | 12.5 dB |
+| 16-QAM ⅚ | 3.33 | 208 kb/s | 14.0 dB |
+| 64-QAM ⅔ (TD-CDMA) | 4.0 | 250 kb/s | 16.5 dB |
+| 64-QAM ¾ (TD-CDMA) | 4.5 | 281 kb/s | 17.5 dB |
+| 64-QAM ⅚ (TD-CDMA) | 5.0 | 312 kb/s | 19.0 dB |
+| 64-QAM uncoded (TD-CDMA) | 6.0 | 375 kb/s | 27.5 dB |
+| 16-QAM uncoded (spread ALOHA's top rung) | 4.0 | 258 kb/s (Gold) | 22.5 dB |
+
+64-QAM ⅔ carries what uncoded 16-QAM does at 6 dB less SNR, so with TD-CDMA it takes uncoded 16-QAM's place; 64-QAM ½
+(14 dB, 3 bits per symbol) carries no more than 16-QAM ¾ and needs more, so the ladder skips it (`--mod 64qam` uses
+it). Spread ALOHA keeps the ladder it had, up to uncoded 16-QAM: its stations transmit whenever they like, so one
+link's power is every other link's interference, and 64-QAM would raise everybody's power-control target by 5 dB
+(3.4) for a rate that rarely survives while others are on the air; `--mod 64qam` still allows it there. The 64-QAM
+thresholds were measured like the others (1 KB frames, carrier offset up to ±12 kHz, 20 ppm clock offset): 95–100 %
+delivered at 13 / 15 / 17 / 18 dB at rate ½ / ⅔ / ¾ / ⅚ and at 26 dB uncoded, all from 1 dB more; the table adds
+1–1.5 dB. 64-QAM is Gray-mapped (3 bits per axis, levels ±1, ±3, ±5, ±7 / √42), demapped max-log on the numpy PHY
+and by the stock Constellation Soft Decoder (`const_64qam`, `npwr` 0.05 as for 16-QAM) on the GRC PHY.
 
 It drops one rung for 10 s whenever windows (with TD-CDMA: every 8 frames the ACK records account for) keep losing
 more than 20 % of their frames, and messages of one or two fragments go two rungs lower (a lost frame costs a whole
@@ -182,18 +232,19 @@ round trip), but with TD-CDMA no lower than the slot allows: a full fragment at 
 can be longer than an idle slot (44 ms with two stations, less with more), and the message would wait ~1.5 s for its
 slot to grow; it takes the slowest rung that fits instead. Interference counts (spread ALOHA): with another equal-power link on the channel the measured SNR falls
 to ~12–15 dB, and the link moves from uncoded 16-QAM to 16-QAM ¾ or ⅔ instead of dropping to QPSK. `--mod
-bpsk|qpsk|16qam` restricts the modulation, `--fec off|1/2|2/3|3/4|5/6` the coding (`--fec off` gives the old uncoded
-BPSK/QPSK/16-QAM behaviour). ACKs use QPSK ½: the airtime of uncoded BPSK with ~9 dB more margin.
+bpsk|qpsk|16qam|64qam` restricts the modulation, `--fec off|1/2|2/3|3/4|5/6` the coding (`--fec off` gives uncoded
+BPSK/QPSK/16-QAM/64-QAM only). ACKs use QPSK ½: the airtime of uncoded BPSK with ~9 dB more margin.
 
 Low-SNR limit: coded QPSK ½ could decode at ~1.5 dB, but burst detection needs ~4 dB (detector threshold 0.6 plus
 a second, coherent preamble check that rejects noise and other codes' data). A longer preamble would extend this.
 
-**Code assignment (receiver-based CDMA).** Station *N* listens on Gold code #*N* and on the broadcast code #0. A frame
+**Code assignment (receiver-based CDMA).** Station *N* listens on code #*N* and on the broadcast code #0. A frame
 for station *N* is spread with code #*N*. Three consequences:
 
 - A station never even despreads traffic meant for someone else.
 - One transmitter can talk to several stations at the same instant by summing bursts on different codes
-  (`TxMixer`). An image to Bob and a text to Carol go out together.
+  (`TxMixer`). An image to Bob and a text to Carol go out together; with Walsh codes, starting together, they don't
+  interfere at all.
 - Two senders to the same station collide on the same code. Because they arrive with different code phases, the
   receiver tracks both independently and decodes each, with the other acting as suppressed interference
   (spread-ALOHA reception).
@@ -211,11 +262,14 @@ the whole receiver on the numpy PHY and in the simulator):
    rejects noise and other codes' data before any decoding is attempted.
 5. **Fractional-delay despreading.** Each symbol is despread at a few whole-sample offsets, and an 8-tap
    windowed-sinc filter interpolates between them to 1/64-sample timing resolution. That accuracy is what 16-QAM
-   needs; without it, inter-chip interference caps the SNR near 12 dB. An early–late **DLL** tracks the
-   sample-clock offset between the two radios, up to 30 ppm.
-6. **Carrier tracking.** Uncoded BPSK uses a block-wise squaring estimate plus differential decoding. QPSK, 16-QAM
-   and coded BPSK use a decision-directed block tracker (a 2nd-order loop) anchored on the known preamble and header,
-   so there is no 90° ambiguity to slip into.
+   and 64-QAM need; without it, inter-chip interference caps the SNR near 12 dB. An early–late **DLL** tracks the
+   sample-clock offset between the two radios, up to 30 ppm, block by block (32 symbols); then, since the clock
+   offset is constant over a burst, one **straight line fitted through its estimates** (payload blocks only: bursts
+   sent together have the same header, whose leakage would add up) gives the timing every symbol is despread at.
+   That removes the loop's jitter, which matters most when other codes of the same slot carry symbols too.
+6. **Carrier tracking.** Uncoded BPSK uses a block-wise squaring estimate plus differential decoding. QPSK, 16-QAM,
+   64-QAM and coded BPSK use a decision-directed block tracker (a 2nd-order loop) anchored on the known preamble and
+   header, so there is no 90° ambiguity to slip into.
 7. Golay header decoding + CRC-8, then soft demapping, LDPC decoding and the CRC-32 check. On the GRC PHY these are
    the stock Constellation Soft Decoder, the LDPC Decoder block and the stock Stream CRC32 block.
 
@@ -227,10 +281,21 @@ on two codes gives 0 detections.
 ### Measured performance (simulation)
 
 Single-link speeds below are measured with transmit power control off (one link alone has no neighbour to
-protect; with it on, a strong link is turned down to ~25.5 dB at its receiver, still uncoded 16-QAM, section 3.4).
+protect; with it on, a strong link is turned down to ~30.5 dB at its receiver with TD-CDMA, still uncoded 64-QAM,
+and to ~25.5 dB with spread ALOHA, still uncoded 16-QAM; section 3.4). Unless a row says otherwise they were
+measured before the Walsh codes and 64-QAM (Gold codes, ladder up to uncoded 16-QAM).
 
-On the GRC PHY, running `grc/cdma_phy_sim.grc` in GNU Radio 3.10.12 (`tests.test_grc_flowgraph`, `grc-sim`), with
-the spread-ALOHA link layer (before TD-CDMA):
+With the Walsh codes and 64-QAM, on GNU Radio 3.10.9 (Ubuntu 24.04), `tests.test_grc_flowgraph` with the default
+`code_family walsh` and with `--codes gold`:
+
+| Test | Walsh (default) | Gold |
+|---|---|---|
+| Lone frames, every modulation incl. **64-QAM uncoded, ¾ and ⅚**; unicast and broadcast; power steps −10 / −20 dB | 13/13 delivered, Es/N0 ≈ 46 dB; power steps 10.0 / 20.0 dB | 13/13; 9.6 / 19.9 dB |
+| Three stations at the same instant on codes 2, 1, 3 (the simulated stations share one sample clock, so their bursts start on the same chip, as in a slot) | 3/3, Es/N0 **43 / 43 / 46 dB** | 3/3, Es/N0 12 / 12 / 17 dB |
+| Noisy channel, Es/N0 ≈ 6 dB | QPSK ½ and ¾ delivered; uncoded QPSK and 16-QAM ½ lost, as expected | same |
+
+Earlier, on the GRC PHY, running `grc/cdma_phy_sim.grc` in GNU Radio 3.10.12 (`tests.test_grc_flowgraph`,
+`grc-sim`), with the spread-ALOHA link layer (before TD-CDMA) and Gold codes:
 
 | Test | Result |
 |---|---|
@@ -250,17 +315,19 @@ transfers with spread ALOHA, for TD-CDMA see section 3.5):
 | Test | Result |
 |---|---|
 | LDPC alone, BPSK on AWGN, 1 KB frames | rate ½: 0/20 frame errors at **Eb/N0 1.5 dB**; ¾ at 2.5 dB; ⅚ at 3.5 dB (uncoded needs ~10.5 dB) |
-| Full receiver, 1 KB frames, symbol SNR for ~100 % delivery | QPSK ½ ~5 dB (detection-limited), QPSK ¾ 5.5, QPSK ⅚ 6, 16-QAM ½ 9, ⅔ 10, ¾ 11, ⅚ 12.5, uncoded 16-QAM 20–22 dB |
+| Full receiver, 1 KB frames, symbol SNR for ~100 % delivery | QPSK ½ ~5 dB (detection-limited), QPSK ¾ 5.5, QPSK ⅚ 6, 16-QAM ½ 9, ⅔ 10, ¾ 11, ⅚ 12.5, uncoded 16-QAM 20–22 dB; with Walsh codes: 64-QAM ½ 13–14, ⅔ 15–16, ¾ 17, ⅚ 18, uncoded 64-QAM 26–27 dB |
+| One station, 4 bursts at once on codes 1–4 (a slot), Es/N0 45 dB | Walsh: Es/N0 41–45 dB on every code, 4/4 uncoded 64-QAM bursts; Gold: 10–13 dB with code 1 among them (section 2) |
 | Second equal-power link on another code (Es/N0 20 dB) | uncoded 16-QAM 2/4 frames; **16-QAM ¾ and ⅚ 4/4** |
 | QPSK ½, 200-byte frames, CFO ±12 kHz, 20 ppm clock offset | 10/12 at Es/N0 4 dB, 11/12 at 6 dB (uncoded BPSK, same bit rate: 6/12 at 8 dB, 12/12 at 10 dB) |
 | Implementation SNR ceiling (receiver accuracy) | about 44 dB for every modulation |
 | 3 s of pure noise on two codes | 0 detections, 0 frames |
-| Two simultaneous links, interferer +10 dB (BPSK) | both decoded (near-far tolerance) |
-| Two senders → same receiver, overlapping | 20/20 bursts decoded |
+| Two simultaneous links, interferer +10 dB (BPSK; Gold codes, asynchronous) | both decoded (near-far tolerance) |
+| Two senders → same receiver, overlapping (Gold codes, asynchronous) | 20/20 bursts decoded |
 | Receive + decode cost per 1 KB frame (incl. LDPC) | 27–97 ms for 33–128 ms on air; one receiver keeps up with continuous maximum-rate traffic of every rung (1.1–1.6× real time on a 2-core VM) |
 | **2 MB file, `fast`, Es/N0 28 dB, adaptive** | **67.7 s, 236 kb/s goodput, 0 retransmissions** (uncoded 16-QAM) |
 | **1 MB file, Es/N0 14 dB** | **176 kb/s with LDPC (16-QAM ¾) vs 37 kb/s uncoded (BPSK): 4.8×**, 0 retransmissions either way |
 | 10 MB file, 28 dB (before FEC was added; same rung) | 340 s (5 min 40 s), 235 kb/s goodput, intact, 0 retransmissions |
+| **1 MB file, Es/N0 31 dB, `--mod 64qam`** (spread ALOHA, Gold codes) | **23.2 s, 344.5 kb/s goodput, 0 retransmissions** (uncoded 64-QAM): 1.46× uncoded 16-QAM's 236 kb/s |
 
 ## 3. Link layer (MAC)
 
@@ -268,7 +335,7 @@ Two ways to share the air, chosen with `--mac` (every station must use the same 
 
 | | **TD-CDMA** (default, `--mac tdcdma`) | Spread ALOHA (`--mac aloha`, the earlier scheme) |
 |---|---|---|
-| Who transmits when | One station at a time, each in its own **time slot** of a repeating cycle; in its slot it sends to all the others at once, one Gold code per destination | Every station whenever it likes, on the receivers' codes |
+| Who transmits when | One station at a time, each in its own **time slot** of a repeating cycle; in its slot it sends to all the others at once, one code per destination (Walsh codes: orthogonal) | Every station whenever it likes, on the receivers' codes (Gold codes) |
 | Near-far problem | None: only one transmitter is on the air | Handled by transmit power control (3.4) |
 | A station's own transmitter deafens its receiver | Doesn't matter: nobody else transmits during your slot | Pauses after every ACK request (the *ACK gap*), half-duplex deferral |
 | ACKs | Records in each station's next slot header | Separate ACK frames, sent at once |
@@ -377,8 +444,8 @@ the PC's clock and its buffering jitter (tens of milliseconds) never enter it.
 | Burst Combiner → antenna | the TX buffers: libiio keeps 4 kernel buffers + the one being filled, 5 × 65,536 samples at 4 MS/s ≈ 82 ms (all of it inside D) | libiio default of 4 kernel buffers (Analog Devices wiki, *libiio tips & tricks*); ANTSDR E200 with its Pluto-compatible firmware |
 | TX underruns by TX buffer size: 16 k / 32 k / 64 k / 128 k samples | 27 / 13 / 0 / 0 per run → the default `--tx-buffer` is now 65,536 | GNU Radio simulator |
 | How early a slot's bursts are handed over (before their first sample) | numpy simulator 4 ms; numpy PHY on an ANTSDR one TX buffer + 12 ms; flowgraph 150 ms to start with, adapting: +30 ms after a late burst, −5 ms per second while > 80 ms are left, 120–450 ms | `radio_base.py`, `grc_phy.py` |
-| Signal-to-interference between codes of one transmitter (31-chip Gold) | 1 / 2 / 3 codes at once: 39.9 / 29.4 / 25.3 dB (uncoded 16-QAM needs 22.5) | numpy simulator |
-| Airtime of a 1 KB frame (4 MS/s, 2 Mchip/s) | 16-QAM 32.5 ms, 16-QAM ⅚ 39 ms, QPSK ½ 126 ms | `modem.py` |
+| Signal-to-interference between codes of one transmitter | 32-chip Walsh × scrambling: none (Es/N0 41–45 dB with 1–4 codes at 45 dB SNR, the receiver's own accuracy). 31-chip Gold: 39.9 / 29.4 / 25.3 dB with 1 / 2 / 3 codes for codes without node 1's, but **~13 dB** for node 1 next to codes 0, 2 or 4 (cross-correlation 7/31) | numpy simulator, `tests/test_modem.py` |
+| Airtime of a 1 KB frame (4 MS/s, 2 Mchip/s, Walsh codes; Gold 3 % less) | 64-QAM 23.4 ms, 64-QAM ⅚ 27.8 ms, 16-QAM 34.3 ms, 16-QAM ⅚ 40.9 ms, QPSK ½ 132.6 ms | `modem.py` |
 | Slot header | 21–61 bytes, 4.6–9.6 ms; a lead header announcing a plan change in a 4-station network 106 bytes, 15 ms | numpy simulator |
 | Cycle with 2 / 3 / 4 stations | idle: 100 / 100 / 99.5 ms (slots 44 / 29.5 / 21.5 ms + join slot 11.5 ms); all sending: 213.5 / 333.5 / 415.5 ms (data slots 101 ms, the 3-station lead's 120 ms: its link ran 16-QAM ⅚) | numpy simulator |
 | Receiver search with slot-aware windows | 9.5 / 11.3 / 16 % of the samples (2 / 3 / 4 idle stations) instead of 100 % | numpy simulator |
@@ -495,12 +562,13 @@ rare.
 ### 3.4 Transmit power control (the near-far problem)
 
 With TD-CDMA only one station transmits at a time, so there is no near-far problem to solve. Power control there
-sets the one level of each slot (3.1): what the station that needs most power needs, aimed at 25.5 dB, so a station
-next to you arrives at ~25 dB instead of 40–50 dB (receivers less overdriven, and less noise for the other systems
-in the lab's 2.5 GHz band). For spread ALOHA it is what makes the scheme work at all; the rest of this section
-describes it.
+sets the one level of each slot (3.1): what the station that needs most power needs, aimed at 30.5 dB (uncoded
+64-QAM + 3 dB), so a station next to you arrives at ~30 dB instead of 40–50 dB (receivers less overdriven, and less
+noise for the other systems in the lab's 2.5 GHz band). For spread ALOHA it is what makes the scheme work at all;
+the rest of this section describes it, with spread ALOHA's numbers (its ladder tops out at uncoded 16-QAM, so its
+target is 25.5 dB).
 
-In this system a station's Gold code belongs to the *receiver*: frames for Dave go on code 4, whoever sends them.
+In this system a station's code belongs to the *receiver*: frames for Dave go on code 4, whoever sends them.
 The near-far problem is therefore not two stations sending to the same receiver (that is a same-code collision,
 which ARQ handles), but this: **Alice talks to Carol right next to her at full power, and at Dave, also next to her,
 Alice's code-3 signal drowns Bob's weak code-4 signal from across the room.** Despreading leaves an interferer's
@@ -513,7 +581,7 @@ So every frame goes at the lowest power its receiver needs:
 |---|---|
 | Each frame says its power | Bits 3–7 of the flags byte carry the frame's backoff (0–31 dB). The receiver adds it to the Es/N0 it measures, so it knows each path **at full power** whatever power was used. |
 | The receiver reports | In every ACK (`snr` byte) and in its beacons (an entry per station heard: address, Es/N0 at full power), so a station learns how every other one hears it, with or without traffic between them. |
-| The sender backs off | To a **target of 25.5 dB** at the receiver: what the fastest allowed modulation needs (uncoded 16-QAM, 22.5 dB) plus 3 dB, so only power the link cannot use is taken away and it keeps its modulation. Power goes up at once and down only in steps of 2 dB or more; back to full power if a station's reports stop for 60 s; at most 30 dB of backoff. The backoff is worked out first, then the modulation for the Es/N0 the receiver will see at that power. |
+| The sender backs off | To a **target of 25.5 dB** at the receiver: what the fastest allowed modulation needs (uncoded 16-QAM, 22.5 dB; with TD-CDMA uncoded 64-QAM, 27.5 dB, so 30.5 dB) plus 3 dB, so only power the link cannot use is taken away and it keeps its modulation. Power goes up at once and down only in steps of 2 dB or more; back to full power if a station's reports stop for 60 s; at most 30 dB of backoff. The backoff is worked out first, then the modulation for the Es/N0 the receiver will see at that power. |
 | Power from the path, rate from the interference | The reports are SINR: they drop while something else is on the air. The power follows the **path**, the best recent report (falling 0.5 dB/s), so a burst of interference doesn't make the sender louder: louder is more noise for whoever caused it, who would turn up in turn, a power race back to full power. The modulation follows the latest reports, so under interference a link steps its rate down instead. |
 | Outer loop | A link that keeps losing frames while backed off (two lossy windows within 3 s) although its receiver reports no interference aims 3 dB higher, up to +12 dB, and 1 dB lower again per 30 s without losses. That covers radio impairments and fading the Es/N0 estimate doesn't show; the worst case is full power, what the link did without power control. |
 | Broadcasts and beacons | Group messages, race car states and beacons go at the power the weakest station on the air needs; a station that hasn't reported yet counts as needing full power, so a newcomer finds us. Everything on the broadcast code goes at one level, because the receiver rejects a burst much weaker than one that just started on the same code as a sidelobe of it. |
@@ -564,6 +632,13 @@ python3 -m wavelink sim --nodes 4 --mac aloha --link-gain 1:3=24 --link-gain 1:4
 | Near-far, power control off: a pair side by side (+20 dB) sends 80 KB while a far station (−6 dB) sends 30 KB to the same receiver | far station **65–68 kb/s, 0 retransmissions**; the pair 87–114 kb/s | far station 43–44 kb/s, 16 retransmissions; the pair 206 kb/s |
 | One 2 MB transfer between 2 stations, 28 dB | 190 kb/s, 0 retransmissions | 236 kb/s (section 2) |
 | Two stations that can't hear each other | through a relay (a file at 45–51 kb/s) | not reachable |
+
+The rows above were measured with Gold codes and the ladder up to uncoded 16-QAM. With the Walsh codes and 64-QAM
+(one run of `tests.test_edge 7 8`): four senders at once, own transmitter 25 dB up, **TD-CDMA 236 kb/s together**
+(73–111 each, 0 retransmissions) against spread ALOHA's 65 kb/s (681 retransmissions); with idealised radios TD-CDMA
+222 kb/s (76–96 each) against ALOHA's 323 kb/s; near-far as before (far station 69 kb/s, 0 retransmissions; the
+near pair 177 kb/s). Every TD-CDMA sender still gets the same airtime, but the modulations now range from 16-QAM ⅚
+to uncoded 64-QAM, so the slowest / fastest ratio is lower (0.66–0.79).
 
 Where a station can receive while it transmits, ALOHA keeps all four links on the air at once and wins: that is CDMA
 doing what it was made for. On a real radio a station's own transmitter, on the same frequency, arrives at its own
@@ -948,25 +1023,27 @@ Useful flags:
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--mod` | `auto` | Adaptive, or restrict the payload modulation to `bpsk`, `qpsk` or `16qam` |
+| `--mod` | `auto` | Adaptive, or restrict the payload modulation to `bpsk`, `qpsk`, `16qam` or `64qam` |
 | `--fec` | `auto` | LDPC code rate: adaptive, `off` (uncoded), or force `1/2`, `2/3`, `3/4`, `5/6`. Combine with `--mod` to pin one entry, e.g. `--mod 16qam --fec 3/4` |
 | `--uri` | `ip:192.168.1.10` | The ANTSDR's libiio address (flowgraph parameter *ANTSDR URI*) |
 | `--tx-atten` | 10 dB | 0 = full power (flowgraph parameter *TX attenuation*) |
 | `--rx-gain` | 40 dB | Raise for distance; lower if the dashboard spectrum is clipping (*RX gain*) |
 | `--freq` | 2.5 GHz | Every station must match (*Carrier*) |
 | `--mac` | `tdcdma` | Medium access: `tdcdma` = time slots (section 3.1), `aloha` = the earlier spread ALOHA. Every station must use the same |
+| `--codes` | `walsh` (`gold` with `--mac aloha`) | Spreading codes (flowgraph parameter *Codes*): `walsh` = 32-chip Walsh codes × one scrambling sequence, orthogonal inside a time slot; `gold` = 31-chip Gold codes. Spread ALOHA needs Gold codes. Every station must use the same |
 | `--relay` | `on` | TD-CDMA: pass on messages for stations that can't hear each other, and use relays (section 3.2); also a switch on the dashboard |
 | `--tx-buffer` | 65536 | ANTSDR TX buffer in samples (16 ms; no underruns measured in the GNU Radio simulator). Raise it if the dashboard shows TX underruns; it only changes the TX → RX offset, which TD-CDMA measures |
 | `--ack-gap` | 0.15 s | Spread ALOHA: minimum pause after an ACK request, so the receiver can answer while the sender is silent. The link layer stretches it automatically to the measured round-trip time. |
 | `--hd-defer` | 0.25 s | Spread ALOHA: holds new transmissions while a burst for us is arriving, to limit self-interference |
 | `--power-control` | `on` | Transmit power control (section 3.4); `off` = every frame at full power |
-| `--pc-target` | 25.5 dB | Es/N0 a receiver should hear us at (the fastest modulation + 3 dB); 17 protects weak neighbours more but makes strong links coded and slower |
+| `--pc-target` | 30.5 dB (spread ALOHA 25.5 dB) | Es/N0 a receiver should hear us at (the fastest modulation + 3 dB); 17 protects weak neighbours more but makes strong links coded and slower |
 | `--host 0.0.0.0` | — | Lets other PCs view the UI. The microphone only works on `localhost`. |
 | `--grc FILE` | `grc/cdma_phy.grc` | Run a different (e.g. edited copy of the) flowgraph |
 | `--phy numpy` | `grc` | Fallback PHY without the .grc: the receiver and transmitter in numpy inside a minimal GNU Radio graph. Only this PHY uses `--radio uhd`, `--profile`, `--rate`, `--sps`, `--gold`, `--gain-mode` |
 
-Sample rate, chip rate and code length are fixed by the flowgraph's variables (`samp_rate`, `sps`, `sf`). To change
-them, edit the variables in GRC; every station must use the same file.
+Sample rate, chip rate and code length are fixed by the flowgraph's variables (`samp_rate`, `sps`, `sf`; `sf`
+follows the `code_family` parameter). To change them, edit the variables in GRC; every station must use the same
+file.
 
 ### 5.4 No hardware: two simulators
 
@@ -996,8 +1073,9 @@ python3 -m wavelink sim --nodes 3 --ppm 2=40 --ppm 3=-35   # sample clocks off b
 ```
 
 Every link gets its own gain (±3 dB, or set with `--link-gain A:B=dB`), delay, carrier offset (±2 ppm LOs at 2.5 GHz)
-and AWGN. The default SNR is 25 dB, so links run QPSK or 16-QAM. The SNR slider in the dashboard lets you degrade the
-channel live and watch the modulation and code rate step down (16-QAM → 16-QAM ¾ → … → QPSK ½), CRC drops and
+and AWGN. The default SNR is 25 dB, so links run 16-QAM or coded 64-QAM. The SNR slider in the dashboard lets you
+degrade the channel live and watch the modulation and code rate step down (64-QAM ⅚ → … → 16-QAM ¾ → … → QPSK ½),
+CRC drops and
 retransmissions. The simulator is CPU-bound: with several stations busy it runs slower than real time, but its clock
 is simulated, so throughput figures stay correct. `--self-leak` (3 dB) is how much stronger a station hears its own
 transmitter than a 0 dB link: the simulator lets a station receive while it sends, which real radios can't (section
@@ -1033,8 +1111,8 @@ channel" or "simulation (numpy PHY)".
 
 | File | What it is |
 |---|---|
-| `cdma_phy.grc` | **The station's physical layer** on an ANTSDR E200 (Pluto/libiio firmware). Used by `run`. Parameters: Node ID, ANTSDR URI, carrier, RX gain, TX attenuation, TX buffer. |
-| `cdma_phy_sim.grc` | Three copies of the same PHY (nodes 1–3) joined by a Channel Model with noise and carrier-offset variables. Used by `grc-sim`. |
+| `cdma_phy.grc` | **The station's physical layer** on an ANTSDR E200 (Pluto/libiio firmware). Used by `run`. Parameters: Node ID, ANTSDR URI, carrier, RX gain, TX attenuation, TX buffer, codes (`walsh` / `gold`). |
+| `cdma_phy_sim.grc` | Three copies of the same PHY (nodes 1–3) joined by a Channel Model with noise and carrier-offset variables, and the codes parameter. Used by `grc-sim`. |
 | `cdma_phy_concept.grc` | DS-CDMA built only from stock blocks, with GUI plots. Two users with Gold codes #1 and #2 are summed with noise, then despread with the right and the wrong code. For the report and viva: it shows spreading, despreading and processing gain visually. Stand-alone (not used by the app). |
 
 **How the app uses the .grc.** At start, `wavelink/grc_phy.py`:
@@ -1052,7 +1130,9 @@ blocks for UHD blocks; save, and the next `run` uses it. Keep in mind:
 
 - The app needs the seven Embedded Python blocks and the `code`/`mod` PDU routing between them. The constellation
   objects must keep their point order (it is the Gray mapping shared with the Framer's symbol table). `ldpc_max_iter`
-  (default 20) bounds the decoder's work per frame; `const_16qam`'s `npwr` (0.05) shapes the 16-QAM soft bits.
+  (default 20) bounds the decoder's work per frame; the `npwr` (0.05) of `const_16qam` and `const_64qam` shapes
+  their soft bits. A flowgraph from before the codes parameter runs Gold codes; the app warns that it ignores
+  `--codes` then (rebuild it with `tools/make_grc.py`).
 - The app sets the Parameter blocks, so it ignores **Run (F6)** values for those. Pressing F6 in GRC runs the PHY
   on its own: the MAC → PHY block then has no link layer, and PHY → MAC prints received frames to the console.
   That is a handy radio check, but a chat station is started with `python3 -m wavelink run`.
@@ -1073,11 +1153,11 @@ yet, and the files have not been opened in the GRC GUI on a lab PC.
 ## 6. Demo plan for the final evaluation (≈ 10 min)
 
 0. **The PHY.** Open `grc/cdma_phy.grc` in GNU Radio Companion and walk through it: CRC-32, LDPC Encoder, the
-   Framer, the five spreading lanes (Repeat × Gold code), RRC, ANTSDR sink; on receive the matched filter,
-   Despreader, the three Constellation Soft Decoder branches, LDPC Decoder and CRC check. `cdma_phy_concept.grc` (F6)
-   shows processing gain live.
+   Framer, the five spreading lanes (Repeat × code; `code_family` picks Walsh or Gold), RRC, ANTSDR sink; on
+   receive the matched filter, Despreader, the four Constellation Soft Decoder branches, LDPC Decoder and CRC check.
+   `cdma_phy_concept.grc` (F6) shows processing gain live.
 1. **Bring-up.** Start four stations with `run` and point out the `grcc` compile in the console. Show presence and
-   the PHY line (2.5 GHz, 31-chip Gold, BPSK/QPSK/16-QAM + LDPC, my code). Open the dashboard's **Time slots** panel:
+   the PHY line (2.5 GHz, 32-chip Walsh, BPSK/QPSK/16-QAM/64-QAM + LDPC, my code). Open the dashboard's **Time slots** panel:
    the slot plan (the lead first, then the others, then the join slot), the TX → RX offset D every station measured
    from its own bursts, and its clock against the lead's in ppm.
 2. **Text plus ACK.** Alice → Bob. Ticks go 🕒 → ✓ → ✓✓ (the ACK rode in Bob's next slot header), then blue when Bob
@@ -1085,17 +1165,18 @@ yet, and the files have not been opened in the GRC GUI on a lab PC.
 3. **Addressing.** Carol's dashboard shows no frames for the Alice→Bob traffic, because it is on code #2. Run
    `tx --to 2` from a PC while Carol runs `rx --id 3`: nothing is printed.
 4. **CDMA inside a slot.** Alice sends a photo to Bob and a voice note to Carol at the same time, while Dave sends
-   a file to Alice. Alice's slot carries both of her transfers at once on codes #2 and #3; the slots of the stations
-   with data grow to ~100 ms on the dashboard and shrink back a second after. Nobody transmits in another's slot:
-   no ACK pauses, no near-far.
+   a file to Alice. Alice's slot carries both of her transfers at once on codes #2 and #3, orthogonal Walsh codes, so
+   both links keep their full SNR (with `--codes gold` they would interfere); the slots of the stations with data
+   grow to ~100 ms on the dashboard and shrink back a second after. Nobody transmits in another's slot: no ACK
+   pauses, no near-far.
 5. **CRC plus ARQ.** Move an antenna away, or raise `--tx-atten`. The dashboard shows CRC-32 drops and
    retransmissions while the image still arrives intact.
 6. **Priority.** Start a large image, then send an ⚡ urgent text. It arrives first.
 7. **Encryption.** Restart one station with a different `--key`. The UI warns, and its messages can't be opened.
 8. **Application.** Play a game of tic-tac-toe across the room.
 9. **Adaptive modulation and coding, big files.** Send a multi-MB file Alice → Bob. The chat header shows
-   "sending 16-QAM uncoded (258 kb/s)" and the constellation 16 clusters. Move Bob's antenna away step by step: the
-   link moves to 16-QAM ¾, ⅔, … and the "LDPC iterations" tile shows the decoder working harder.
+   "sending 64-QAM uncoded (375 kb/s)" and the constellation 64 clusters. Move Bob's antenna away step by step: the
+   link moves to 64-QAM ⅚, ¾, ⅔, 16-QAM ⅚, … and the "LDPC iterations" tile shows the decoder working harder.
 10. **FEC on/off.** With the link at ~12–14 dB, restart the sender with `--fec off`: the same file drops to BPSK at a
     fraction of the speed (in simulation: 4.8× slower at 14 dB).
 11. **Group message.** Send a photo to Everyone: one broadcast; the bubble counts *1/3*, *2/3*, then ✓✓, and the
@@ -1117,17 +1198,24 @@ yet, and the files have not been opened in the GRC GUI on a lab PC.
 
 ```bash
 python3 -m tests.test_grc_flowgraph   # needs GNU Radio: compiles + runs cdma_phy_sim.grc, coded and uncoded,
-                                      # unicast/broadcast, 3 stations at once, a 6 dB channel
+                                      # every modulation incl. 64-QAM, unicast/broadcast, 3 stations at once,
+                                      # a 6 dB channel; Walsh codes (--codes gold: Gold codes)
 python3 -m tests.test_grc_goodput 100 0.5   # needs GNU Radio: 100 KB through the flowgraph + MAC, FEC on vs off
 python3 -m tests.test_fake_antsdr  # needs GNU Radio: TD-CDMA edge cases, every station the real app on cdma_phy.grc
                                    # with emulated ANTSDRs (section 5.4); about 30 min. --speed 0.4 for a slow PC
                                    # (default 0.6x real time), or pick some: test_fake_antsdr 3 8. Table below
 python3 -m tests.test_ldpc         # LDPC encoder (all 51 lifting sizes), rate matching, AWGN curves, Golay
 python3 -m tests.test_grc_cores    # the flowgraph's Python cores with the stock blocks imitated in numpy,
-                                   # plus numpy-PHY <-> GRC-PHY interoperability (no GNU Radio needed)
-python3 -m tests.test_modem        # PHY: impairments, false alarms, multi-user, collisions, SNR sweeps, CPU
-python3 -m tests.test_profiles fast   # every modulation/code rate: SNR sweep, 2nd link, decode cost, real time
-python3 -m tests.test_bigfile 1 fast 14 auto auto   # 1 MB at 14 dB with adaptive LDPC (last arg off = uncoded)
+                                   # plus numpy-PHY <-> GRC-PHY interoperability up to 64-QAM, Walsh and Gold
+                                   # codes (no GNU Radio needed)
+python3 -m tests.test_modem        # PHY: impairments, false alarms, the codes of one slot (Walsh vs Gold, 4 uncoded
+                                   # 64-QAM bursts at once), multi-user, collisions, SNR sweeps, CPU
+python3 tools/walsh_search.py      # the Walsh codes' correlation figures against the Gold codes' (--search 60:
+                                   # look for a set again)
+python3 -m tests.test_profiles fast   # every modulation/code rate: SNR sweep, a 2nd burst from another station
+                                      # (Gold) or in the same slot (Walsh), decode cost, real time
+python3 -m tests.test_bigfile 1 fast 14 auto auto   # 1 MB at 14 dB with adaptive LDPC (last arg off = uncoded;
+                                                    # 1 fast 31 64qam: uncoded 64-QAM)
 python3 -m tests.test_link         # MAC over simulated air (spread ALOHA): concurrency, priority, lossy link
 python3 -m tests.test_tdma_phy     # the time slots' timing base: bursts on exact samples (numpy PHY, and the
                                    # flowgraph's blocks with stand-ins for GNU Radio), receive sample indices,
@@ -1193,7 +1281,9 @@ blocks are emulated (`wavelink/fake_antsdr.py`: libiio's buffers, underruns, los
 between them runs in the test (gains, delays, LO offsets, the own transmitter 25 dB up, AWGN, clock error, cut
 links). It logs any two stations on the air at once where a third hears both, which must never happen; the tests
 marked † check it (none seen). Results with GNU Radio 3.10.9.2 on a 2-core VM, the air at 0.4× real time: 55 of 58
-checks.
+checks. Again with the Walsh codes and 64-QAM (`--quick`): 57 of 58. Test 10 passed this time (a file at 124 kb/s,
+no underruns), and test 6 once counted two of station 3's slips as one jump of D (D still moved by exactly the
+slips) and passed when run again.
 
 | # | Scenario | Result |
 |---|---|---|
@@ -1290,10 +1380,13 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
   (294–321 against 160–180 kb/s for 4 senders in the idealised simulator); on radios that deafen themselves TD-CDMA
   carries three times as much (173–181 against 53–58 kb/s, section 3.5). A single link gets ~80 % of ALOHA's speed:
   each cycle also has the receiver's slot, the join slot (11.5 ms) and the headers (5–15 ms each).
-- **Inside a slot the codes are Gold codes, not orthogonal Walsh codes.** Walsh codes would remove the interference
-  between a slot's codes (29.4 dB with 2 codes, 25.3 dB with 3), but they need chip-synchronous bursts under one
-  scrambling code, a spreading factor of 32 and new preambles on both PHYs. With Gold codes that floor is already
-  above what uncoded 16-QAM needs (22.5 dB), so it was left out.
+- **Walsh codes need the slot's symbol grid.** Inside a slot the codes are orthogonal Walsh codes (section 2), but
+  only because every burst of the slot starts on one symbol grid and the receiver despreads within ~1 % of a chip.
+  Spread ALOHA, whose bursts arrive at any code phase, keeps Gold codes (`--mac aloha` refuses `--codes walsh`), and
+  every station of a network must use the same family. Multipath breaks orthogonality too: an echo a fraction of a
+  chip late leaks the other codes back in at roughly its own level, so in a large room uncoded 64-QAM next to other
+  codes may need the coded rungs (the link layer steps down by itself). The residual timing jitter with four codes
+  at once is measured only in the simulator.
 - **Relaying is one hop**, through a station that hears both ends; there is no routing over several relays.
   Beacons are not passed on as such; instead a relaying station lists, in its own beacon, the names and picture
   tags of the stations a neighbour can't hear, so a station reached only through a relay still shows its name
@@ -1309,24 +1402,28 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
 - **Detection limits the low end.** Coded QPSK ½ would decode at ~1.5 dB, but the 48-symbol preamble is only
   detected reliably from ~4 dB. A 96-symbol preamble (`preamble_bits`) would gain ~3 dB at the cost of airtime and
   detector CPU.
-- **16-QAM under interference.** 31-chip spreading suppresses another equal-power link by about 15 dB. Uncoded
-  16-QAM needs ~20 dB, 16-QAM ¾ ~11 dB, so with LDPC the link stays on 16-QAM; with three or more strong
-  simultaneous links it steps further down.
+- **16-QAM under interference (spread ALOHA).** 31-chip spreading suppresses another equal-power link by about
+  15 dB. Uncoded 16-QAM needs ~20 dB, 16-QAM ¾ ~11 dB, so with LDPC the link stays on 16-QAM; with three or more
+  strong simultaneous links it steps further down. That is also why spread ALOHA's ladder stops at uncoded 16-QAM
+  (64-QAM needs 14–27.5 dB).
 - **Throughput ceiling.** About 236 kb/s goodput per link at 4 MS/s in the numpy simulator with spread ALOHA
   (uncoded 16-QAM on a clean link), 190 kb/s with TD-CDMA (the other slots of the cycle), limited by Python DSP CPU
-  (not yet measured on hardware with the GRC PHY). A C++ OOT correlator and
-  LDPC decoder would allow higher chip rates; 64-QAM ⅚ would need ~19 dB.
+  (not yet measured on hardware with the GRC PHY). These were measured before 64-QAM; uncoded 64-QAM carries 1.5×
+  as much per symbol (375 kb/s on air with the `fast` profile) but needs 27.5 dB, and every 64-QAM frame costs the
+  receiver the same despreading work for 1.5× the bits. A C++ OOT correlator and LDPC decoder would allow higher
+  chip rates.
 - **Power control.** Digital only: below the target a burst simply uses fewer DAC steps, and the transmitter's own
   noise floor and LO leakage do not drop with it. In a small lab with stations a metre apart, also raise
   `--tx-atten` so the backoff stays well inside its 30 dB. Two stations sending to the *same* receiver share its
   code, which power control can't separate (ARQ resolves those collisions). Taking only the power a link can't use
-  (target 25.5 dB) protects weak links less than a lower target would; the near-far table in 3.4 shows the cost.
+  (target 25.5 dB with spread ALOHA, 30.5 dB with TD-CDMA, where there is no near-far problem) protects weak links
+  less than a lower target would; the near-far table in 3.4 shows the cost.
   The loop has only been tested in the simulators: on the ANTSDRs, compare a transfer with the dashboard's switch
   on and off, and watch "our power", "power margin raises" and the modulation per link.
 - **Single path.** There is no RAKE receiver or equalizer. At 0.5 µs chips, indoor multipath (delay spreads of
   tens of ns) mostly stays within one chip. A 2–3 finger RAKE would help in large rooms, and matters most for
-  16-QAM.
-- **Spreading is fixed.** Adaptive modulation trades rate for range already; adaptive spreading (31/63/127 by
+  16- and 64-QAM.
+- **Spreading is fixed.** Adaptive modulation trades rate for range already; adaptive spreading (32/64/128 chips by
   measured SNR) would extend range further.
 - **Shared key.** Encryption uses one pre-shared key. Per-pair X25519 keys in the beacons would give forward
   secrecy.
@@ -1366,7 +1463,7 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
 ```
 wavelink/
   config.py      PHY parameters, address → code mapping
-  codes.py       Gold codes, preamble patterns, RRC taps
+  codes.py       Walsh x scrambling and Gold codes, preamble patterns, RRC taps
   modem.py       burst modulator + streaming multi-code demodulator (Golay header, LDPC payload)
   ldpc.py        5G NR LDPC: lifting, encoder, rate matching, interleaver, layered min-sum decoder, demapper
   nr_bg1.py      5G NR base graph 1 table (3GPP TS 38.212), generated by tools/gen_nr_bg1.py
@@ -1397,6 +1494,7 @@ assets/          the team logo: wavelink-logo-source.png (as designed), wavelink
 tools/
   make_grc.py    generates the .grc files
   epy/           source of the seven Embedded Python blocks
+  walsh_search.py  the Walsh codes' correlation figures, and the search that chose their scrambling sequence
   gen_nr_bg1.py  builds wavelink/nr_bg1.py from Sionna's table, cross-checked against AFF3CT
   render_grc.py  approximate PNG of a .grc layout (no GNU Radio needed)
   make_logo.py   cuts the team logo out of its background: web/static/wavelink-*.png and assets/

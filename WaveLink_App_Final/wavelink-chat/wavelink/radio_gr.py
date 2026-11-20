@@ -8,7 +8,7 @@ Flowgraph (one per station)::
     |   code burst FIFOs)|      +----------------------+
     +-------------------+
     +----------------------+      +-------------------+
-    | ANTSDR RX            |----->| CdmaBurstSink     |--> worker thread: RRC MF, Gold-code
+    | ANTSDR RX            |----->| CdmaBurstSink     |--> worker thread: RRC MF, code
     |  2.5 GHz             |      |  (queue, no DSP   |    correlators, PLL/DLL demod,
     +----------------------+      |   in the GR thread)|    -> link layer
                                   +-------------------+

@@ -46,7 +46,13 @@ def sweep(cfg, mod, rng, ebn0s=(8, 10, 12), trials=8, m="bpsk"):
     return ", ".join(res)
 
 
-def two_links(cfg, mod, rng, trials=6, m="bpsk"):
+def two_links(cfg, mod, rng, trials=6, m="bpsk", same_slot=False):
+    """A 2nd equal-power burst on another code at the same time.  same_slot: from the same station,
+    starting at the same chip (TD-CDMA); otherwise from another station at any code phase and
+    carrier offset (spread ALOHA, which uses Gold codes)."""
+    if not same_slot and cfg.codes != "gold":
+        cfg = PhyConfig.from_profile(cfg.profile, codes="gold")
+        mod = Modulator(cfg)
     ok = 0
     for _ in range(trials):
         pa = bytes(rng.integers(0, 256, cfg.max_phy_payload, dtype=np.uint8))
@@ -54,7 +60,10 @@ def two_links(cfg, mod, rng, trials=6, m="bpsk"):
         xa, xb = mod.modulate(pa, 1, m), mod.modulate(pb, 2, m)
         rms = math.sqrt(np.mean(np.abs(xa) ** 2))
         a = channel(xa, cfg.samp_rate, cfo=2000, delay=500)
-        b = channel(xb, cfg.samp_rate, cfo=-3000, delay=500 + int(rng.integers(10, 3000)))
+        if same_slot:
+            b = channel(xb, cfg.samp_rate, cfo=2000, delay=500)
+        else:
+            b = channel(xb, cfg.samp_rate, cfo=-3000, delay=500 + int(rng.integers(10, 3000)))
         n = max(a.size, b.size) + 2000
         y = np.zeros(n, complex); y[:a.size] += a; y[:b.size] += b
         y += noise_for(cfg, 20, rms) / math.sqrt(2) * (rng.standard_normal(n) + 1j * rng.standard_normal(n))
@@ -94,7 +103,8 @@ if __name__ == "__main__":
     # noise_for() sets the per-symbol SNR (Es/N0) here: same symbol energy for every modulation
     PLAN = (("bpsk", (10, 12, 14)), ("qpsk", (12, 14, 16)), ("16qam", (18, 20, 22)),
             ("qpsk-1/2", (3, 4, 5)), ("qpsk-3/4", (5, 6, 7)), ("16qam-1/2", (8, 9, 10)),
-            ("16qam-3/4", (11, 12, 13)), ("16qam-5/6", (12.5, 13.5, 14.5)))
+            ("16qam-3/4", (11, 12, 13)), ("16qam-5/6", (12.5, 13.5, 14.5)),
+            ("64qam-2/3", (14, 15, 16)), ("64qam-5/6", (17, 18, 19)), ("64qam", (25, 26, 27)))
     profiles = sys.argv[1:] or ("robust", "fast")
     for prof in profiles:
         cfg = PhyConfig.from_profile(prof)
@@ -106,6 +116,8 @@ if __name__ == "__main__":
             print(f"[{prof} {m}] {cfg.symbol_rate * MCS_BITS[m] / 1e3:.0f} kb/s, {cfg.max_phy_payload}-byte frames "
                   f"({air*1e3:.0f} ms on air), receive + decode {dc*1e3:.1f} ms")
             print(f"   Es/N0 sweep (CFO +/-12 kHz, 20 ppm clock): {sweep(cfg, mod, rng, eb, 6, m)}")
-            print(f"   with a 2nd equal-power link on another code (Es/N0 20 dB): {two_links(cfg, mod, rng, 4, m)}")
-            es = (26 if m == "16qam" else 18) if "-" not in m else eb[-1] + 2
+            print(f"   with a 2nd equal-power burst on another code (Es/N0 20 dB): from another station "
+                  f"(spread ALOHA, Gold codes) {two_links(cfg, mod, rng, 4, m)}, in the same slot "
+                  f"(TD-CDMA, {cfg.codes} codes) {two_links(cfg, mod, rng, 4, m, same_slot=True)}")
+            es = {"16qam": 26, "64qam": 31}.get(m, 18) if "-" not in m else eb[-1] + 2
             print(f"   continuous traffic (Es/N0 {es} dB): {realtime(cfg, mod, rng, 1.5, m, es)}")

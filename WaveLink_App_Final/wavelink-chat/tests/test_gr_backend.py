@@ -25,7 +25,7 @@ def loopback():
 
 def two_antsdr_iio():
     from gnuradio import iio
-    cfg = PhyConfig()
+    cfg = PhyConfig(codes="gold")             # (the link layer on its own is spread ALOHA: asynchronous)
     ra = radio_gr.GrRadio(cfg, 1, backend="iio", uri="ip:192.168.1.10", log=lambda *a: None)
     rb = radio_gr.GrRadio(cfg, 2, backend="iio", uri="ip:192.168.1.11", log=lambda *a: None)
     inbox = []
