@@ -3,7 +3,9 @@
 All stations share a passphrase (``--key``).  A 256-bit key is derived with
 scrypt; every message gets a random 96-bit nonce and the (src, dst) addresses
 are authenticated as associated data, so a ciphertext replayed to a different
-station fails authentication.  Requires the ``cryptography`` package.
+station fails authentication.  With a key set, unencrypted envelopes are refused
+(otherwise anyone without the key could still talk to the network).  Requires
+the ``cryptography`` package.
 """
 from __future__ import annotations
 
@@ -41,6 +43,8 @@ class Crypto:
         if not blob:
             raise ValueError("empty")
         if blob[0] == PLAIN:
+            if self.enabled:
+                raise ValueError("unencrypted message refused (this station uses --key)")
             return blob[1:], False
         if blob[0] == SEALED:
             if not self.enabled:

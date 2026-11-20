@@ -153,13 +153,13 @@ GC.renderHome = function () {
   const dock = rooms.filter((r) => r.state !== "closed" || r.why).map((r) => {
     const host = GC.name(r, r.h), game = GC.snap.games[r.g];
     if (r.state === "invited") return `<div class="invite"><span class="who"><b>${esc(host)}</b> invites you to ${esc(game)}
-        <small>${r.seats.length} players${r.g === "race" ? `, ${r.o.laps} laps` : ""}</small></span>
-        <button class="yes" data-act="join" data-r="${r.r}">Join</button><button class="no" data-act="decline" data-r="${r.r}">Not now</button></div>`;
+        <small>${r.seats.length} players${r.g === "race" ? `, ${esc(r.o.laps)} laps` : ""}</small></span>
+        <button class="yes" data-act="join" data-r="${esc(r.r)}">Join</button><button class="no" data-act="decline" data-r="${esc(r.r)}">Not now</button></div>`;
     if (r.state === "closed") return `<div class="invite"><span class="who">${esc(game)}: ${esc(r.why || "room closed")}</span>
-        <button class="no" data-act="dismiss" data-r="${r.r}">OK</button></div>`;
+        <button class="no" data-act="dismiss" data-r="${esc(r.r)}">OK</button></div>`;
     return `<div class="invite"><span class="who">${esc(game)} with ${esc(r.seats.filter((a) => a !== GC.me()).map((a) => GC.name(r, a)).join(", "))}
         <small>${r.state === "lobby" ? "waiting in the lobby" : "running"}</small></span>
-        <button class="open" data-act="open" data-r="${r.r}">Open</button></div>`;
+        <button class="open" data-act="open" data-r="${esc(r.r)}">Open</button></div>`;
   }).join("");
   const n = (g) => GC.pick[g].size;
   $("#gcBody").innerHTML = `${GC.bar("Game center", "", true)}
@@ -235,17 +235,17 @@ GC.renderLobby = function (r) {
   const ready = joined.length >= 2 && joined.every(synced);
   let acts = "", note = "";
   if (r.state === "closed") {
-    acts = `<button class="primary" data-act="dismiss" data-r="${r.r}">Back to the game center</button>`;
+    acts = `<button class="primary" data-act="dismiss" data-r="${esc(r.r)}">Back to the game center</button>`;
     note = r.why || "This room is closed.";
   } else if (r.state === "invited") {
-    acts = `<button class="primary" data-act="join" data-r="${r.r}">Join</button><button class="gc-ghost" data-act="decline" data-r="${r.r}">Not now</button>`;
+    acts = `<button class="primary" data-act="join" data-r="${esc(r.r)}">Join</button><button class="gc-ghost" data-act="decline" data-r="${esc(r.r)}">Not now</button>`;
   } else if (host) {
-    acts = `<button class="primary" data-act="start" data-r="${r.r}" ${ready ? "" : "disabled"}>Start with ${joined.length} players</button>
-      <button class="gc-ghost" data-act="leave" data-r="${r.r}">Close room</button>`;
+    acts = `<button class="primary" data-act="start" data-r="${esc(r.r)}" ${ready ? "" : "disabled"}>Start with ${joined.length} players</button>
+      <button class="gc-ghost" data-act="leave" data-r="${esc(r.r)}">Close room</button>`;
     note = joined.length < 2 ? "Start becomes available when someone joins. Stations that haven't answered stay out."
       : !ready ? "Waiting for the clock sync (a few pings over the air)." : "Stations that haven't answered stay out.";
   } else {
-    acts = `<button class="gc-ghost" data-act="leave" data-r="${r.r}">Leave</button>`;
+    acts = `<button class="gc-ghost" data-act="leave" data-r="${esc(r.r)}">Leave</button>`;
     note = `${GC.name(r, r.h)} starts the game.`;
   }
   const sub = r.state === "closed" ? "Room closed" : r.g === "race" ? `${r.o.laps} laps, ${GC.name(r, r.h)} is hosting` : `${GC.name(r, r.h)} is hosting and deals`;

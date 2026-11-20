@@ -1,11 +1,13 @@
 """Zero-dependency web server: REST + Server-Sent Events for one station."""
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import mimetypes
 import os
 import queue
+import socket
 import threading
 import urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -14,6 +16,41 @@ STATIC = os.path.join(os.path.dirname(__file__), "static")
 MAX_UPLOAD = 70_000_000      # 64 MB files + envelope
 CTYPES = {".woff": "font/woff", ".woff2": "font/woff2", ".js": "text/javascript", ".css": "text/css",
           ".txt": "text/plain; charset=utf-8"}
+# The page runs only its own script files: text from other stations that slips into the HTML can't
+# run as script.  Files received from other stations never run as a page of ours (an .html or .svg
+# file opened in its own tab would otherwise have this station's API at its disposal).
+PAGE_CSP = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+MEDIA_CSP = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'"
+
+
+def _local_names() -> set:
+    names = {"localhost"}
+    n = (socket.gethostname() or "").lower().rstrip(".")
+    if n:
+        short = n.split(".")[0]
+        names.update({n, short, short + ".local"})
+    return names
+
+
+LOCAL_NAMES = _local_names()
+
+
+def host_allowed(host: str | None) -> bool:
+    """The browser must name this station by an IP address, localhost or this PC's own name.  A web
+    page that points a domain name of its own at us (DNS rebinding) is refused."""
+    if not host:
+        return True                       # (HTTP/1.0 clients, scripts)
+    try:
+        h = (urllib.parse.urlsplit("//" + host).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    if h in LOCAL_NAMES or h.endswith(".localhost"):
+        return True
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
 
 
 def make_handler(node):
@@ -53,7 +90,14 @@ def make_handler(node):
                 buf += chunk
             return bytes(buf)
 
-        def _file(self, path, cache=False):
+        def _allowed(self) -> bool:
+            if host_allowed(self.headers.get("Host")):
+                return True
+            self.close_connection = True
+            self._err("unknown host name: open the station as localhost or by its IP address", 403)
+            return False
+
+        def _file(self, path, cache=False, headers=None, media=False):
             if not os.path.isfile(path):
                 return self._err("not found", 404)
             with open(path, "rb") as f:
@@ -65,6 +109,12 @@ def make_handler(node):
             # fonts and the logo don't change while a station runs
             extra = {"Cache-Control": "max-age=86400"} if cache or path.endswith((".woff", ".woff2")) or \
                 (path.endswith(".png") and os.path.dirname(os.path.abspath(path)) == os.path.abspath(STATIC)) else None
+            extra = dict(extra or {}, **(headers or {}))
+            if media:                             # (a file from another station: see MEDIA_CSP)
+                extra["Content-Security-Policy"] = MEDIA_CSP
+                extra["X-Content-Type-Options"] = "nosniff"
+                if not ctype.startswith(("image/", "audio/", "video/")) or ctype.startswith("image/svg"):
+                    extra["Content-Disposition"] = "attachment"
             # byte ranges, so audio players can seek and loop without fetching the whole file again
             rng = self.headers.get("Range", "")
             m = re.match(r"bytes=(\d*)-(\d*)$", rng.strip())
@@ -83,14 +133,16 @@ def make_handler(node):
 
         # ------------------------------------------------------------ GET
         def do_GET(self):
+            if not self._allowed():
+                return
             u = urllib.parse.urlparse(self.path)
             p = u.path
             if p in ("/", "/index.html"):
-                return self._file(os.path.join(STATIC, "index.html"))
+                return self._file(os.path.join(STATIC, "index.html"), headers={"Content-Security-Policy": PAGE_CSP})
             if p.startswith("/static/"):
                 return self._file(os.path.join(STATIC, os.path.basename(p)))
             if p.startswith("/media/"):
-                return self._file(os.path.join(node.media_dir, os.path.basename(p)))
+                return self._file(os.path.join(node.media_dir, os.path.basename(p)), media=True)
             if p.startswith("/avatar/"):
                 f = node.avatar_file(os.path.basename(p))
                 return self._file(f) if f else self._err("no photo", 404)
@@ -143,6 +195,14 @@ def make_handler(node):
 
         # ------------------------------------------------------------ POST
         def do_POST(self):
+            if not self._allowed():
+                return
+            # another web site open in the browser can't make this station send or change anything:
+            # browsers name the page a POST comes from (Origin); scripts and curl send none
+            origin = self.headers.get("Origin")
+            if origin is not None and urllib.parse.urlsplit(origin).netloc.lower() != (self.headers.get("Host") or "").lower():
+                self.close_connection = True
+                return self._err("request from another web page refused", 403)
             u = urllib.parse.urlparse(self.path)
             qs = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
             try:

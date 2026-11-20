@@ -57,7 +57,7 @@ compiles it with `grcc`, runs it, and attaches its link layer and web UI to the 
 | ACK-based reliable delivery | Selective-repeat ARQ: cumulative + selective (SACK) acknowledgements, fast loss detection, timeouts, duplicate detection. With TD-CDMA the ACKs ride in the slot headers and a group message is acknowledged by every member |
 | Payloads: text, images, audio | Text with an emoji palette; photos at a chosen quality (480, 640 or 1280 px WebP/JPEG, or the original); voice notes or audio files at a chosen quality (Opus 12 or 24 kb/s, or as recorded); plus any file, each cancellable from either end |
 | Application | Chat with 1:1 chats, an "Everyone" group, delivery and read ticks, messages in the order they were sent, new-message highlights, profile pictures shared over the air, per-station themes, wallpapers and sounds (section 4.2), tic-tac-toe, and a **game center** with **UNO** and a real-time **street race with combat pickups**, each for 2–4 stations (section 4.1) |
-| **Bonus**: encryption | `--key <passphrase>` → AES-256-GCM, scrypt KDF, addresses authenticated as AAD |
+| **Bonus**: encryption | `--key <passphrase>` → AES-256-GCM, scrypt KDF, addresses authenticated as AAD; unencrypted messages refused |
 | **Bonus**: priority handling | 4 classes (control/ACK > urgent ⚡ > normal > bulk media); urgent text overtakes an image in the sender's next slot |
 | **Bonus**: graphical dashboard | Radio panel: constellation, spectrum, Eb/N0, chip SNR, CFO, counters, queues, links; the TD-CDMA slot plan, timing (TX → RX offset, clock drift, late bursts), the relay switch and routes, group-message ACKs per member |
 | Other additions | **Transmit power control** against the near-far problem: every frame at the power its receiver needs, closed loop through ACKs and beacons (section 3.4); adaptive modulation and coding with SNR feedback in ACKs (hybrid ARQ type I); 10 MB+ file transfer; multi-code transmission to several stations at once; spread-ALOHA reception of colliding same-code bursts; presence beacons; channel simulator; GNU Radio Companion flowgraphs |
@@ -606,7 +606,18 @@ timestamp, group, filename and mime type.
 
 - **Encryption:** AES-256-GCM, with the key = scrypt(passphrase). Each message uses a random 96-bit nonce, and
   `(src, dst)` is the associated data. The UI shows a short key-ID, and warns when a peer's beacon advertises a
-  different key.
+  different key. A station with `--key` refuses unencrypted messages and datagrams, and handles a control or game
+  message only once per id (a recorded copy played back is dropped).
+- **Input from the air and the browser:** message ids must look like the app's own (they name files in `media/`),
+  file extensions are letters and digits, a message lands in its sender's chat or the group only, tic-tac-toe
+  states, room ids and names are checked, compressed bodies can't grow past 4 MB (64 MB for files), and malformed
+  frames are counted (`bad_frames`, `rx_frame_errors`) instead of stopping the receive path. The page runs only
+  its own script files (Content-Security-Policy), received files are served so they can't run as a page of the
+  station, and the web API refuses requests from other web sites (`Origin`) and other host names (DNS rebinding).
+- **Restarts and stalled transfers:** the message-id counter is kept in `data/node<N>/msg_ids.json`, and with
+  TD-CDMA a station whose app restarted (new nonce) is noticed: its old message ids are forgotten, and what it had
+  received of ours goes again. A transfer that has received nothing for 3 minutes is dropped and its sender told;
+  a sender whose transfer failed tells the receiver to drop the partial message.
 - **History:** stored in `data/node<N>/history.jsonl`, with media files in `data/node<N>/media/`.
 
 ### 4.1 Game center (`wavelink/games/`)
@@ -1145,6 +1156,9 @@ python3 -m wavelink sim --nodes 2 & python3 -m tests.ui_features   # optional, n
                                    # 65 checks
 python3 -m tests.test_gr_backend   # numpy-PHY GNU Radio backend against a fake GR (API-shape test)
 python3 -m tests.test_tx_underrun  # mid-burst TX underruns on a fake ANTSDR with a busy interpreter, per TX buffer size
+python3 -m tests.test_hardening    # input checks (files, --key, chats, names, game states, zip bombs, replays),
+                                   # ACK sections > 255 bytes, malformed frames, restarts and stalled transfers on the
+                                   # simulated air, the web server's headers; about a minute (parts: 1 2 3 4)
 python3 -m wavelink sim --nodes 3 & python3 -m tests.scenario_api   # full app scenario through the web API
                                    # (it waits until the stations have heard each other)
 ```

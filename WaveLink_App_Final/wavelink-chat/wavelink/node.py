@@ -21,11 +21,13 @@ AES-GCM when --key is set) but carry no meta: they are binary and tiny.
 """
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import mimetypes
 import os
 import queue
+import re
 import struct
 import threading
 import time
@@ -46,6 +48,47 @@ EXT = {"image/jpeg": ".jpg", "image/webp": ".webp", "image/png": ".png", "audio/
 
 def chat_id_for(addr: int) -> str:
     return f"u:{addr}"
+
+
+# What arrives over the air is checked before it reaches the disk or the page.
+UID_RE = re.compile(r"[0-9a-f]{8,32}")          # message ids as the app makes them (they name files on disk)
+EXT_RE = re.compile(r"\.[A-Za-z0-9]{1,7}")      # extensions of stored media files
+TTT_BOARD = re.compile(r"[XO-]{9}")
+GID_RE = re.compile(r"[0-9a-z]{1,16}")
+INFLATE_MAX = 4_000_000                          # bytes a compressed text or control body may grow to
+CONTROL_KINDS = ("rcpt", "gc", "prof", "ctl")    # not kept in the history: replayed copies are dropped by id
+STORED_KINDS = ("text", "game") + MEDIA_KINDS
+
+
+def _clean_name(x) -> str:
+    """A station name from the air: printable characters, at most 32."""
+    if not isinstance(x, str):
+        return ""
+    return "".join(ch for ch in x if ch.isprintable()).strip()[:32]
+
+
+def _clean_game(x):
+    """A tic-tac-toe state {gid, b, p, t} as the page makes them, or None."""
+    if not isinstance(x, dict):
+        return None
+    b, p, t, gid = x.get("b"), x.get("p"), x.get("t"), x.get("gid")
+    if not (isinstance(b, str) and TTT_BOARD.fullmatch(b) and isinstance(p, list) and len(p) == 2
+            and all(type(a) is int for a in p) and type(t) is int
+            and (gid is None or (isinstance(gid, str) and GID_RE.fullmatch(gid)))):
+        return None
+    out = {"b": b, "p": p, "t": t}
+    if gid is not None:
+        out["gid"] = gid
+    return out
+
+
+def _inflate(data: bytes, limit: int) -> bytes:
+    """zlib.decompress, refusing anything that would grow beyond limit bytes (a 'zip bomb')."""
+    d = zlib.decompressobj()
+    out = d.decompress(data, limit)
+    if d.unconsumed_tail or not d.eof:
+        raise ValueError(f"compressed body larger than {limit} bytes, or damaged")
+    return out
 
 
 class Node:
@@ -79,8 +122,10 @@ class Node:
         self._cancelled: set = set()                   # uids cancelled by us
         self.skew: dict[int, list] = {}                # addr -> recent (our clock - their clock)
         self._av_req: dict[int, float] = {}            # addr -> when we last asked for its photo
+        self._seen_ctl: collections.OrderedDict = collections.OrderedDict()   # ids of control messages handled
         self.mac = LinkLayer(radio, addr, on_message=self._on_message, on_beacon=self._on_beacon,
                              on_datagram=self._on_datagram, log=log, mode=mac, relay=relay)
+        self.mac.set_id_store(os.path.join(data_dir, "msg_ids.json"))
         self.hub = GameHub(self, log=log)
         self._load_history()
         self._running = False
@@ -113,6 +158,22 @@ class Node:
             while self._running and self.radio.now() < t_end:
                 time.sleep(0.05)
             self._refresh_presence()
+            try:
+                self._purge_stale_incoming()
+            except Exception as e:
+                self.log("incoming transfers check failed", e)
+
+    INCOMING_STALE_S = 180.0      # a partly received message with no new fragment this long is given up
+
+    def _purge_stale_incoming(self):
+        """Partly received messages whose fragments stopped coming (the sender's app was closed, it went
+        out of range or gave up): drop them, and tell the sender to stop, so it won't carry on later from
+        where it thinks we are."""
+        for src, mid in self.mac.stale_incoming(self.INCOMING_STALE_S):
+            name = (self.contacts.get(src) or {}).get("name") or f"Node {src}"
+            self.log(f"node{self.addr}: gave up on a transfer from {src} (nothing for {self.INCOMING_STALE_S:.0f} s)")
+            self.cancel_incoming(src, mid)
+            self.publish("toast", f"Stopped receiving a transfer from {name}: nothing arrived for a while")
 
     BEACON_MAX = 200                                # bytes of JSON in a beacon
 
@@ -199,10 +260,12 @@ class Node:
             d = json.loads(info.decode())
         except Exception:
             d = {}
+        if not isinstance(d, dict):
+            d = {}
         relayed = []
         with self.lock:
             c = self.contacts.setdefault(src, {"addr": src})
-            c.update(name=d.get("n") or f"Node {src}", last_seen=time.time(), online=True,
+            c.update(name=_clean_name(d.get("n")) or f"Node {src}", last_seen=time.time(), online=True,
                      snr_db=round(frame.snr_db, 1), cfo_hz=round(frame.cfo_hz),
                      key_ok=(d.get("e", "") == self.crypto.key_id), tag=str(d.get("a") or ""))
             # names of stations we only reach through src (its beacon passes them on)
@@ -210,7 +273,7 @@ class Node:
             now = time.time()
             for k, val in v.items():
                 try:
-                    y, nm, tag = int(k), str(val[0])[:32], str(val[1])[:80]
+                    y, nm, tag = int(k), _clean_name(val[0]), str(val[1])[:80]
                 except (ValueError, TypeError, IndexError):
                     continue
                 if y in (self.addr, src) or not 1 <= y <= 254:
@@ -502,7 +565,7 @@ class Node:
             if time.time() - self._av_req.get(src, 0) < 45:
                 return
             self._av_req[src] = time.time()
-        meta = {"k": "prof", "x": {"q": "photo", "h": h}}
+        meta = {"k": "prof", "u": uuid.uuid4().hex[:12], "x": {"q": "photo", "h": h}}
         try:
             self.mac.send(src, self._envelope(meta, b"", src), PRIO_NORMAL)
         except Exception as e:
@@ -516,7 +579,8 @@ class Node:
                 return
             with open(path, "rb") as f:
                 data = f.read()
-            meta = {"k": "prof", "x": {"r": "photo", "h": a.get("hash"), "m": a.get("mime", "image/webp")}}
+            meta = {"k": "prof", "u": uuid.uuid4().hex[:12],
+                    "x": {"r": "photo", "h": a.get("hash"), "m": a.get("mime", "image/webp")}}
             self.mac.send(src, self._envelope(meta, data, src), PRIO_NORMAL)
         elif x.get("r") == "photo" and body:                        # a contact's photo
             h = str(x.get("h", ""))[:12]
@@ -580,7 +644,7 @@ class Node:
         self.publish("incoming", None)
 
     def _send_ctl(self, dst: int, x: dict):
-        meta = {"k": "ctl", "x": x}
+        meta = {"k": "ctl", "u": uuid.uuid4().hex[:12], "x": x}
         try:
             self.mac.send(dst, self._envelope(meta, b"", dst), PRIO_HIGH)
         except Exception as e:
@@ -637,6 +701,10 @@ class Node:
             dsts = [int(to.split(":")[1])]
         if not dsts:
             raise ValueError("no recipients online yet - wait for their beacons")
+        if kind == "game":
+            extra = _clean_game(extra)
+            if extra is None:
+                raise ValueError("malformed game state")
         prio = PRIO_HIGH if urgent else (PRIO_BULK if kind in MEDIA_KINDS else PRIO_NORMAL)
         rec = dict(uid=uid, chat=to, frm=self.addr, kind=kind, ts=now, text=text, name=name,
                    mime=mime, size=len(body), prio=prio, urgent=urgent, extra=extra,
@@ -739,18 +807,20 @@ class Node:
                 r["airtime_s"] = round(m.done_time - m.first_tx, 2)
                 r["goodput_kbps"] = round(len(m.data) * 8 / max(m.done_time - m.first_tx, 1e-3) / 1e3, 1)
             r["status"] = self._agg_status(r)
-            self._persist(r)
+            if ev not in ("progress", "retry"):    # (progress lives in memory: no history line per ACK)
+                self._persist(r)
         if retry is not None:
             mm = self._unicast_copy(uid, retry)
             with self.lock:
                 self.out_by_uid.setdefault(uid, []).append((retry, mm))
+            self._send_ctl(retry, {"a": "cancel", "m": m.msg_id})   # (what it got of the broadcast: drop it)
         self.publish("msg", r)
 
     def send_gc(self, dst: int, obj: dict, prio: int = PRIO_HIGH):
         """Game center message: reliable, high priority (overtakes chat and file traffic),
         not stored in the history."""
         body = json.dumps(obj, separators=(",", ":")).encode()
-        meta = {"k": "gc"}
+        meta = {"k": "gc", "u": uuid.uuid4().hex[:12]}
         z = zlib.compress(body, 6)
         if len(z) < len(body) - 8:
             meta["z"] = 1
@@ -788,6 +858,7 @@ class Node:
         self.publish("unread", dict(self.unread))
 
     def _on_tx_event(self, uid: str, dst: int, ev: str, m):
+        tell_drop = False
         with self.lock:
             r = self.messages.get(uid)
             if not r:
@@ -807,7 +878,11 @@ class Node:
                 r["airtime_s"] = round(m.done_time - m.first_tx, 2)
                 r["goodput_kbps"] = round(len(m.data) * 8 / max(m.done_time - m.first_tx, 1e-3) / 1e3, 1)
             r["status"] = self._agg_status(r)
-            self._persist(r)
+            if ev not in ("progress", "retry"):    # (progress lives in memory: no history line per ACK)
+                self._persist(r)
+            tell_drop = ev == "failed" and m.first_tx is not None
+        if tell_drop:                              # the receiver may hold part of it: let it drop that
+            self._send_ctl(dst, {"a": "cancel", "m": m.msg_id})
         self.publish("msg", r)
 
     @staticmethod
@@ -828,15 +903,25 @@ class Node:
             mlen = struct.unpack_from(">H", inner)[0]
             meta = json.loads(inner[2:2 + mlen].decode())
             body = inner[2 + mlen:]
+            if not isinstance(meta, dict):
+                raise ValueError("malformed envelope")
         except Exception as e:
             self.log(f"node{self.addr}: dropped message from {src}: {e}")
             self.publish("toast", f"Message from node {src} could not be opened: {e}")
             return
         kind = meta.get("k", "text")
+        if kind in CONTROL_KINDS and isinstance(meta.get("u"), str):
+            with self.lock:                        # (a recorded copy played back: it was handled once)
+                if meta["u"] in self._seen_ctl:
+                    self.mac.stats["replays_dropped"] += 1
+                    return
+                self._seen_ctl[meta["u"]] = None
+                while len(self._seen_ctl) > 4096:
+                    self._seen_ctl.popitem(last=False)
         with self.lock:
             c = self.contacts.setdefault(src, {"addr": src, "name": f"Node {src}"})
             if meta.get("nm") and (not c.get("name") or c["name"] == f"Node {src}"):
-                c["name"] = str(meta["nm"])[:32]       # (a station we only reach through a relay)
+                c["name"] = _clean_name(meta["nm"]) or f"Node {src}"   # (a station we only reach through a relay)
             if meta_l.get("via"):
                 c.update(online=True, via=meta_l["via"])
             else:
@@ -845,7 +930,11 @@ class Node:
             self._on_receipt(src, meta.get("x") or [])
             return
         if meta.get("z"):
-            body = zlib.decompress(body)
+            try:
+                body = _inflate(body, self.mac.max_message_bytes() if kind in MEDIA_KINDS else INFLATE_MAX)
+            except (ValueError, zlib.error) as e:
+                self.log(f"node{self.addr}: dropped message from {src}: {e}")
+                return
         if kind == "gc":
             try:
                 obj = json.loads(body.decode())
@@ -859,8 +948,18 @@ class Node:
         if kind == "ctl":
             self._on_ctl(src, meta.get("x") or {})
             return
-        uid = meta.get("u") or uuid.uuid4().hex[:12]
-        chat = meta.get("g") or chat_id_for(src)
+        if kind not in STORED_KINDS:
+            self.log(f"node{self.addr}: dropped a message of unknown kind {str(kind)[:20]!r} from {src}")
+            return
+        if kind == "game":
+            meta["x"] = _clean_game(meta.get("x"))
+            if meta["x"] is None:
+                self.log(f"node{self.addr}: dropped a malformed game move from {src}")
+                return
+        uid = meta.get("u")
+        if not (isinstance(uid, str) and UID_RE.fullmatch(uid)):
+            uid = uuid.uuid4().hex[:12]            # (ids name files on disk: only the form the app makes)
+        chat = GROUP_ALL if meta.get("g") == GROUP_ALL else chat_id_for(src)   # (the sender can't pick another chat)
         now = time.time()
         sent = float(meta.get("t", now))
         if kind == "text":
@@ -900,8 +999,13 @@ class Node:
     # ================================================================ storage
     def _save_media(self, uid: str, body: bytes, mime: str, name: str) -> str:
         ext = EXT.get(mime) or os.path.splitext(name)[1][:8] or mimetypes.guess_extension(mime or "") or ".bin"
+        if not EXT_RE.fullmatch(ext):
+            ext = ".bin"                           # (a file name from the air: letters and digits only)
         fn = f"{uid}{ext}"
-        with open(os.path.join(self.media_dir, fn), "wb") as f:
+        path = os.path.join(self.media_dir, fn)
+        if not UID_RE.fullmatch(uid) or os.path.dirname(os.path.realpath(path)) != os.path.realpath(self.media_dir):
+            raise ValueError(f"refusing to store a file as {fn!r}")
+        with open(path, "wb") as f:
             f.write(body)
         return fn
 

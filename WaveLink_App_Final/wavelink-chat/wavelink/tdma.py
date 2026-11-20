@@ -17,7 +17,7 @@ Cycle (all positions in ticks of 0.25 ms)::
 
 The lead station (the first on the air; when two networks meet the lower address leads) owns
 the first slot.  Its header carries the cycle number and the slot plan; a plan change (a station
-joins, leaves or wants more airtime) is announced >= 0.5 s ahead, so every station knows it
+joins, leaves or wants more airtime) is announced >= 1 s and 4 cycles ahead, so every station knows it
 before it has to transmit by it.  A newcomer listens (1.2 s + 0.25 s per address, so stations
 started together do not all lead), then sends its header in the join slot; the lead gives it a
 slot.  A slot is ~15 ms when its owner has nothing to send (header + small messages on the
@@ -153,6 +153,9 @@ class Plan:
     def decode(b: bytes):
         ver, cycle, T, n = PLAN_HEAD.unpack_from(b)
         slots = tuple(SLOT.unpack_from(b, PLAN_HEAD.size + SLOT.size * i) for i in range(n))
+        if T == 0 or any(s + l > T for _, s, l in slots):
+            # (a cycle of length 0 would make Timeline.cycle_at loop for ever; counted as a bad section)
+            raise struct.error("implausible slot plan")
         return cycle, Plan(ver, T, slots)
 
     @staticmethod
@@ -257,12 +260,29 @@ def _sec(tag: int, data: bytes) -> bytes:
             return out
 
 
+def _sec_room(room: int) -> int:
+    """The most data bytes _sec() can put into `room` bytes (a 2-byte header per piece of <= 255)."""
+    return room - 2 * (1 + room // 257)
+
+
 def _sections(b: bytes):
-    i = 0
+    """(tag, data) of each section.  A section longer than 255 bytes was sent as pieces of one tag
+    (_sec), every piece but the last full: they are joined again here, since an ACK record can
+    straddle two pieces."""
+    i, tag, buf, full = 0, None, b"", False
     while i + 2 <= len(b):
-        tag, n = b[i], b[i + 1]
-        yield tag, b[i + 2:i + 2 + n]
+        t, n = b[i], b[i + 1]
+        d = b[i + 2:i + 2 + n]
         i += 2 + n
+        if tag is not None and t == tag and full:
+            buf += d
+        else:
+            if tag is not None:
+                yield tag, buf
+            tag, buf = t, d
+        full = n == 255
+    if tag is not None:
+        yield tag, buf
 
 
 # ============================================================================ the scheduler
@@ -1017,7 +1037,7 @@ class Tdma:
             else:
                 self.stats["hdr_sections_deferred"] += 1
         if not join:
-            cap = MAX_ACK_BYTES if room is None else min(MAX_ACK_BYTES, room - 2)
+            cap = MAX_ACK_BYTES if room is None else min(MAX_ACK_BYTES, _sec_room(room))
             recs = self._ack_records(cap) if cap > REC.size else b""
             if recs:
                 secs += _sec(SEC_ACK, recs)
@@ -1080,8 +1100,16 @@ class Tdma:
             return
         self.stats["headers_rx"] += 1
         h = self.heard.get(src)
-        if h is not None and h["nonce"] != nonce and now - h["t"] < 10:
-            self._nonce_changed(src, h["nonce"], nonce, now)
+        if h is not None and h["nonce"] != nonce:
+            prev = self._nonce_prev.get(src)
+            back = prev is not None and prev[0] == nonce and now - prev[1] < 10   # (an old nonce again: two radios)
+            if now - h["t"] < 10:
+                self._nonce_changed(src, h["nonce"], nonce, now)
+            if not back:
+                # its app was restarted: forget the ids of its old messages, and send it again what it had
+                # received of ours (it lost that)
+                self.stats["peer_restarts"] += 1
+                self.mac.peer_restarted(src)
         plan_cur = plan_next = None
         acks, link, jreqs, seen = [], None, [], []
         for tag, data in _sections(secs):

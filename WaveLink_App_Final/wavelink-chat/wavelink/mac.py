@@ -83,7 +83,9 @@ from __future__ import annotations
 
 import collections
 import enum
+import json
 import math
+import os
 import random
 import struct
 import threading
@@ -107,6 +109,9 @@ REC_SPAN = 512                         # TD-CDMA: fragments beyond the base one 
                                        # (tdma.REC_MAX_BITMAP bytes); received ones further on are unknown
 NO_TRIGGER = 0xFFFF
 GROUP_RETRIES = 4                      # TD-CDMA group message: timeouts before a member is tried alone
+INBOX_MAX_AGE_S = 600.0                # a partly received message is forgotten after this long without a
+                                       # fragment (the application gives up sooner, and tells the sender)
+ID_BLOCK = 256                         # message ids reserved in the id file at a time (set_id_store)
 
 PRIO_BULK, PRIO_NORMAL, PRIO_HIGH, PRIO_CONTROL = 0, 1, 2, 3
 
@@ -270,6 +275,9 @@ class LinkLayer:
         self.done_in: collections.OrderedDict = collections.OrderedDict()   # (src,id)->count
         self.dropped_in: collections.OrderedDict = collections.OrderedDict()  # (src,id) cancelled incoming
         self._next_id = random.randrange(0, 1 << 16)
+        self._id_path: str | None = None        # set_id_store: the counter carries on after a restart
+        self._id_left = 0
+        self._inbox_checked = 0.0
         self.stats = collections.Counter()
         self.link_quality: dict[int, dict] = {}
         self.mod_penalty: dict[int, tuple[int, float]] = {}                 # dst -> (levels, until)
@@ -668,8 +676,41 @@ class LinkLayer:
                     for lst in self.out.values() for m in lst]
 
     def _alloc_id(self) -> int:
+        if self._id_path is not None:
+            if self._id_left <= 0:
+                self._reserve_ids()
+            self._id_left -= 1
         self._next_id = (self._next_id + 1) & 0xFFFF
         return self._next_id
+
+    def set_id_store(self, path: str):
+        """Keep the message-id counter in a file, so a restarted station carries on where it stopped.
+        Its peers remember the ids of the last messages they got from it as finished, and would take a
+        new message under an old id for a repeat: they would acknowledge it and throw it away.  Ids are
+        reserved ID_BLOCK at a time (one small write per block)."""
+        start = None
+        try:
+            with open(path, encoding="utf-8") as f:
+                start = int(json.load(f)["next"]) & 0xFFFF
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        with self.lock:
+            self._id_path = path
+            if start is not None:
+                self._next_id = (start - 1) & 0xFFFF     # (_alloc_id counts up first)
+            self._reserve_ids()
+
+    def _reserve_ids(self):
+        """Write down that ids up to ID_BLOCK past the current one may be used, before using them."""
+        nxt = (self._next_id + 1 + ID_BLOCK) & 0xFFFF
+        tmp = self._id_path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"next": nxt}, f)
+            os.replace(tmp, self._id_path)
+        except OSError as e:
+            self.log("message-id counter not saved", e)
+        self._id_left = ID_BLOCK
 
     def _emit(self, m: OutMsg, ev: str):
         if m.on_event:
@@ -724,6 +765,9 @@ class LinkLayer:
                 self._td_timers(now)
                 for dst in list(self.out):
                     self.out[dst] = [m for m in self.out[dst] if m.state not in FINISHED]
+                if now - self._inbox_checked > 5.0:
+                    self._inbox_checked = now
+                    self._purge_inbox(now, INBOX_MAX_AGE_S)
                 self.tdma.service()
                 return
             self._receiver_timers(now)
@@ -1023,6 +1067,40 @@ class LinkLayer:
         if m.state == MsgState.SENDING:
             self._emit(m, "progress")
 
+    def peer_restarted(self, a: int):
+        """Station a's app was restarted (TD-CDMA: a new nonce in its slot headers).  Its new messages may
+        reuse ids we remember as finished: forget those.  And it has lost what it had received of ours:
+        send that again from the start (otherwise it would never complete those messages while we
+        showed them as delivered)."""
+        with self.lock:
+            for d in (self.done_in, self.dropped_in, self.inbox):
+                for key in [k for k in d if k[0] == a]:
+                    del d[key]
+            if self.tdma is not None:
+                for key in [k for k in self.tdma.ack_due if k[0] == a]:
+                    del self.tdma.ack_due[key]
+            self._td_loss.pop(a, None)
+            for lst in (self.out.get(a, []), self.out.get(BROADCAST_ADDR, [])):
+                for m in lst:
+                    if (m.state in (MsgState.QUEUED, MsgState.SENDING) and m.mstate.get(a) == "sending"
+                            and (m.acked_by.get(a) or m.base_by.get(a))):
+                        self._td_member_reset(m, a)
+
+    def _td_member_reset(self, m: OutMsg, a: int):
+        """Member a no longer has any of m: what it had acknowledged goes again."""
+        m.acked_by[a] = set()
+        m.base_by[a] = 0
+        m.retries_by[a] = 0
+        active = [x for x in m.members if m.mstate.get(x) in ("sending", "delivered")]
+        m.acked = set(i for i in range(len(m.frags)) if all(i in m.acked_by.get(x, ()) for x in active))
+        m.cum_base = min((m.base_by.get(x, 0) for x in active), default=0)
+        for i in range(m.next_new):
+            if i not in m.acked and i not in m.inflight and i not in m.retx_set:
+                m.retx.append(i)
+                m.retx_set.add(i)
+        m.deadline = self.radio.now() + self._td_timeout(m)
+        self.stats["resent_after_restart"] += 1
+
     def _td_check_done(self, m: OutMsg):
         if m.state not in (MsgState.QUEUED, MsgState.SENDING):
             return
@@ -1097,6 +1175,17 @@ class LinkLayer:
 
     # ================================================================ receiving
     def _on_phy_frame(self, f):
+        """Every frame the PHY decoded.  Never raises: a malformed frame, or a bug in the code that
+        handles one, must not stop reception (in the flowgraph an exception here would end the PHY -> MAC
+        block's thread, and the station would hear nothing until restarted)."""
+        try:
+            self._rx_frame(f)
+        except Exception as e:
+            self.stats["rx_frame_errors"] += 1
+            if self.stats["rx_frame_errors"] <= 5:
+                self.log("MAC: error handling a received frame", repr(e))
+
+    def _rx_frame(self, f):
         body = self._open(f.payload)
         if body is None:
             self.stats["crc_fail"] += 1
@@ -1141,11 +1230,17 @@ class LinkLayer:
                 rest = rest[2 * n:]
             self.on_beacon(src, rest, f)
         elif ftype == T_ACK:
+            if len(rest) < 7:
+                self.stats["bad_frames"] += 1
+                return
             count, base, trigger, fb = struct.unpack_from(">HHHb", rest)
             if fb != -128:
                 self._note_report(src, fb / 2.0, 0.4)
             self._on_ack(src, msg_id, count, base, trigger, rest[7:])
         elif ftype == T_DATA:
+            if len(rest) < 4:
+                self.stats["bad_frames"] += 1
+                return
             idx, count = struct.unpack_from(">HH", rest)
             self._on_data(src, dst, msg_id, flags, idx, count, rest[4:], f)
         elif ftype == T_DGRAM:
@@ -1171,6 +1266,9 @@ class LinkLayer:
                  mod=getattr(f, "mcs", None) or getattr(f, "mod", "bpsk"), t=time.time())
 
     def _on_data(self, src, dst, msg_id, flags, idx, count, payload, f, via=None):
+        if count == 0 or idx >= count:
+            self.stats["bad_frames"] += 1
+            return
         key = (src, msg_id)
         ack_req = bool(flags & F_ACKREQ)
         td = self.tdma
@@ -1221,15 +1319,22 @@ class LinkLayer:
 
     def _receiver_timers(self, now: float):
         # if the ACK-requesting frame was lost, ACK what we have after a quiet gap
-        stale = []
-        for key, im in self.inbox.items():
+        for im in self.inbox.values():
             if im.need_ack and now - im.last_rx > 0.6 * self.ack_timeout:
                 self._send_ack(im.src, im.msg_id, im.count, im, NO_TRIGGER)
                 im.need_ack = False
-            if now - im.last_rx > 600:
-                stale.append(key)
-        for k in stale:
-            del self.inbox[k]
+        self._purge_inbox(now, INBOX_MAX_AGE_S)
+
+    def _purge_inbox(self, now: float, max_age: float):
+        for key in [k for k, im in self.inbox.items() if now - im.last_rx > max_age]:
+            del self.inbox[key]
+            self.stats["incoming_expired"] += 1
+
+    def stale_incoming(self, max_age: float) -> list:
+        """(src, msg_id) of partly received messages with no new fragment for max_age seconds."""
+        now = self.radio.now()
+        with self.lock:
+            return [k for k, im in self.inbox.items() if now - im.last_rx > max_age]
 
     def _send_ack(self, dst: int, msg_id: int, count: int, im: InMsg | None, trigger: int):
         if im is None:                                   # complete

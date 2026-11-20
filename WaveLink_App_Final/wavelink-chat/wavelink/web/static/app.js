@@ -450,7 +450,7 @@ function msgEl(m) {
   if (mine && m.size > 230 && m.status !== "delivered" && m.status !== "read") {
     const pct = Math.round((m.progress || 0) * 100);
     const what = m.status === "failed" ? "failed" : m.status === "cancelled"
-      ? (m.stopped_by ? `cancelled by ${contactName(m.stopped_by)}` : "cancelled") : `${pct}% of ${fmtBytes(m.size)}`;
+      ? (m.stopped_by ? `cancelled by ${esc(contactName(m.stopped_by))}` : "cancelled") : `${pct}% of ${fmtBytes(m.size)}`;
     h += `<div class="progwrap"><div class="progrow"><div class="prog"><i style="width:${pct}%"></i></div>
       ${sending ? `<button class="xbtn" data-cancel title="Cancel sending" aria-label="Cancel sending">${XSVG}</button>` : ""}</div>
       <div class="progtxt">${what}${m.retries && sending ? ` · ${m.retries} retries` : ""}</div></div>`;
@@ -550,7 +550,7 @@ function winner(b) {
 }
 function gameHtml(m) {
   const g = m.extra || {};
-  const b = g.b || "---------";
+  const b = typeof g.b === "string" && /^[XO-]{9}$/.test(g.b) ? g.b : "---------";
   const w = winner(b);
   const myTurn = !w && g.t === S.me.addr;
   const sym = (a) => (a === g.p[0] ? "X" : "O");

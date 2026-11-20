@@ -53,6 +53,7 @@ import math
 import os
 import queue
 import random
+import re
 import struct
 import threading
 import time
@@ -65,6 +66,7 @@ GAMES = {"uno": "UNO", "race": "Gold Code GP"}
 MAX_PLAYERS = 4
 UNO_TURN = 30.0                  # s per turn, then the host plays the timeout
 RACE_LAPS = (2, 3, 5)
+ROOM_ID = re.compile(r"[0-9a-f]{6}")      # os.urandom(3).hex(): room ids end up in the page
 RACE_COUNTDOWN = 6.0             # s from the start message to the green light
 FINISH_GRACE = 25.0              # s after the first finisher before results are final
 OFFLINE_AFTER = 17.5             # s without hearing a station = off the air
@@ -420,6 +422,14 @@ class GameHub:
                 self.log("games tick error", repr(e))
 
     def _handle(self, src: int, o: dict):
+        if not isinstance(o, dict):
+            return
+        if "r" in o and not (isinstance(o["r"], str) and ROOM_ID.fullmatch(o["r"])):
+            self.stats["gc_bad_room_id"] += 1
+            return
+        if "o" in o:                                   # room options: only the race's laps
+            x = o["o"] if isinstance(o["o"], dict) else {}
+            o["o"] = {"laps": x["laps"]} if x.get("laps") in RACE_LAPS else {}
         t = o.get("t")
         fn = getattr(self, "_on_" + str(t), None)
         if fn is None:

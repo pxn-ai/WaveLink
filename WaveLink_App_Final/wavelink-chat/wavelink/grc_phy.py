@@ -86,6 +86,18 @@ class LdpcDecoderCore:
         self.busy_s = 0.0
 
     def decode(self, soft: np.ndarray, length: int, mod: str, rate: int):
+        """Never raises (it runs in the LDPC Decoder block's message handler: an exception there would
+        end that block's thread in GNU Radio).  On an error the frame comes out as zeros, which the
+        CRC-32 check drops like any frame the code could not correct."""
+        try:
+            return self._decode(soft, length, mod, rate)
+        except Exception as e:
+            self.stats["fec_errors"] += 1
+            if self.stats["fec_errors"] <= 5:
+                print("LDPC decoder error:", repr(e), file=sys.stderr)
+            return bytes(max(0, int(length))), False, 0
+
+    def _decode(self, soft: np.ndarray, length: int, mod: str, rate: int):
         bps = BITS_PER_SYM[mod]
         t = time.perf_counter()
         if rate:
@@ -593,6 +605,16 @@ class GrcPhyRadio:
 
     # ---------------------------------------------------------------- RX path
     def _rx_pdu(self, meta: dict, data: bytes):
+        """The PHY -> MAC block's handler.  Never raises: an exception would end that block's thread in
+        GNU Radio, and the station would hear nothing until restarted."""
+        try:
+            self._rx_pdu_frame(meta, data)
+        except Exception as e:
+            self.counters["rx_handler_errors"] += 1
+            if self.counters["rx_handler_errors"] <= 5:
+                print("PHY -> MAC error:", repr(e), file=sys.stderr)
+
+    def _rx_pdu_frame(self, meta: dict, data: bytes):
         d = self.reg["despreader"]
         es = float(meta.get("esn0_db", meta.get("snr_db", 0.0)))
         f = GrcFrame(payload=data, code_idx=int(meta.get("code", -1)), snr_db=float(meta.get("snr_db", 0.0)),
