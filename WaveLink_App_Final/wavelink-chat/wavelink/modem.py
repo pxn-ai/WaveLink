@@ -34,7 +34,7 @@ import time
 import numpy as np
 
 from .config import PhyConfig
-from .codes import spreading_codes, preamble_patterns, rrc_taps
+from .codes import spreading_codes, code_preambles, rrc_taps
 from . import golay, ldpc
 
 HEADER_BITS = 24          # information bits of the header
@@ -237,7 +237,7 @@ class Modulator:
     def __init__(self, cfg: PhyConfig):
         self.cfg = cfg
         self.codes = spreading_codes(cfg)
-        self.pre = preamble_patterns(self.codes.shape[0], cfg.preamble_bits)
+        self.pre = code_preambles(cfg)
         self.h = rrc_taps(cfg.sps, cfg.rolloff, cfg.rrc_span)
 
     def _check(self, n: int):
@@ -352,7 +352,7 @@ class Demodulator:
         self.matched_filter = matched_filter     # False: input is already RRC-filtered
         self.decode = decode
         self.codes = spreading_codes(cfg)
-        self.pre = preamble_patterns(self.codes.shape[0], cfg.preamble_bits)
+        self.pre = code_preambles(cfg)
         self.h = rrc_taps(cfg.sps, cfg.rolloff, cfg.rrc_span).astype(np.float32)
         self.P = cfg.samples_per_symbol
         self.K = cfg.preamble_bits

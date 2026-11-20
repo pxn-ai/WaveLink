@@ -168,6 +168,15 @@ def preamble_patterns(n_codes: int, n_bits: int) -> np.ndarray:
     return np.array(chosen, dtype=np.float32)
 
 
+def code_preambles(cfg) -> np.ndarray:
+    """The preamble patterns of cfg's codes.  Pattern c depends only on the patterns before it, so both
+    code families take the first num_codes of one list: computed once per process (it takes about a
+    second) even where both families are built - the flowgraph's LDPC Encoder blocks make theirs with
+    the default (Gold) settings when the flowgraph starts, and computing a second list there held up
+    the start by 12-14 s."""
+    return preamble_patterns((1 << cfg.gold_degree) + 1, cfg.preamble_bits)[:cfg.num_codes]
+
+
 def rrc_taps(sps: int, rolloff: float, span: int) -> np.ndarray:
     """Root-raised-cosine taps (unit energy), span in chips."""
     n = np.arange(-span * sps // 2, span * sps // 2 + 1, dtype=np.float64)

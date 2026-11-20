@@ -135,14 +135,15 @@ def link_gains(air, specs):
             raise SystemExit(f"--link-gain {spec!r}: use A:B=dB, e.g. 1:3=20")
 
 
-def grc_station_radio(fg, node_id: int, tx_buffer: int):
-    """GrcPhyRadio for one station of a running flowgraph, PhyConfig read from its variables."""
+def grc_station_radio(fg, node_id: int, tx_buffer: int, simulated: bool = False):
+    """GrcPhyRadio for one station of a running flowgraph, PhyConfig read from its variables
+    (simulated: grc/cdma_phy_sim.grc, no radio)."""
     from .grc_phy import GrcPhyRadio, phy_config
     tb = fg.tb
     cfg = phy_config(getattr(tb, "samp_rate", 4e6), getattr(tb, "sps", 2), getattr(tb, "gold_degree", 5),
                      getattr(tb, "preamble_bits", 48), getattr(tb, "max_payload", 1024),
                      getattr(tb, "center_freq", 2.5e9), codes=str(getattr(tb, "code_family", "gold")))
-    return GrcPhyRadio(fg, node_id, cfg, tx_buffer=tx_buffer)
+    return GrcPhyRadio(fg, node_id, cfg, tx_buffer=tx_buffer, simulated=simulated)
 
 
 def open_grc(path: str, params: dict):
@@ -284,7 +285,7 @@ def cmd_grc_sim(a):
         tb.set_cfo_hz(a.cfo)
     nodes = []
     for nid in sorted(REGISTRY):
-        radio = grc_station_radio(fg, nid, int(getattr(tb, "tx_buffer", 32768)))
+        radio = grc_station_radio(fg, nid, int(getattr(tb, "tx_buffer", 32768)), simulated=True)
         n = Node(radio, nid, NAMES[nid - 1], os.path.join(a.data, f"grc-sim-node{nid}"), a.key, mode="grc-sim",
                  mac=a.mac, relay=a.relay == "on")
         tune_mac(n.mac, a, hardware=True)

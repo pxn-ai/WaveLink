@@ -427,10 +427,12 @@ class GrcPhyRadio:
     name = "grc"
     provides_crc = True                    # the flowgraph's stock CRC32 blocks append/check
 
-    def __init__(self, fg: GrcFlowgraph, node_id: int, cfg: PhyConfig, tx_buffer: int = 65536):
+    def __init__(self, fg: GrcFlowgraph, node_id: int, cfg: PhyConfig, tx_buffer: int = 65536,
+                 simulated: bool = False):
         self.fg = fg
         self.addr = int(node_id)
         self.cfg = cfg
+        self.simulated = simulated             # grc/cdma_phy_sim.grc: no radio, see tx_rx_guess()
         reg = REGISTRY.get(self.addr, {})
         missing = {"mac_tx", "mac_rx", "combiner", "despreader"} - set(reg)
         if missing:
@@ -551,7 +553,15 @@ class GrcPhyRadio:
         """The TX -> RX offset D before the station has heard itself: the transmit samples the chain holds
         ahead of the antenna (the combiner's lead over the sample clock) plus the receive samples not yet
         processed (the despreader's queue, about half a radio buffer).  rx_count - tx_count alone is ~0.1 s
-        short, which sent a newcomer's first join request into the next cycle's lead slot."""
+        short, which sent a newcomer's first join request into the next cycle's lead slot.
+
+        The simulated flowgraph has no radio and no sample clock: every transmit stream and every receive
+        stream start together and the channel has no delay, so a burst put at transmit sample k arrives
+        at receive sample k + the two RRC filters' delay.  (The combiner's lead over the wall clock means
+        nothing there: after a slow start the graph runs faster than real time until its throttle has
+        caught up, and the guess came out seconds off - newcomers then never heard their probes.)"""
+        if self.simulated:
+            return int(self.cfg.rrc_span * self.cfg.sps)
         ahead = self.reg["combiner"].ahead_chips() * self.cfg.sps
         return int(self.rx_count() - self.tx_count() + ahead + self.reg["despreader"].q_samples + 16384)
 
@@ -682,11 +692,23 @@ class GrcPhyRadio:
         return out
 
 
+def gr_log_warnings_only():
+    """GNU Radio logs at INFO level that it set the minimum output buffer of every block that asks for
+    one ("set_min_output_buffer on block 7 to 32768": about 50 lines for cdma_phy_sim.grc).  Show its
+    warnings and errors only; WAVELINK_GR_LOG=info (or debug) brings the rest back."""
+    try:
+        from gnuradio import gr
+        gr.logging().set_default_level(getattr(gr.log_levels, os.environ.get("WAVELINK_GR_LOG", "warn")))
+    except (ImportError, AttributeError):
+        pass                                           # (an older GNU Radio: its own default)
+
+
 def open_flowgraph(grc_file: str, params: dict, log=print) -> GrcFlowgraph:
     """Compile + instantiate a .grc; its CDMA blocks register themselves in REGISTRY.  (Locked: two
     stations started at once on one PC would otherwise rewrite build/grc while the other imports it.)"""
     import fcntl
     REGISTRY.clear()
+    gr_log_warnings_only()                             # (before the blocks and their loggers exist)
     os.makedirs(BUILD_DIR, exist_ok=True)
     with open(os.path.join(BUILD_DIR, ".lock"), "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)

@@ -1322,6 +1322,13 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
 - **`No module named 'gnuradio.iio'` / PlutoSDR block errors.** gr-iio is missing (Ubuntu: `gnuradio` 3.10 includes
   it; on older packaging install `gr-iio`). `iio_info -u ip:192.168.1.10` must list the device.
 - **"the GNU Radio PHY has code lanes for node ids 1-4".** Use `--id` 1 to 4.
+- **GNU Radio's own messages.** The app shows only GNU Radio's warnings and errors. Its INFO lines (such as
+  `pdu_to_tagged_stream :info: set_min_output_buffer on block 7 to 32768`, one per block that asks for a large
+  buffer) are not errors; `WAVELINK_GR_LOG=info python3 -m wavelink ...` shows them again.
+- **Stations stuck "joining…" with the TX → RX offset "measuring…".** A newcomer has to hear its own probe burst
+  to learn when its bursts reach the air, and it aims the probe with a guess. In `grc-sim` the guess is exact (the
+  simulated stations share one sample clock); on the ANTSDRs it comes from the TX and RX buffers, normally within
+  tens of ms. The console's "TX->RX offset D = … (the guess was … off)" line shows how far off it was.
 - **No stations appear.** Check `iio_info -u <uri>`, then check that every PC uses the same `--freq` and the same
   .grc variables. Open the dashboard spectrum: you should see a ~2.7 MHz-wide hump while another station transmits.
 - **High Eb/N0 but many "CRC-32 drops" and retransmissions.** The radio link is fine; samples are being lost.
