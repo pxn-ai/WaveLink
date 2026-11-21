@@ -54,7 +54,7 @@ compiles it with `grcc`, runs it, and attaches its link layer and web UI to the 
 | Packetization and reassembly | 1,009-byte fragments (`fast`), up to 65,535 per message (≈ 66 MB) — `mac.py` |
 | Unique addressing | Node ID 1–4 = its spreading code (PHY: one code lane per station in the flowgraph) + `dst` byte checked in every frame (MAC) |
 | CRC error detection | CRC-8 on the PHY header; CRC-32 on every frame (stock **Stream CRC32** blocks in the flowgraph) — bad frames are dropped |
-| Error correction (extra) | **LDPC** (3GPP 5G NR base graph 1) on every payload, soft-decision min-sum decoding; extended **Golay (24,12)** on the header. Up to **4.8× goodput** on a 14 dB link, ~9 dB coding gain at rate ½ (section 2.2) |
+| Error correction (extra) | **LDPC** (3GPP 5G NR base graph 1) on every payload, soft-decision min-sum decoding; extended **Golay (24,12)** on the header. **2.9× goodput** on a 14 dB link, ~9 dB coding gain at rate ½ (section 2.2) |
 | ACK-based reliable delivery | Selective-repeat ARQ: cumulative + selective (SACK) acknowledgements, fast loss detection, timeouts, duplicate detection. With TD-CDMA the ACKs ride in the slot headers and a group message is acknowledged by every member |
 | Payloads: text, images, audio | Text with an emoji palette; photos at a chosen quality (480, 640 or 1280 px WebP/JPEG, or the original); voice notes or audio files at a chosen quality (Opus 12 or 24 kb/s, or as recorded); plus any file, each cancellable from either end |
 | Application | Chat with 1:1 chats, an "Everyone" group, delivery and read ticks, messages in the order they were sent, new-message highlights, profile pictures shared over the air, per-station themes, wallpapers and sounds (section 4.2), tic-tac-toe, and a **game center** with **UNO** and a real-time **street race with combat pickups**, each for 2–4 stations (section 4.1) |
@@ -228,7 +228,7 @@ and by the stock Constellation Soft Decoder (`const_64qam`, `npwr` 0.05 as for 1
 
 It drops one rung for 10 s whenever windows (with TD-CDMA: every 8 frames the ACK records account for) keep losing
 more than 20 % of their frames, and messages of one or two fragments go two rungs lower (a lost frame costs a whole
-round trip), but with TD-CDMA no lower than the slot allows: a full fragment at the slow rung (43.9 ms at 16-QAM ¾)
+round trip), but with TD-CDMA no lower than the slot allows: a full fragment at the slow rung (45.2 ms at 16-QAM ¾)
 can be longer than an idle slot (44 ms with two stations, less with more), and the message would wait ~1.5 s for its
 slot to grow; it takes the slowest rung that fits instead. Interference counts (spread ALOHA): with another equal-power link on the channel the measured SNR falls
 to ~12–15 dB, and the link moves from uncoded 16-QAM to 16-QAM ¾ or ⅔ instead of dropping to QPSK. `--mod
@@ -324,10 +324,10 @@ transfers with spread ALOHA, for TD-CDMA see section 3.5):
 | Two simultaneous links, interferer +10 dB (BPSK; Gold codes, asynchronous) | both decoded (near-far tolerance) |
 | Two senders → same receiver, overlapping (Gold codes, asynchronous) | 20/20 bursts decoded |
 | Receive + decode cost per 1 KB frame (incl. LDPC) | 27–97 ms for 33–128 ms on air; one receiver keeps up with continuous maximum-rate traffic of every rung (1.1–1.6× real time on a 2-core VM) |
-| **2 MB file, `fast`, Es/N0 28 dB, adaptive** | **67.7 s, 236 kb/s goodput, 0 retransmissions** (uncoded 16-QAM) |
-| **1 MB file, Es/N0 14 dB** | **176 kb/s with LDPC (16-QAM ¾) vs 37 kb/s uncoded (BPSK): 4.8×**, 0 retransmissions either way |
+| **2 MB file, `fast`, Es/N0 28 dB, adaptive** | **67.7 s, 236 kb/s goodput, 0 retransmissions** (uncoded 16-QAM); with the final code 1 MB at 31 dB: 237 kb/s |
+| **1 MB file, Es/N0 14 dB** (final code) | **178 kb/s with LDPC (16-QAM ¾) vs 61 kb/s uncoded (BPSK): 2.9×**, 0 retransmissions either way (an earlier version of the link layer got 37 kb/s uncoded here, so 4.8×) |
 | 10 MB file, 28 dB (before FEC was added; same rung) | 340 s (5 min 40 s), 235 kb/s goodput, intact, 0 retransmissions |
-| **1 MB file, Es/N0 31 dB, `--mod 64qam`** (spread ALOHA, Gold codes) | **23.2 s, 344.5 kb/s goodput, 0 retransmissions** (uncoded 64-QAM): 1.46× uncoded 16-QAM's 236 kb/s |
+| **1 MB file, Es/N0 31 dB, `--mod 64qam`** (final code; spread ALOHA, Gold codes) | **23.2 s, 345 kb/s goodput, 0 retransmissions** (uncoded 64-QAM): 1.46× uncoded 16-QAM's 236 kb/s |
 
 ## 3. Link layer (MAC)
 
@@ -345,12 +345,12 @@ Two ways to share the air, chosen with `--mac` (every station must use the same 
 ### 3.1 TD-CDMA time slots (`wavelink/tdma.py`)
 
 ```
-   one cycle: 100 ms while every station is idle; 213.5 / 333.5 / 415.5 ms measured with 2 / 3 / 4 all sending
+   one cycle: 100 ms while every station is idle; 241.75 / 356.75 / 471.75 ms measured with 2 / 3 / 4 all sending
  ┌──────────────┬───────────────────────────────────┬──────────────┬───────────┐
- │ lead (Alice) │ Bob, data queued: 101 ms          │ Carol, idle  │ join slot │ next cycle ...
- │ idle: 15 ms  │ (3 frames of uncoded 16-QAM)      │ 15 ms        │ 11.5 ms   │
+ │ lead (Alice) │ Bob, data queued: 97 ms           │ Carol, idle  │ join slot │ next cycle ...
+ │ idle: 15 ms  │ (4 frames of uncoded 64-QAM)      │ 15 ms        │ 11.75 ms  │
  └──────────────┴───────────────────────────────────┴──────────────┴───────────┘
-   every slot starts with its owner's slot header on the broadcast code (QPSK ½, 4.6–9.6 ms);
+   every slot starts with its owner's slot header on the broadcast code (QPSK ½, 4.7–9.9 ms);
    at the same instant the owner's bursts for each destination start on that destination's code:
      code 0  │header│race state│beacon│group data ...│
      code 1  │frame for Alice│frame for Alice│frame for Alice│
@@ -377,7 +377,7 @@ Two ways to share the air, chosen with `--mac` (every station must use the same 
   again. With 0.5 s a hidden station never got to send its join request (found with fake ANTSDRs, section 7).
 - **Slot sizes on demand.** Each header says how much airtime its owner wants. Idle: 15 ms (the header, and small
   messages on the other codes beside it). With data queued: about 100 ms, as a whole number of the frames it is
-  sending (3 × 32.5 ms of uncoded 16-QAM, 3 × 39 ms of 16-QAM ⅚, 1 × 126 ms of QPSK ½; at most 250 ms). A slot grows
+  sending (4 × 23.4 ms of uncoded 64-QAM, 4 × 27.7 ms of 64-QAM ⅚, 1 × 132.6 ms of QPSK ½; at most 250 ms). A slot grows
   at the next plan change, with 2 ms of headroom, and shrinks only after its owner has wanted at least 5 ms less for
   1 s, so a header a few bytes longer or shorter doesn't change the plan. A cycle shorter than 100 ms gets
   the spare time spread over its slots: 10 headers per station per second are plenty, keep the receivers' CPU load
@@ -446,8 +446,9 @@ the PC's clock and its buffering jitter (tens of milliseconds) never enter it.
 | How early a slot's bursts are handed over (before their first sample) | numpy simulator 4 ms; numpy PHY on an ANTSDR one TX buffer + 12 ms; flowgraph 150 ms to start with, adapting: +30 ms after a late burst, −5 ms per second while > 80 ms are left, 120–450 ms | `radio_base.py`, `grc_phy.py` |
 | Signal-to-interference between codes of one transmitter | 32-chip Walsh × scrambling: none (Es/N0 41–45 dB with 1–4 codes at 45 dB SNR, the receiver's own accuracy). 31-chip Gold: 39.9 / 29.4 / 25.3 dB with 1 / 2 / 3 codes for codes without node 1's, but **~13 dB** for node 1 next to codes 0, 2 or 4 (cross-correlation 7/31) | numpy simulator, `tests/test_modem.py` |
 | Airtime of a 1 KB frame (4 MS/s, 2 Mchip/s, Walsh codes; Gold 3 % less) | 64-QAM 23.4 ms, 64-QAM ⅚ 27.8 ms, 16-QAM 34.3 ms, 16-QAM ⅚ 40.9 ms, QPSK ½ 132.6 ms | `modem.py` |
-| Slot header | 21–61 bytes, 4.6–9.6 ms; a lead header announcing a plan change in a 4-station network 106 bytes, 15 ms | numpy simulator |
-| Cycle with 2 / 3 / 4 stations | idle: 100 / 100 / 99.5 ms (slots 44 / 29.5 / 21.5 ms + join slot 11.5 ms); all sending: 213.5 / 333.5 / 415.5 ms (data slots 101 ms, the 3-station lead's 120 ms: its link ran 16-QAM ⅚) | numpy simulator |
+| Slot header | 21–61 bytes, 4.7–9.9 ms; a lead header announcing a plan change in a 4-station network 106 bytes, 15.6 ms | numpy simulator (airtimes with Walsh codes) |
+| Cycle with 2 / 3 / 4 stations | idle: 99.75 / 99.5 / 99.75 ms (slots 44 / 29.25 / 22 ms + join slot 11.75 ms); all sending: 241.75 / 356.75 / 471.75 ms (data slots 115 ms: four frames of 64-QAM ⅚ on links of 22–28 dB) | numpy simulator |
+| One station sending to two others (4 stations) | its data slot 97 ms: 4 frames of uncoded 64-QAM on each destination's code, 93.4 ms; cycle 153.75 ms | numpy simulator |
 | Receiver search with slot-aware windows | 9.5 / 11.3 / 16 % of the samples (2 / 3 / 4 idle stations) instead of 100 % | numpy simulator |
 
 The ANTSDR E200 (MicroPhase, Crowd Supply page): AD9361 (70 MHz – 6 GHz, up to 56 MHz bandwidth) or AD9363
@@ -594,7 +595,8 @@ that version gave QPSK instead of 16-QAM, low rates and scattered constellations
 `--power-control off` sends everything at full power.
 
 With power control on, the constellation on the dashboard is less tight than at full power. That is the point: a
-station next to you now arrives at ~25.5 dB instead of 40–50 dB, still 3 dB more than uncoded 16-QAM needs.
+station next to you now arrives at ~25.5 dB (TD-CDMA: ~30.5 dB) instead of 40–50 dB, still 3 dB more than its
+fastest modulation needs (uncoded 16-QAM; with TD-CDMA uncoded 64-QAM).
 
 Measured with spread ALOHA on the simulated air (`tests/test_power.py`): Alice, Carol and Dave together (paths 24 dB
 stronger than to Bob), Alice sending a long file to Carol while Bob sends 40 KB to Dave (four runs):
@@ -604,6 +606,9 @@ stronger than to Bob), Alice sending a long file to Carol while Bob sends 40 KB 
 | Alice silent | 1.6–2.6 s | 93–100 % |
 | Alice sending, power control off | not delivered (fails) | 0 % |
 | Alice sending, power control on (Alice at −16 to −20 dB) | 4.6–9.1 s | 31–57 % |
+
+A run with the final code (`tests/test_power.py`, 22/22 checks): 1.8 s with Alice silent, not delivered without
+power control, 4.3 s with it (Alice at −19 dB, 49 % of Bob's frames through).
 
 And where no station is much nearer than the others, power control must not cost speed. The GNU Radio flowgraph
 (`grc-sim`, spread ALOHA, three stations, `--noise 0.05`, every link at 25–31 dB) before power control and with it:
@@ -623,31 +628,28 @@ python3 -m wavelink sim --nodes 4 --mac aloha --link-gain 1:3=24 --link-gain 1:4
 
 ### 3.5 TD-CDMA or spread ALOHA? (measured)
 
-`tests/test_edge.py` on the numpy simulator, both schemes on the same air (ranges over two or three runs):
+`tests/test_edge.py` on the numpy simulator, both schemes on the same air, with the final code (TD-CDMA with Walsh
+codes and 64-QAM, spread ALOHA with Gold codes; ranges over two runs):
 
 | Scenario | TD-CDMA | Spread ALOHA |
 |---|---|---|
-| 4 stations each send 100 KB to the next, all at once; a station hears its own transmitter 25 dB above the others (as on the ANTSDRs), ALOHA with its hardware pauses | **173–181 kb/s together** (48–66 each), 6–24 retransmissions | 53–58 kb/s together (13–19 each), 755–900 retransmissions |
-| The same with idealised radios: own transmitter only 3 dB above the others, so a station receives while it sends | 160–180 kb/s (47–66 each), 6–10 retransmissions | **294–321 kb/s** (78–94 each), 14–38 retransmissions |
-| Near-far, power control off: a pair side by side (+20 dB) sends 80 KB while a far station (−6 dB) sends 30 KB to the same receiver | far station **65–68 kb/s, 0 retransmissions**; the pair 87–114 kb/s | far station 43–44 kb/s, 16 retransmissions; the pair 206 kb/s |
-| One 2 MB transfer between 2 stations, 28 dB | 190 kb/s, 0 retransmissions | 236 kb/s (section 2) |
-| Two stations that can't hear each other | through a relay (a file at 45–51 kb/s) | not reachable |
-
-The rows above were measured with Gold codes and the ladder up to uncoded 16-QAM. With the Walsh codes and 64-QAM
-(one run of `tests.test_edge 7 8`): four senders at once, own transmitter 25 dB up, **TD-CDMA 236 kb/s together**
-(73–111 each, 0 retransmissions) against spread ALOHA's 65 kb/s (681 retransmissions); with idealised radios TD-CDMA
-222 kb/s (76–96 each) against ALOHA's 323 kb/s; near-far as before (far station 69 kb/s, 0 retransmissions; the
-near pair 177 kb/s). Every TD-CDMA sender still gets the same airtime, but the modulations now range from 16-QAM ⅚
-to uncoded 64-QAM, so the slowest / fastest ratio is lower (0.66–0.79).
+| 4 stations each send 100 KB to the next, all at once; a station hears its own transmitter 25 dB above the others (as on the ANTSDRs), ALOHA with its hardware pauses | **236 kb/s together** (72–111 each), 0 retransmissions | 58–65 kb/s together (15–25 each), 681–904 retransmissions |
+| The same with idealised radios: own transmitter only 3 dB above the others, so a station receives while it sends | 222–226 kb/s (68–96 each), 0 retransmissions | **302–323 kb/s** (76–97 each), 19–21 retransmissions |
+| Near-far, power control off: a pair side by side (+20 dB) sends 80 KB while a far station (−6 dB) sends 30 KB to the same receiver | far station **69 kb/s, 0 retransmissions**; the pair 177 kb/s | far station 43–44 kb/s, 16 retransmissions; the pair 206 kb/s |
+| One 1 MB transfer between 2 stations, 31 dB | **252 kb/s** (uncoded 64-QAM), 0 retransmissions | 237 kb/s (uncoded 16-QAM); 345 kb/s with `--mod 64qam` |
+| Two stations that can't hear each other | through a relay (200 KB at 107 kb/s) | not reachable |
 
 Where a station can receive while it transmits, ALOHA keeps all four links on the air at once and wins: that is CDMA
 doing what it was made for. On a real radio a station's own transmitter, on the same frequency, arrives at its own
 receiver tens of dB above anything else; while it sends it is deaf. ALOHA then needs its pauses and still loses the
-frames that arrive while their receiver is sending (755–900 retransmissions), while TD-CDMA never transmits over
-anyone's reception. One link alone gets about 80 % of ALOHA's speed under TD-CDMA: the receiver's own slot, the join
-slot and the headers take their share of every cycle. Every TD-CDMA sender gets the same airtime, so their rates
-differ only by the modulation their links run (slowest / fastest 0.69–0.82); with ALOHA the shares depend on who
-collides with whom.
+frames that arrive while their receiver is sending (681–904 retransmissions), while TD-CDMA never transmits over
+anyone's reception. At the same modulation one link alone gets about three quarters of ALOHA's speed under TD-CDMA
+(252 against 345 kb/s with 64-QAM): the receiver's own slot, the join slot and the headers take their share of every
+cycle. By default TD-CDMA's link is still the faster one, since its orthogonal codes let it climb to 64-QAM where
+spread ALOHA stops at uncoded 16-QAM. Every TD-CDMA sender gets the same airtime, so their rates differ only by the
+modulation their links run (slowest / fastest 0.66–0.83); with ALOHA the shares depend on who collides with whom.
+(With the Gold codes and the ladder up to uncoded 16-QAM, before, TD-CDMA moved 173–181 kb/s together in the first
+scenario, against ALOHA's 53–58 kb/s.)
 
 ## 4. Application layer
 
@@ -764,9 +766,10 @@ know yet are recognised as older and it steps down.
   page reloaded mid-race opens straight into the race and the car carries on where it was, laps and pickup kept.
   An event id counts as seen for 10 s only, so ids that wrap at 256 or restart after a reload still get through.
 - **On the air.** The station puts the newest state on the air as a 28-byte datagram (+13 bytes per event; with one
-  event a 52-byte frame, 7.9 ms at QPSK ½). With TD-CDMA it rides in the station's own slot, right after the slot
-  header: one fresh state per car per cycle, 10 a second while nothing else is going on (a 100 ms cycle) and fewer
-  while a file transfer stretches the cycle (4.7 a second at 213 ms, 2.4 at 415 ms). With spread ALOHA the race makes
+  event a 52-byte frame, 8.2 ms at QPSK ½ with Walsh codes, 7.9 ms with Gold codes). With TD-CDMA it rides in the
+  station's own slot, right after the slot header: one fresh state per car per cycle, 10 a second while nothing else
+  is going on (a 100 ms cycle) and fewer while file transfers stretch the cycle (4.1 a second at 242 ms with two
+  stations all sending, 2.1 at 472 ms with four). With spread ALOHA the race makes
   time slots of its own on the broadcast code: seat *k* of *N* transmits at *S₀ + k·P/N + m·P* on the host's radio
   clock, with *P* = max(1/15 s, *N* × airtime × 1.7), so the cars' bursts never overlap and no station is
   transmitting (deaf) while another car's update is on the air: 15 updates a second with 2, 3 or 4 cars (with
@@ -819,6 +822,10 @@ know yet are recognised as older and it steps down.
 | Race: state age when heard, median | 0.06–0.08 s | 0.07–0.12 s | 0.10–0.17 s |
 | Race: packets lost, events missed, duplicates shown | none, none, none | none, none, none | none, none, none |
 | Simulator: CPU seconds per second of air | 0.7 | 1.6 | 2.7 |
+
+A 3-station run with the final code (Walsh codes, 64-QAM) gave the same picture: UNO median 0.22 s, 90 % 0.28 s
+(spread ALOHA 0.19 s, 0.31 s); race 6.8 updates per car per second (spread ALOHA 6.95), median age 0.06–0.12 s, nothing
+lost; 1.5 CPU seconds per second of air.
 
 One PC computes every receiver in the simulator, and above one CPU second per second of air the simulated air runs
 slower than real time. That, not the slots, limits the race update rate there with 3 and 4 stations; on hardware
@@ -1106,7 +1113,7 @@ both clip at full scale; an empty TX queue sends zeros (underrun) and RX buffers
 (overflow), so the streams slip exactly as on a slow PC. The air plays every DAC and fills every ADC on the PC's
 clock: per-link gain, delay, phase and LO offset, a station's own transmitter 25 dB above the others, AWGN
 (`--esn0`, 28 dB on a 0 dB link), and on request clock errors, interference, cut links and injected faults. Each
-station needs 1.1–2.1 cores of a 2.8 GHz Xeon per second of air (section 9); on a PC too small for all of them,
+station needs about 0.5 cores of a 2.1 GHz Xeon idle and 0.9 while receiving (section 9); on a PC too small for all of them,
 `--speed 0.5` runs the air (and the stations' timers, which follow its sample clock) at half speed. The control port takes JSON
 lines: `{"cmd": "cut", "a": 1, "b": 3, "on": true}`, `{"cmd": "off", "slot": 2}`, `{"cmd": "esn0", "db": 10}`,
 `{"cmd": "txgap", "slot": 2, "n": 6000}`, `{"cmd": "status"}`.
@@ -1152,9 +1159,10 @@ edits made in GRC. `tools/render_grc.py` draws an approximate PNG of a .grc's la
 **Verification status.** Before TD-CDMA, all three files compiled with GNU Radio 3.10.12's `grcc`, the Embedded Python
 blocks' ports resolved the way GRC's GUI sees them, `cdma_phy_sim.grc` ran end to end in GNU Radio (section 7),
 including every modulation/code-rate combination, and the chat app ran on it (scenario test, 100–120 KB files). The
-files were since regenerated for TD-CDMA (start-chip tags, receive sample indices, TX buffer 65,536); they compile
-with GNU Radio 3.10.9.2's `grcc`, and `cdma_phy.grc` has run the TD-CDMA edge cases with emulated ANTSDRs, one
-process per station (section 7). The PlutoSDR blocks of `cdma_phy.grc` have not been run against a physical ANTSDR
+files were since regenerated for TD-CDMA (start-chip tags, receive sample indices, TX buffer 65,536) and again for
+the Walsh codes and 64-QAM (the `code_family` parameter, the code tables, a fourth receive branch); they compile
+with GNU Radio 3.10.9.2's `grcc`, `cdma_phy_sim.grc` passes `tests.test_grc_flowgraph` with both code families, and
+`cdma_phy.grc` has run the TD-CDMA edge cases with emulated ANTSDRs, one process per station (section 7). The PlutoSDR blocks of `cdma_phy.grc` have not been run against a physical ANTSDR
 yet, and the files have not been opened in the GRC GUI on a lab PC.
 
 ## 6. Demo plan for the final evaluation (≈ 10 min)
@@ -1185,7 +1193,7 @@ yet, and the files have not been opened in the GRC GUI on a lab PC.
    "sending 64-QAM uncoded (375 kb/s)" and the constellation 64 clusters. Move Bob's antenna away step by step: the
    link moves to 64-QAM ⅚, ¾, ⅔, 16-QAM ⅚, … and the "LDPC iterations" tile shows the decoder working harder.
 10. **FEC on/off.** With the link at ~12–14 dB, restart the sender with `--fec off`: the same file drops to BPSK at a
-    fraction of the speed (in simulation: 4.8× slower at 14 dB).
+    fraction of the speed (in simulation: 2.9× slower at 14 dB).
 11. **Group message.** Send a photo to Everyone: one broadcast; the bubble counts *1/3*, *2/3*, then ✓✓, and the
     dashboard shows every member's progress.
 12. **Relaying.** Put Carol where Alice can't hear her (another room, or her antennas in a metal box): her contact
@@ -1261,24 +1269,25 @@ python3 -m wavelink sim --nodes 3 & python3 -m tests.scenario_api   # full app s
 **TD-CDMA edge cases** (`tests/test_edge.py`, numpy simulator; every receiver's sample counter starts at a random
 value and every link has a random delay of up to 100 µs, so nothing works unless the offsets are measured). The
 simulated air also records every moment two stations transmit at once while a third hears both; once a network
-has formed that must never happen, and the tests marked † check it (none seen):
+has formed that must never happen, and the tests marked † check it (none seen). The ranges include a `--quick` run
+with the final code (Walsh codes, 64-QAM): 93 of 93 checks.
 
 | # | Scenario | Result |
 |---|---|---|
 | 1 | Start orders: 3, then 1, then 2; four at once; two lone stations coming into range | one network every time: the first on the air leads (four started together: station 1, after 1.4–2.3 s); two lone networks merge under the lower address |
-| 2 † | A station joins and the lead leaves during a 300 KB transfer | delivered intact (136–163 kb/s), no burst late |
-| 3 † | The lead's app closed mid-transfer, then started again | its successor took over after 0.3–1.0 s (and only it), the transfer went on (167–181 kb/s; in a few runs 79–91 kb/s), the old lead came back as a member |
+| 2 † | A station joins and the lead leaves during a 300 KB transfer | delivered intact (136–163 kb/s; with the final code a 150 KB transfer at 171 kb/s), no burst late |
+| 3 † | The lead's app closed mid-transfer, then started again | its successor took over after 0.3–1.0 s (and only it), the transfer went on (167–183 kb/s; in a few runs 79–91 kb/s), the old lead came back as a member |
 | 4 | Two newcomers at the same moment; two stations with the same address | both had a slot after 0.2–1.2 s; the duplicate was reported on the dashboard |
-| 5 † | Clocks at +25, −25 and +10 ppm for 10 minutes, a 2.5 KB message every 2 s | all 299 messages delivered; D did not move (0 samples); each follower measured its clock against the lead's within 0.1 ppm (−49.9 / −50.1 and −14.9 / −15.1 ppm; true: −50, −15); no burst late, no slot missed (three runs) |
-| 6 | Six TX underruns and lost RX buffers during two transfers; a station that can't hear itself | both delivered (39–78 kb/s), every jump of D measured again; the deaf station kept its timing from the others' reports (left: 56 µs of simulated link delay) and delivered at 82–141 kb/s |
+| 5 † | Clocks at +25, −25 and +10 ppm for 10 minutes, a 2.5 KB message every 2 s | all 299 messages delivered; D did not move (0 samples); each follower measured its clock against the lead's within 0.1 ppm (−49.9 / −50.1 and −14.9 / −15.1 ppm; true: −50, −15); no burst late, no slot missed (three runs; with the final code the 2-minute version: 60 of 60, −50.0 / −15.0 ppm) |
+| 6 | Six TX underruns and lost RX buffers during two transfers; a station that can't hear itself | both delivered (39–105 kb/s), every jump of D measured again; the deaf station kept its timing from the others' reports (left: 56 µs of simulated link delay) and delivered at 82–141 kb/s |
 | 7, 8 † | Four senders at once; near-far without power control; both against spread ALOHA | section 3.5 |
 | 9 † | Relaying switched off and on again during a relayed transfer (1 and 3 out of each other's range) | one network throughout (3 keeps time by the plan 2 repeats, relaying on or off); the transfer waits while relaying is off and completes when it is back |
 | 10 † | A group message with a member out of range, then that member gone | a relayed copy for the far member, ticks from both; the next group file reaches the others and the gone member is given up |
 | 11 | Race with four players: one away and back, one gone for good | the away car stays on the others' screens while the race goes on; back within the grace period it races on; the one gone longer is dropped on every station |
 | 12 | UNO: a player away and back; the host away; a player back too late | UNO pauses for everybody while a player is away and goes on when she is back, hand kept; with the host away the next player hosts, the old host's hand kept, and the old host, back, plays on under the new one; a player away too long is dropped, the pause ends, and she is told when she is back |
-| 13 † | Es/N0 5 dB; bursty interference 3 dB below the signal 25 % of the time | the network forms and delivers at 5 dB (2–14 retransmissions), and although lead headers get lost nobody takes the lead over; under interference 117–138 kb/s, 0–1 retransmissions |
+| 13 † | Es/N0 5 dB; bursty interference 3 dB below the signal 25 % of the time | the network forms and delivers at 5 dB (2–23 retransmissions), and although lead headers get lost nobody takes the lead over; under interference 117–171 kb/s, 0–1 retransmissions |
 | 14 † | A station misses every header that announces a plan change (16 changes) | it never sends by a stale plan: it holds its slot until it hears the plan in force (4–7 slots over 16–17 changes with the earlier 0.5 s window, none over 5 changes with 1 s), never overlaps anyone; everything delivered |
-| 15 † | A station stops hearing the lead for 4 s (the others still do), relaying on and off | no takeover: it marks its header *lead unheard*, keeps time by the plan another member repeats, and its transfer goes on (163–165 kb/s) |
+| 15 † | A station stops hearing the lead for 4 s (the others still do), relaying on and off | no takeover: it marks its header *lead unheard*, keeps time by the plan another member repeats, and its transfer goes on (152–165 kb/s) |
 | 16 † | A station off the air for 1 s, then for 2.5 s | 1 s: keeps its slot; 2.5 s: its slot is freed and it has a new one 0.1–0.9 s after it is back |
 | 17 † | A hidden station with relaying off everywhere | one network (timing repeated, no messages passed on); both outer stations reach the middle one |
 
@@ -1287,25 +1296,26 @@ has formed that must never happen, and the tests marked † check it (none seen)
 blocks are emulated (`wavelink/fake_antsdr.py`: libiio's buffers, underruns, lost RX buffers, clipping), and the air
 between them runs in the test (gains, delays, LO offsets, the own transmitter 25 dB up, AWGN, clock error, cut
 links). It logs any two stations on the air at once where a third hears both, which must never happen; the tests
-marked † check it (none seen). Results with GNU Radio 3.10.9.2 on a 2-core VM, the air at 0.4× real time: 55 of 58
-checks. Again with the Walsh codes and 64-QAM (`--quick`): 57 of 58. Test 10 passed this time (a file at 124 kb/s,
-no underruns), and test 6 once counted two of station 3's slips as one jump of D (D still moved by exactly the
-slips) and passed when run again.
+marked † check it (none seen). Results with the final code (Walsh codes, 64-QAM) and GNU Radio 3.10.9.2 on a 2-core
+VM, in the suite's shorter form (`--quick`), the air at 0.4× real time except in test 10: 57 of 58 checks; the one
+that failed (a count in test 6) passed when test 6 was repeated. An earlier version passed 55 of 58 (test 10 ran out
+of CPU then), with the full-length tests: 60 KB files in test 2 at 92, 72 and 51 kb/s, the takeover in test 3 after
+0.71 s, 80 of 80 messages over 4 minutes in test 5, 40 KB through the relay at 43 kb/s in test 7.
 
 | # | Scenario | Result |
 |---|---|---|
-| 1 | Start orders; three processes at once; three radios switched on at the same moment; two lone stations meet | one network every time, the first on the air leading; radios switched on together: led by station 1 after 4.8 s; two lone networks merged in 1.5 s |
-| 2 † | Three 60 KB files at once on three links, then a group message | all intact (92, 72 and 51 kb/s), the group message reached both, no burst late |
-| 3 † | The lead's process killed mid-transfer, then started again | station 2 took over after 0.71 s, and only it; the transfer went on (150 kb/s, intact); the old lead came back as a member and could send |
+| 1 | Start orders; three processes at once; three radios switched on at the same moment; two lone stations meet | one network every time, the first on the air leading; radios switched on together: led by station 1 after 2.7 s; two lone networks merged in 1.4 s |
+| 2 † | Three 30 KB files at once on three links, then a group message | all intact (95, 50 and 44 kb/s), the group message reached both, no burst late |
+| 3 † | The lead's process killed mid-transfer, then started again | station 2 took over after 0.66 s, and only it; the transfer went on (93 kb/s, intact); the old lead came back as a member and could send |
 | 4 | Two radios set to address 2 | the warning "Another station is using address 2" appeared within seconds |
-| 5 † | Clocks at +25, −25 and +10 ppm for 4 minutes of air | 80 of 80 messages; the followers measured −50.0 and −15.0 ppm; each D moved by exactly what its streams slipped |
-| 6 | Five injected TX gaps and lost RX buffers during two transfers | both intact (52 and 22 kb/s); every jump of D measured again, to the sample |
-| 7 † | A hidden station: 1 and 3 can't hear each other, 2 relays | one network; 40 KB from 1 to 3 through 2 at 43 kb/s, intact, and a message back |
-| 8 | A station off the air for 1 s, then 3.5 s | 1 s: keeps its slot; 3.5 s: dropped from the plan after 3.0 s, back in it 1.4 s after it returns |
-| 9 | Es/N0 10 dB; interference bursts 20 % of the time, 3 dB below a link | one network, a file at 53 kb/s, no false takeover; under interference 111 kb/s |
-| 10 † | Real time: the air at full speed, two stations | **fails on the 2-core VM** (CPU): 358 TX underruns and 124 lost RX buffers, station 2 never got into the plan and a file failed; still no burst late and no overlap |
-| 11 | Spread ALOHA (`--mac aloha`) on the same flowgraph | a 40 KB file at 24 kb/s and a message |
-| 12 | Race and UNO over the slots | each car's state reached both others in 60–98 % of cycles; 16 of 16 UNO moves seen by both others (median 0.80 s) |
+| 5 † | Clocks at +25, −25 and +10 ppm for 1.5 minutes of air | 30 of 30 messages; the followers measured −49.7 and −15.0 ppm; each D moved by exactly what its streams slipped |
+| 6 | Five injected TX gaps and lost RX buffers during two transfers | both intact (67 and 53 kb/s); every D moved by exactly what its streams slipped; once station 3 counted two of its slips as one jump of D (a count check failed), and the repeated test passed all 5 checks |
+| 7 † | A hidden station: 1 and 3 can't hear each other, 2 relays | one network; 20 KB from 1 to 3 through 2 at 24 kb/s, intact, and a message back |
+| 8 | A station off the air for 1 s, then 3.5 s | 1 s: keeps its slot; 3.5 s: dropped from the plan after 3.0 s, back in it 1.5 s after it returns |
+| 9 | Es/N0 10 dB; interference bursts 20 % of the time, 3 dB below a link | one network, 15 KB at 49 kb/s, no false takeover; under interference 30 KB at 78 kb/s |
+| 10 † | Real time: the air at full speed, two stations | **passes on the 2-core VM**: a file at 124 kb/s (179 kb/s on a repeat), no TX underrun, no lost RX buffer, no burst late, every burst at the combiner ≥ 104 ms before its slot |
+| 11 | Spread ALOHA (`--mac aloha`) on the same flowgraph | a 20 KB file at 113 kb/s and a message |
+| 12 | Race and UNO over the slots | each car's state reached both others in 94–100 % of cycles; 15 of 15 UNO moves seen by both others (median 0.58 s of air) |
 
 Nine bugs showed up only here, none in the numpy simulator; the fixes are in the code (a hidden station's join, a
 newcomer's first join request, bursts after a TX underrun, slots held while a slot grew, slots growing one station
@@ -1379,21 +1389,24 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
 ## 9. Limitations and improvements (for the report)
 
 - **TD-CDMA on GNU Radio: so far with fake radios.** The real flowgraph ran on GNU Radio 3.10.9 with emulated
-  ANTSDRs, one process per station (`tests/test_fake_antsdr.py`, section 7), with the air at 0.4× real time because
-  the test PC has 2 cores. Not modelled: the analog front end (AGC, IQ imbalance, DC offset, phase noise,
+  ANTSDRs, one process per station (`tests/test_fake_antsdr.py`, section 7), mostly with the air at 0.4× real time
+  because the test PC has 2 cores (two stations also kept up in real time there, test 10). Not modelled: the analog front end (AGC, IQ imbalance, DC offset, phase noise,
   multipath), the E200's Ethernet link and the real levels. The stand-in radio blocks are Python while gr-iio's are
   C++, so they lose RX buffers more easily than the real ones. On the lab PCs watch the console for "TX->RX offset jumped" and "radio
   stream gap" and the dashboard's late bursts; `--mac aloha` is the fallback.
-- **CPU.** A station needs about 1.1 cores of a 2.8 GHz Xeon per second of air when idle, 1.2 when sending and 2.1
-  when receiving at 153 kb/s (GNU Radio with fake ANTSDRs). 1.6 of the 2.1 are Python under one interpreter lock:
-  the despreader's search and tracking thread, the link layer, and the combiner, despreader and LDPC blocks. Two
-  stations in real time overloaded the 2-core test PC (lost RX buffers, a failed transfer: section 7, test 10). A
-  lab PC should have 4 or more cores and little else running, and real time on one is still to be shown; porting
-  the despreader's search and the combiner to C++ would remove most of the load.
+- **CPU.** Measured in real time with GNU Radio and fake ANTSDRs on a 2.1 GHz Xeon, a station of the final version
+  needs about 0.5 cores when idle, 0.5 when sending and 0.9 when receiving at 203 kb/s (the fake air adds 0.1), so
+  two stations kept up in real time on the 2-core test PC (section 7, test 10). An earlier version, measured with the
+  air at 0.4× real time on a 2.8 GHz Xeon, had needed 1.1, 1.2 and 2.1 cores per second of air. Most of the work is
+  Python under one interpreter lock: the despreader's search and tracking thread, the link layer, and the combiner,
+  despreader and LDPC blocks. A lab PC with 4 or more cores and little else running leaves headroom; real time on
+  the ANTSDRs is still to be shown; porting the despreader's search and the combiner to C++ would remove most of the
+  load.
 - **TD-CDMA against spread ALOHA.** Where a station could receive while it transmits, ALOHA carries more in total
-  (294–321 against 160–180 kb/s for 4 senders in the idealised simulator); on radios that deafen themselves TD-CDMA
-  carries three times as much (173–181 against 53–58 kb/s, section 3.5). A single link gets ~80 % of ALOHA's speed:
-  each cycle also has the receiver's slot, the join slot (11.5 ms) and the headers (5–15 ms each).
+  (302–323 against 222–226 kb/s for 4 senders in the idealised simulator); on radios that deafen themselves TD-CDMA
+  carries about four times as much (236 against 58–65 kb/s, section 3.5). At the same modulation a single link gets
+  about three quarters of ALOHA's speed: each cycle also has the receiver's slot, the join slot (11.75 ms) and the
+  headers (5–16 ms each).
 - **Walsh codes need the slot's symbol grid.** Inside a slot the codes are orthogonal Walsh codes (section 2), but
   only because every burst of the slot starts on one symbol grid and the receiver despreads within ~1 % of a chip.
   Spread ALOHA, whose bursts arrive at any code phase, keeps Gold codes (`--mac aloha` refuses `--codes walsh`), and
@@ -1420,12 +1433,12 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
   15 dB. Uncoded 16-QAM needs ~20 dB, 16-QAM ¾ ~11 dB, so with LDPC the link stays on 16-QAM; with three or more
   strong simultaneous links it steps further down. That is also why spread ALOHA's ladder stops at uncoded 16-QAM
   (64-QAM needs 14–27.5 dB).
-- **Throughput ceiling.** About 236 kb/s goodput per link at 4 MS/s in the numpy simulator with spread ALOHA
-  (uncoded 16-QAM on a clean link), 190 kb/s with TD-CDMA (the other slots of the cycle), limited by Python DSP CPU
-  (not yet measured on hardware with the GRC PHY). These were measured before 64-QAM; uncoded 64-QAM carries 1.5×
-  as much per symbol (375 kb/s on air with the `fast` profile) but needs 27.5 dB, and every 64-QAM frame costs the
-  receiver the same despreading work for 1.5× the bits. A C++ OOT correlator and LDPC decoder would allow higher
-  chip rates.
+- **Throughput ceiling.** In the numpy simulator at 4 MS/s, on a clean link: 252–261 kb/s goodput per link with
+  TD-CDMA and two stations (uncoded 64-QAM, 375 kb/s on the air; 209–211 kb/s with four stations), 237 kb/s with
+  spread ALOHA's default ladder (uncoded 16-QAM) and 345 kb/s with `--mod 64qam` for one link alone; limited by
+  Python DSP CPU (not yet measured on hardware with the GRC PHY). Uncoded 64-QAM needs 27.5 dB, which the radios'
+  own noise and distortion may not leave on every link (the ladder then stays on a coded rung). A C++ OOT
+  correlator and LDPC decoder would allow higher chip rates.
 - **Power control.** Digital only: below the target a burst simply uses fewer DAC steps, and the transmitter's own
   noise floor and LO leakage do not drop with it. In a small lab with stations a metre apart, also raise
   `--tx-atten` so the backoff stays well inside its 30 dB. Two stations sending to the *same* receiver share its
@@ -1452,8 +1465,8 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
   got, so a move the old host took but never sent out is lost. The copy of the UNO table in every view stays in the
   station, but a player who digs into their station's memory could read the other hands. With spread ALOHA, race datagrams share the broadcast code with beacons and
   occasionally collide with them, and on the GNU Radio PHY a game message can't overtake file frames already in its
-  code lane (up to 0.6 s); with TD-CDMA neither happens. While a file transfer stretches the TD-CDMA cycle, every
-  car is heard less often (4.7 updates a second at 213 ms, 2.4 at 415 ms, against 10 when idle). There is no
+  code lane (up to 0.6 s); with TD-CDMA neither happens. While file transfers stretch the TD-CDMA cycle, every
+  car is heard less often (4.1 updates a second at 242 ms, 2.1 at 472 ms, against 10 when idle). There is no
   spectator mode, and no computer players. Not yet tested on `grc-sim` or the ANTSDRs.
 - **Message order.** The clock-offset estimate includes the shortest delivery time (tens of milliseconds, up to
   ~0.1 s with TD-CDMA) and follows a clock that is reset only after the old samples age out (5 minutes), so for a

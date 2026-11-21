@@ -186,7 +186,20 @@
   {wlsky,mark=*,mark size=1.4pt},{wlblue,mark=*,mark size=1.4pt},{wldeep,mark=*,mark size=1.4pt},
   {wlmint!80!black,mark=square*,mark size=1.4pt},{wlteal,mark=square*,mark size=1.4pt},
   {wlgold,mark=square*,mark size=1.4pt},{wlcoral,mark=square*,mark size=1.4pt},
-  {wlviolet,mark=triangle*,mark size=1.8pt}}
+  {wlviolet,mark=triangle*,mark size=1.8pt},
+  {wlnavy,densely dashed,mark=triangle*,mark size=1.6pt,mark options={solid}},
+  {wldeep!55!wlviolet,densely dashed,mark=triangle*,mark size=1.6pt,mark options={solid}},
+  {wlviolet!55!wlcoral,densely dashed,mark=diamond*,mark size=1.8pt,mark options={solid}},
+  {wlcoral!70!black,densely dashed,mark=diamond*,mark size=1.8pt,mark options={solid}},
+  {black!65,densely dashed,mark=pentagon*,mark size=1.6pt,mark options={solid}}}
+\pgfplotscreateplotcyclelist{mcsiter}{% the coded rungs only (mcs without the uncoded ones)
+  {wlsky,mark=*,mark size=1.4pt},{wlblue,mark=*,mark size=1.4pt},{wldeep,mark=*,mark size=1.4pt},
+  {wlmint!80!black,mark=square*,mark size=1.4pt},{wlteal,mark=square*,mark size=1.4pt},
+  {wlgold,mark=square*,mark size=1.4pt},{wlcoral,mark=square*,mark size=1.4pt},
+  {wlnavy,densely dashed,mark=triangle*,mark size=1.6pt,mark options={solid}},
+  {wldeep!55!wlviolet,densely dashed,mark=triangle*,mark size=1.6pt,mark options={solid}},
+  {wlviolet!55!wlcoral,densely dashed,mark=diamond*,mark size=1.8pt,mark options={solid}},
+  {wlcoral!70!black,densely dashed,mark=diamond*,mark size=1.8pt,mark options={solid}}}
 
 \begin{document}
 \pagenumbering{roman}
@@ -214,8 +227,8 @@
   \node[anchor=north west,text width=128mm,align=left] at ([xshift=27mm,yshift=-55mm]current page.north west)
     {\sffamily\color{white}\Large A multi-node TD-CDMA messaging and gaming system on ANTSDR\,E200 software-defined radios};
   \node[anchor=north west,text width=128mm,align=left] at ([xshift=27mm,yshift=-84mm]current page.north west)
-    {\sffamily\color{wlsky}\small\raggedright\hyphenpenalty=10000 2.5\,GHz \textperiodcentered\ 31-chip Gold codes \textperiodcentered\
-     BPSK/QPSK/16-QAM \textperiodcentered\ 5G NR LDPC\\ adaptive modulation and coding
+    {\sffamily\color{wlsky}\small\raggedright\hyphenpenalty=10000 2.5\,GHz \textperiodcentered\ orthogonal Walsh codes \textperiodcentered\
+     BPSK to 64-QAM \textperiodcentered\ 5G NR LDPC\\ adaptive modulation and coding
      \textperiodcentered\ selective-repeat ARQ \textperiodcentered\ one-hop relaying};
   \node at ([xshift=-45mm,yshift=-170mm]current page.north east) {\includegraphics[width=58mm]{figures/logo.png}};
 \end{tikzpicture}
@@ -251,32 +264,36 @@ transceivers with addressing, CRC-based error detection, acknowledgements, packe
 text, image and audio payloads. We extended this to a \emph{network} in which every pair of
 stations can communicate, several at once, over a single \SI{4}{MHz} channel at \SI{2.5}{GHz}.
 
-The physical layer is a GNU Radio Companion flowgraph of 68 blocks: 61 stock blocks and seven
-Embedded Python blocks that implement our own signal processing. Symbols are spread by 31-chip
-Gold codes (\SI{14.9}{dB} processing gain, \SI{2}{Mchip/s}) and carry BPSK, QPSK or 16-QAM protected
-by the 5G NR LDPC code at rates $\tfrac12$ to $\tfrac56$, chosen frame by frame from the SNR the
-receiver reports, for up to \SI{258}{kb/s} per link. The receiver detects bursts with a
-carrier-offset-immune differential correlator, despreads with $1/64$-sample timing resolution and
-decodes the LDPC code with a layered normalised min-sum decoder.
+The physical layer is a GNU Radio Companion flowgraph of 73 blocks: 66 stock blocks and seven
+Embedded Python blocks that implement our own signal processing. Symbols are spread by 32-chip
+Walsh codes under a common scrambling sequence (\SI{15.1}{dB} processing gain, \SI{2}{Mchip/s}),
+which are exactly orthogonal among the bursts a station sends together, and carry BPSK, QPSK,
+16-QAM or 64-QAM protected by the 5G NR LDPC code at rates $\tfrac12$ to $\tfrac56$, chosen frame by
+frame from the SNR the receiver reports, for up to \SI{375}{kb/s} per link. The receiver detects
+bursts with a carrier-offset-immune differential correlator, despreads with $1/64$-sample timing
+resolution and decodes the LDPC code with a layered normalised min-sum decoder.
 
 Four properties of the hardware shaped the medium access: a station is deaf while it transmits,
-a burst leaves the antenna 0.2--\SI{0.6}{s} after it is built, receiving costs about two CPU cores,
+a burst leaves the antenna 0.2--\SI{0.6}{s} after it is built, receiving costs close to a CPU core,
 and stations may be near, far or hidden from one another. We therefore designed \emph{TD-CDMA}: one
-transmitter at a time in slots timed in radio samples, with code division inside each slot so
-that a station reaches all others at once. Acknowledgements ride in slot headers, group messages
+transmitter at a time in slots timed in radio samples, with code division on orthogonal codes inside
+each slot so that a station reaches all others at once. Acknowledgements ride in slot headers, group messages
 are single broadcasts, power control removes excess transmit power, and a one-hop relay connects
 hidden stations. On top sit a WhatsApp-style chat with AES-256-GCM encryption, priority classes,
 media at selectable quality, a live radio dashboard and a game center with UNO and a real-time race.
 
-In simulation with the project's own code, four simultaneous senders achieved \SIrange{173}{181}{kb/s}
-in total with TD-CDMA against \SIrange{53}{58}{kb/s} with spread ALOHA, LDPC delivered a \SI{1}{MB}
-file $4.8\times$ faster than uncoded transmission at \SI{14}{dB}, and the full application running
-on the real flowgraph with emulated ANTSDRs passed 55 of 58 robustness checks. The remaining work
-is real-time operation on the physical radios, which needs a PC with four or more cores.
+In simulation with the project's own code, four simultaneous senders achieved \SI{236}{kb/s} in
+total with TD-CDMA against \SIrange{58}{65}{kb/s} with spread ALOHA; with four bursts in one slot a
+receiver kept \SI{41}{dB} of SNR with Walsh codes where Gold codes left \SI{10}{dB}; LDPC delivered a \SI{1}{MB} file
+$2.9\times$ faster than uncoded transmission at \SI{14}{dB}, and the full application running on the
+real flowgraph with emulated ANTSDRs passed 57 of 58 robustness checks (the last on a repeat),
+including real-time operation of two stations on a two-core PC. The remaining work is real-time
+operation on the physical radios.
 
 \vspace{6mm}
-\noindent{\sffamily\bfseries\color{wldeep}Keywords:} software-defined radio, DS-CDMA, Gold codes,
-TD-CDMA, LDPC, adaptive modulation and coding, selective-repeat ARQ, GNU Radio, ANTSDR E200.
+\noindent{\sffamily\bfseries\color{wldeep}Keywords:} software-defined radio, DS-CDMA, Walsh codes,
+Gold codes, TD-CDMA, LDPC, 64-QAM, adaptive modulation and coding, selective-repeat ARQ, GNU Radio,
+ANTSDR E200.
 
 \tableofcontents
 \setcounter{tocdepth}{1}% the appendix lowers it inside the contents
@@ -346,9 +363,9 @@ final system together with the bonus features, and shows where each is addressed
 Requirement & WaveLink Chat & Section\\
 \midrule
 Two transceivers, real two-way link & 2--4 stations (PC + ANTSDR\,E200 each); every pair, both directions & \ref{ch:arch}, \ref{ch:mac}\\
-Digital modulation & DS-CDMA with BPSK, QPSK and 16-QAM payloads, chosen per frame & \ref{sec:tx}\\
+Digital modulation & DS-CDMA with BPSK, QPSK, 16-QAM and 64-QAM payloads, chosen per frame & \ref{sec:tx}\\
 Packetization and reassembly & \num{1009}-byte fragments, up to \num{65535} per message ($\approx$\SI{66}{MB}) & \ref{sec:frag}\\
-Unique addressing & Gold code per station (PHY) plus a destination byte in every frame (MAC) & \ref{sec:addr}\\
+Unique addressing & Spreading code per station (PHY) plus a destination byte in every frame (MAC) & \ref{sec:addr}\\
 CRC error detection & CRC-8 on every PHY header, CRC-32 on every frame; bad frames dropped & \ref{sec:frames}\\
 ACK-based reliable delivery & Selective-repeat ARQ with ACK records in slot headers & \ref{sec:arq}\\
 Text, image and audio payloads & Text, photos (WebP), voice notes (Opus) and any file up to \SI{64}{MB} & \ref{ch:app}\\
@@ -357,7 +374,7 @@ Application & Chat with groups and receipts; UNO and a real-time race & \ref{ch:
 \textcolor{wldeep}{Bonus:} encryption & AES-256-GCM, scrypt key derivation, addresses as associated data & \ref{sec:crypto}\\
 \textcolor{wldeep}{Bonus:} priority handling & Four classes; an urgent text overtakes a \SI{10}{MB} transfer & \ref{sec:prio}\\
 \textcolor{wldeep}{Bonus:} graphical dashboard & Live radio dashboard: constellation, spectrum, SNR, slots, links & \ref{sec:dash}\\
-\textcolor{wldeep}{Bonus:} other features & 5G NR LDPC, adaptive modulation and coding, power control, TD-CDMA, relaying & \ref{ch:phy}--\ref{ch:tdcdma}\\
+\textcolor{wldeep}{Bonus:} other features & 5G NR LDPC, adaptive modulation and coding, orthogonal codes, power control, TD-CDMA, relaying & \ref{ch:phy}--\ref{ch:tdcdma}\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -389,7 +406,7 @@ summarised in \cref{fig:facts} and recur throughout this report.
 \foreach \i/\big/\head/\txt in {
   0/25 dB/Deaf while transmitting/{TX and RX antennas are centimetres apart: a station's own signal reaches its receiver about 25\,dB above any other station.},
   1/0.2--0.6 s/Slow path to the antenna/{A burst is built 120--450\,ms ahead and waits in $\approx$82\,ms of libiio buffers: no carrier sensing is possible.},
-  2/2.1 cores/{One channel, CPU-bound}/{All stations share one 4\,MHz channel; the Python receiver needs about two CPU cores per station.},
+  2/$\approx$1 core/{One channel, CPU-bound}/{All stations share one 4\,MHz channel; the Python receiver needs close to a CPU core per station.},
   3/1 m -- $\infty$/{Near, far and hidden}/{Stations may stand side by side, across the room, or out of each other's range altogether.}}{
   \node[fact] (f\i) at (\i*39mm,0) {};
   \node[font=\sffamily\bfseries\LARGE,text=wlblue] at ([yshift=-9mm]f\i.north) {\big};
@@ -410,8 +427,9 @@ time-division CDMA (TD-CDMA) design.
 \section{Contributions}
 The main technical contributions of the project are:
 \begin{itemize}
-  \item a DS-CDMA physical layer as a 68-block GNU Radio flowgraph, with Golay-protected headers,
-        three modulations, the 5G NR LDPC code at four rates and a receiver that tolerates
+  \item a DS-CDMA physical layer as a 73-block GNU Radio flowgraph, with Walsh codes under a common
+        scrambling sequence that are exactly orthogonal inside a slot, Golay-protected headers, four
+        modulations up to 64-QAM, the 5G NR LDPC code at four rates and a receiver that tolerates
         $\pm\SI{16}{kHz}$ carrier offset and \SI{30}{ppm} clock offset;
   \item a link layer with two-level addressing, fragmentation, selective-repeat ARQ, adaptive
         modulation and coding, four priority classes and closed-loop transmit power control;
@@ -452,31 +470,76 @@ The resulting gain in signal-to-noise ratio is the \emph{processing gain}
   G_p = 10\log_{10} N \quad\Rightarrow\quad \frac{E_s}{N_0}=\frac{E_c}{N_0}+G_p .
   \label{eq:pg}
 \end{equation}
-With $N=31$ chips, $G_p=\SI{14.9}{dB}$: a burst whose SNR per chip is \SI{-11}{dB} still yields a
-despread symbol SNR of about \SI{4}{dB}, enough to detect it. In WaveLink the chip rate is
-$R_c=1/T_c=\SI{2}{Mchip/s}$, so the symbol rate is $R_s=R_c/31=\SI{64.5}{ksymbol/s}$ and the occupied
-bandwidth is $R_c(1+\alpha)=\SI{2.7}{MHz}$ for a roll-off $\alpha=0.35$, inside the \SI{4}{MHz}
-channel.
+With the $N=32$ chips of WaveLink's default codes, $G_p=\SI{15.1}{dB}$: a burst whose SNR per chip
+is \SI{-11}{dB} still yields a despread symbol SNR of about \SI{4}{dB}, enough to detect it. In
+WaveLink the chip rate is $R_c=1/T_c=\SI{2}{Mchip/s}$, so the symbol rate is
+$R_s=R_c/32=\SI{62.5}{ksymbol/s}$ (\SI{64.5}{ksymbol/s} with the 31-chip Gold codes of
+\cref{sec:gold}) and the occupied bandwidth is $R_c(1+\alpha)=\SI{2.7}{MHz}$ for a roll-off
+$\alpha=0.35$, inside the \SI{4}{MHz} channel.
 
-\section{Gold codes}\label{sec:gold}
+\section{Spreading codes}\label{sec:gold}
 Codes for code-division multiple access (CDMA) need a sharp autocorrelation peak (for timing
-acquisition) and low cross-correlation with each other (for separation). Gold codes~\cite{gold1967}
-are formed by adding, modulo 2, two \emph{preferred} maximal-length sequences of degree $n$ at all
-$2^n-1$ relative shifts; together with the two sequences themselves this gives $2^n+1$ codes of
-length $N=2^n-1$. Their periodic cross-correlation takes only three values,
+acquisition) and low cross-correlation with each other (for separation). WaveLink uses two families:
+Gold codes, whose cross-correlation is low at \emph{every} relative shift, and Walsh codes, which are
+exactly orthogonal when they are \emph{aligned}. In both, code~0 is reserved for broadcasts and a
+station with address $N$ receives on code $N$.
+
+\subsection{Gold codes}
+Gold codes~\cite{gold1967} are formed by adding, modulo 2, two \emph{preferred} maximal-length
+sequences of degree $n$ at all $2^n-1$ relative shifts; together with the two sequences themselves
+this gives $2^n+1$ codes of length $N=2^n-1$. Their periodic cross-correlation takes only three values,
 \begin{equation}
   \theta_{xy}(\tau)\in\{-1,\ -t(n),\ t(n)-2\},\qquad t(n)=2^{\lfloor (n+2)/2\rfloor}+1 .
 \end{equation}
 For $n=5$ we get $N=31$, 33 codes and $t(5)=9$, so every cross-correlation is at most $9/31$, or
-\SI{-10.7}{dB} below the peak. \Cref{fig:gold} shows the auto- and cross-correlation of two codes
-from the set our code generator (\code{codes.py}) produces. Code~0 is reserved for broadcasts; a
-station with address $N$ receives on code $N$.
+\SI{-10.7}{dB} below the peak, whatever the shift between the two codes (\cref{fig:gold}a). This bound
+is what bursts from different stations need when they arrive at arbitrary times, as in spread ALOHA.
+At zero shift, however, Gold codes are not orthogonal: in our set, code~1 correlates with codes 0, 2
+and 4 at $7/31$ (\cref{tab:zerolag}), so a burst for station~1 sent together with bursts on those
+codes keeps only about \SI{13}{dB} of signal-to-interference ratio, however strong the signal.
+
+\subsection{Walsh codes under a scrambling sequence}\label{sec:walsh}
+The rows of a $2^n\times2^n$ Hadamard matrix, built by the Sylvester recursion
+$\mathbf H_{2m}=\left[\begin{smallmatrix}\mathbf H_m&\mathbf H_m\\ \mathbf H_m&-\mathbf H_m\end{smallmatrix}\right]$,
+are the Walsh codes. They are mutually orthogonal, $\sum_m w_i[m]\,w_j[m]=0$ for $i\neq j$: sent chip
+and symbol synchronously, as in the forward link of IS-95 and the downlink of UMTS~\cite{viterbi1995,ts25213},
+they separate perfectly, and after despreading nothing of the other codes remains, at any power.
+Alone they make poor spreading codes: row~0 is all ones and the other rows are periodic, so their
+correlation off the peak is large and timing acquisition becomes ambiguous. Multiplying every row
+chip by chip with one common scrambling sequence $s[m]\in\{\pm1\}$,
+\begin{equation}
+  c_k[m]=w_k[m]\,s[m],\qquad \sum_m c_i[m]\,c_j[m]=\sum_m w_i[m]\,w_j[m]\,s[m]^2=\sum_m w_i[m]\,w_j[m],
+\end{equation}
+keeps the orthogonality at zero shift while making the codes look random off the peak. WaveLink uses
+32 chips ($n=5$). The scrambling sequence and the five rows used for codes 0--4 were chosen by a search
+(\code{tools/walsh\_search.py}): balanced codes whose even and odd autocorrelation side lobes and
+cross-correlations at every non-zero shift are at most $12/32$ (\cref{fig:gold}b); the five Gold codes in
+use reach $13/31$ and $15/31$ by the same measure.
+
+The price of orthogonality is alignment: Walsh codes are orthogonal only at zero shift and over whole
+symbols. Inside a TD-CDMA slot this comes for free: every burst of a slot comes from one transmitter,
+starts on the same chip and stays on one symbol grid (\cref{sec:modspread}), so Walsh codes under a
+scrambling sequence are WaveLink's default. Spread ALOHA, whose bursts arrive at arbitrary shifts,
+keeps the Gold codes. The family is a parameter of the flowgraph (\code{code\_family}) and an option
+of the application (\code{-{}-codes}); every station must use the same.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Correlation between codes 0--4 at zero shift, i.e.\ between bursts that start together
+(rows and columns: codes 0--4).}\label{tab:zerolag}
+\begin{tabular}{@{}c@{\hspace{14mm}}c@{}}
+\textbf{Walsh $\times$ scrambling (32 chips)} & \textbf{Gold (31 chips)}\\[3pt]
+$\left[\begin{array}{rrrrr} 32&0&0&0&0\\ 0&32&0&0&0\\ 0&0&32&0&0\\ 0&0&0&32&0\\ 0&0&0&0&32\end{array}\right]$ &
+$\left[\begin{array}{rrrrr} 31&\mathbf{7}&-1&-1&-1\\ \mathbf{7}&31&\mathbf{7}&-1&\mathbf{7}\\ -1&\mathbf{7}&31&-1&-1\\ -1&-1&-1&31&-1\\ -1&\mathbf{7}&-1&-1&31\end{array}\right]$
+\end{tabular}
+\end{table}
 
 \begin{figure}[htbp]
 \centering
+\begin{subfigure}{\linewidth}\centering
 \begin{tikzpicture}
-\begin{axis}[wl,width=0.92\linewidth,height=55mm,xmin=-0.5,xmax=30.5,ymin=-14,ymax=34,
-  xlabel={Relative shift $\tau$ (chips)},ylabel={Periodic correlation},ytick={-9,-1,7,31},
+\begin{axis}[wl,width=0.92\linewidth,height=50mm,xmin=-0.5,xmax=31.5,ymin=-14,ymax=36,
+  xlabel={Relative shift $\tau$ (chips)},ylabel={Periodic correlation},ytick={-9,7,31},
   legend pos=north east,legend columns=2,extra y ticks={0},extra y tick style={grid style={draw=black!30}}]
 \addplot+[ycomb,wlblue,mark=*,mark size=1.6pt,line width=1.2pt] coordinates {
 (0,31)(1,7)(2,7)(3,7)(4,7)(5,-1)(6,7)(7,-1)(8,-1)(9,-1)(10,-1)(11,-9)(12,-9)(13,-9)(14,-9)(15,-9)(16,-9)(17,-9)(18,-9)(19,-9)(20,-9)(21,-1)(22,-1)(23,-1)(24,-1)(25,7)(26,-1)(27,7)(28,7)(29,7)(30,7)};
@@ -485,13 +548,36 @@ station with address $N$ receives on code $N$.
 (0,-1)(1,-1)(2,-1)(3,7)(4,-1)(5,-1)(6,-1)(7,-1)(8,7)(9,-1)(10,-1)(11,7)(12,-1)(13,7)(14,7)(15,-9)
 (16,-1)(17,7)(18,-1)(19,-9)(20,-1)(21,-1)(22,-1)(23,-1)(24,-1)(25,-9)(26,-1)(27,7)(28,-9)(29,-1)(30,7)};
 \addlegendentry{cross-correlation, codes 2 and 3}
-\addplot[wlcoral,dashed,line width=0.7pt,forget plot] coordinates {(-0.5,9)(30.5,9)};
-\addplot[wlcoral,dashed,line width=0.7pt,forget plot] coordinates {(-0.5,-9)(30.5,-9)};
+\addplot[wlcoral,dashed,line width=0.7pt,forget plot] coordinates {(-0.5,9)(31.5,9)};
+\addplot[wlcoral,dashed,line width=0.7pt,forget plot] coordinates {(-0.5,-9)(31.5,-9)};
 \node[font=\sffamily\scriptsize,text=wlcoral,anchor=south west] at (axis cs:16,9) {$|\theta|\le t(5)=9$};
 \end{axis}
 \end{tikzpicture}
-\caption{Periodic auto- and cross-correlation of 31-chip Gold codes from the WaveLink code set.
-Side lobes and cross-correlation never exceed $9/31$ ($-10.7$\,dB).}\label{fig:gold}
+\caption{31-chip Gold codes: side lobes and cross-correlation never exceed $9/31$ ($-10.7$\,dB) at any shift.}
+\end{subfigure}
+
+\vspace{3mm}
+\begin{subfigure}{\linewidth}\centering
+\begin{tikzpicture}
+\begin{axis}[wl,width=0.92\linewidth,height=50mm,xmin=-0.5,xmax=31.5,ymin=-14,ymax=36,
+  xlabel={Relative shift $\tau$ (chips)},ylabel={Periodic correlation},ytick={-12,0,12,32},
+  legend pos=north east,legend columns=2,extra y ticks={0},extra y tick style={grid style={draw=black!30}}]
+\addplot+[ycomb,wlblue,mark=*,mark size=1.6pt,line width=1.2pt] coordinates {
+(0,32)(1,-4)(2,-4)(3,0)(4,0)(5,0)(6,-4)(7,-4)(8,-4)(9,8)(10,-4)(11,4)(12,0)(13,0)(14,4)(15,-4)(16,-8)(17,-4)(18,4)(19,0)(20,0)(21,4)(22,-4)(23,8)(24,-4)(25,-4)(26,-4)(27,0)(28,0)(29,0)(30,-4)(31,-4)};
+\addlegendentry{autocorrelation, code 2}
+\addplot+[ycomb,wlteal,mark=square*,mark size=1.5pt,line width=0.9pt,xshift=2pt] coordinates {
+(0,0)(1,0)(2,4)(3,12)(4,0)(5,-4)(6,4)(7,-8)(8,4)(9,-12)(10,4)(11,0)(12,8)(13,-4)(14,-4)(15,0)(16,-8)(17,0)(18,-4)(19,-4)(20,-8)(21,0)(22,4)(23,12)(24,4)(25,0)(26,-4)(27,-4)(28,0)(29,4)(30,-4)(31,8)};
+\addlegendentry{cross-correlation, codes 2 and 3}
+\addplot[wlcoral,dashed,line width=0.7pt,forget plot] coordinates {(-0.5,12)(31.5,12)};
+\addplot[wlcoral,dashed,line width=0.7pt,forget plot] coordinates {(-0.5,-12)(31.5,-12)};
+\node[font=\sffamily\scriptsize,text=wlcoral,anchor=south west] at (axis cs:16,12) {$\le 12/32$ off the peak};
+\node[font=\sffamily\scriptsize,text=wlteal,anchor=west,fill=white,inner sep=1pt] at (axis cs:1.5,23) {cross-correlation 0 at $\tau=0$};
+\end{axis}
+\end{tikzpicture}
+\caption{32-chip Walsh $\times$ scrambling codes: exactly orthogonal at $\tau=0$; at most $12/32$ elsewhere.}
+\end{subfigure}
+\caption{Periodic auto- and cross-correlation of the two code families of WaveLink, as produced by
+\code{codes.py}.}\label{fig:gold}
 \end{figure}
 
 \section{Multiple access for a small SDR network}\label{sec:ma}
@@ -511,9 +597,9 @@ Scheme & Deaf while sending & 0.2--0.6\,s TX latency & Near--far & Hidden statio
 CSMA/CA~\cite{ieee80211} & \partly\ no collision detection & \no\ stale sensing & \yes & \no\ collisions & \no & \yes\ full\\
 FDMA & \partly\ front-end range & \yes & \partly\ leakage & \no & \no\ one channel each & \no\ $\tfrac14$ band\\
 TDMA, one code & \yes & \yes\ sample timing & \yes & \partly\ needs relays & \no\ one at a time & \yes\ full\\
-Spread ALOHA~\cite{abramson1970} & \no\ 755--900 resends & \yes & \partly\ power control & \no\ unreachable & \yes & \yes\ full\\
+Spread ALOHA~\cite{abramson1970} & \no\ 681--904 resends & \yes & \partly\ power control & \no\ unreachable & \yes & \yes\ full\\
 OFDMA & \partly\ scheduling & \no\ central scheduler & \partly\ power control & \no & \yes & \partly\ share\\
-\rowcolor{wllight}TD-CDMA (ours) & \yes\ one on air & \yes\ slots in samples & \yes\ one transmitter & \yes\ one-hop relay & \yes\ code per destination & \partly\ $\approx$80\,\% of ALOHA\\
+\rowcolor{wllight}TD-CDMA (ours) & \yes\ one on air & \yes\ slots in samples & \yes\ one transmitter & \yes\ one-hop relay & \yes\ orthogonal code per destination & \partly\ $\approx$75\,\% of ALOHA at equal modulation\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -530,9 +616,11 @@ which the transmit latency makes impractical.
 each slot: a station sends to every destination at once, each on the destination's own code, and
 every receiver despreads only its own code and the broadcast code. Nobody transmits while another
 station is sending, so self-deafness and the near--far problem disappear; codes still provide
-physical-layer addressing, multi-destination transmission and \SI{14.9}{dB} of processing gain.
-The cost is that a single link obtains about 80\,\% of the speed it would get under spread ALOHA,
-because each cycle also contains the other stations' slots, a join slot and slot headers.
+physical-layer addressing, multi-destination transmission and \SI{15.1}{dB} of processing gain. And
+because all bursts on the air at any moment come from one transmitter and start together, they can
+use orthogonal Walsh codes that do not interfere at all, which leaves room for 64-QAM. The cost is
+that a single link obtains about three quarters of the speed it would get under spread ALOHA at the
+same modulation, because each cycle also contains the other stations' slots, a join slot and slot headers.
 
 \section{Channel coding and link adaptation}\label{sec:coding-bg}
 Low-density parity-check (LDPC) codes~\cite{gallager1962} approach channel capacity with iterative
@@ -592,7 +680,7 @@ browser served by the station itself, so no internet connection is needed.
   \end{scope}
 \end{tikzpicture}
 \caption{A WaveLink network of four stations (left) and the contents of one station (right). Every
-pair of stations can communicate; station $N$ despreads only Gold code $N$ and the broadcast code~0.}
+pair of stations can communicate; station $N$ despreads only code $N$ and the broadcast code~0.}
 \label{fig:network}
 \end{figure}
 
@@ -612,7 +700,7 @@ parallel and allowed each layer to be tested against simulated neighbours.
     -13/Application\\[-2pt]{\scriptsize\mdseries node.py, games/}/node/{Message envelope, zlib, AES-256-GCM, groups, receipts, profiles, history, UNO host and race}/wlblue,
     -26/Link layer\\[-2pt]{\scriptsize\mdseries mac.py}/mac/{Addressing, fragmentation, selective-repeat ARQ, adaptive modulation and coding, priority, power control}/wldeep,
     -39/TD-CDMA\\[-2pt]{\scriptsize\mdseries tdma.py}/tdma/{Slot plan in radio samples, lead, join, takeover, TX$\to$RX offset, link tables, relaying}/wlnavy,
-    -52/Physical layer\\[-2pt]{\scriptsize\mdseries grc/cdma\_phy.grc}/phy/{GNU Radio flowgraph, 68 blocks: CRC-32, LDPC, framing, spreading, RRC, despreading, decoding}/wlteal,
+    -52/Physical layer\\[-2pt]{\scriptsize\mdseries grc/cdma\_phy.grc}/phy/{GNU Radio flowgraph, 73 blocks: CRC-32, LDPC, framing, spreading, RRC, despreading, decoding}/wlteal,
     -65/ANTSDR E200/sdr/{2.5\,GHz, 4\,MS/s, PlutoSDR Sink and Source (gr-iio, libiio firmware)}/wlmint!70!black}{
     \node[layer,fill=\c] (\f) at (0,\y mm) {\t};
     \node[desc] at (25mm,\y mm) {\d};
@@ -624,8 +712,8 @@ parallel and allowed each layer to be tested against simulated neighbours.
 \end{figure}
 
 \Cref{tab:modules} maps the layers to the source modules. The station software is about
-\num{10600} lines of Python, the browser front end about \num{6600} lines of JavaScript, CSS and
-HTML, and the test suites about \num{5300} lines.
+\num{11400} lines of Python, the browser front end about \num{6600} lines of JavaScript, CSS and
+HTML, and the test suites about \num{5900} lines.
 
 \begin{table}[htbp]
 \centering\small
@@ -635,16 +723,16 @@ HTML, and the test suites about \num{5300} lines.
 \textrm{\textbf{Module}} & \textbf{Responsibility} & \textbf{Lines}\\
 \midrule
 grc/cdma\_phy.grc & The station PHY: GNU Radio flowgraph compiled with \code{grcc} at start-up & --\\
-grc\_phy.py & Compiles and loads the flowgraph; cores of the Embedded Python blocks & 674\\
-modem.py & Burst modulator and streaming multi-code demodulator & 866\\
+grc\_phy.py & Compiles and loads the flowgraph; cores of the Embedded Python blocks & 720\\
+modem.py & Burst modulator and streaming multi-code demodulator (BPSK to 64-QAM) & 928\\
 ldpc.py, nr\_bg1.py & 5G NR LDPC encoder, rate matching, interleaver, layered min-sum decoder & 596\\
-codes.py, golay.py & Gold codes, preambles, RRC taps; Golay (24,12) soft decoding & 179\\
-mac.py & Link layer: ARQ, AMC table, power control, spread ALOHA & \num{1259}\\
-tdma.py & TD-CDMA: slot plan, lead, join, takeover, TX$\to$RX offset, relaying & \num{1611}\\
-node.py, crypto.py & Application: envelope, encryption, groups, receipts, profiles & \num{1054}\\
-games/ & Game center: rooms, clock sync, UNO rules engine and host, race & \num{1808}\\
+codes.py, golay.py & Walsh $\times$ scrambling and Gold codes, preambles, RRC taps; Golay (24,12) soft decoding & 240\\
+mac.py & Link layer: ARQ, AMC table, power control, spread ALOHA & \num{1385}\\
+tdma.py & TD-CDMA: slot plan, lead, join, takeover, TX$\to$RX offset, relaying & \num{1647}\\
+node.py, crypto.py & Application: envelope, encryption, groups, receipts, profiles & \num{1162}\\
+games/ & Game center: rooms, clock sync, UNO rules engine and host, race & \num{1818}\\
 radio\_sim.py, fake\_antsdr.py & Channel simulator; emulated ANTSDR blocks and air & \num{1336}\\
-web/ & Station web server and browser UI & \num{6600}\\
+web/ & Station web server and browser UI & \num{6930}\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -663,15 +751,16 @@ chip and the code length, which are variables of the flowgraph.
 Carrier frequency & \SI{2.500}{GHz}\\
 Sample rate / RF bandwidth & \SI{4}{MS/s} / \SI{4}{MHz}\\
 Chip rate, samples per chip & \SI{2}{Mchip/s}, 2\\
-Spreading & 31-chip Gold codes, 33 codes, processing gain \SI{14.9}{dB}\\
-Symbol rate & \SI{64.5}{ksymbol/s} ($T_s=\SI{15.5}{\micro s}$)\\
+Spreading & 32-chip Walsh codes $\times$ one scrambling sequence, processing gain \SI{15.1}{dB}
+  (default, TD-CDMA); 31-chip Gold codes, \SI{14.9}{dB} (spread ALOHA)\\
+Symbol rate & \SI{62.5}{ksymbol/s} ($T_s=\SI{16}{\micro s}$); Gold codes \SI{64.5}{ksymbol/s} (\SI{15.5}{\micro s})\\
 Pulse shape & Root-raised cosine, $\alpha=0.35$, span 8 chips; occupied bandwidth \SI{2.7}{MHz}\\
 Preamble & 48 known BPSK symbols, different for every code\\
 Header & 24 bits (length 11, modulation 2, code rate 3, CRC-8), two Golay (24,12) words, 48 BPSK symbols\\
-Payload modulation & BPSK, QPSK or 16-QAM (Gray mapped), chosen per frame\\
+Payload modulation & BPSK, QPSK, 16-QAM or 64-QAM (Gray mapped), chosen per frame\\
 Channel code & 5G NR LDPC BG1, rates $\tfrac12,\tfrac23,\tfrac34,\tfrac56$ or uncoded; one codeword per frame\\
 Maximum frame & \num{1024} bytes (link-layer frame + CRC-32)\\
-Payload bit rate & \SI{64.5}{kb/s} (QPSK $\tfrac12$) to \SI{258}{kb/s} (uncoded 16-QAM)\\
+Payload bit rate & \SI{62.5}{kb/s} (QPSK $\tfrac12$) to \SI{375}{kb/s} (uncoded 64-QAM); Gold codes 3\,\% more\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -679,9 +768,10 @@ Payload bit rate & \SI{64.5}{kb/s} (QPSK $\tfrac12$) to \SI{258}{kb/s} (uncoded 
 \section{A message's path through the system}\label{sec:journey}
 \Cref{fig:hibob} follows the text ``Hi Bob!'' from Alice to Bob, with the actual sizes produced by our
 code. The 7-byte text becomes a 73-byte application envelope (kind, identifier, timestamp and other
-metadata), an 87-byte link-layer frame (10 header bytes and a CRC-32), a 928-bit LDPC codeword at
-16-QAM rate $\tfrac34$, and a burst of 336 symbols (48 preamble, 48 header, 232 payload and 8 padding
-symbols) that occupies the air for \SI{5.2}{ms}.
+metadata), an 87-byte link-layer frame (10 header bytes and a CRC-32), a 930-bit LDPC codeword at
+64-QAM rate $\tfrac34$ (two rungs below the uncoded 64-QAM of a good link, as for every short message,
+\cref{sec:amc}), and a burst of 256 symbols (48 preamble, 48 header, 155 payload and 5 padding
+symbols) that occupies the air for \SI{4.1}{ms}.
 
 \begin{figure}[htbp]
 \centering
@@ -689,9 +779,9 @@ symbols) that occupies the air for \SI{5.2}{ms}.
   chev/.style={shape=signal,signal to=east,signal from=west,draw=none,minimum height=13mm,
     minimum width=23mm,font=\sffamily\scriptsize,text=white,align=center,inner sep=1pt}]
   \foreach \i/\a/\b/\c in {0/7 B/text/wlblue!65!wlsky,1/73 B/envelope/wlblue,2/87 B/frame + CRC-32/wldeep,
-     3/928 bits/LDPC codeword/wlnavy,4/336/symbols/wlteal,5/5.2 ms/{on air, 16-QAM $\tfrac34$}/wlmint!70!black}
+     3/930 bits/LDPC codeword/wlnavy,4/256/symbols/wlteal,5/4.1 ms/{on air, 64-QAM $\tfrac34$}/wlmint!70!black}
     \node[chev,fill=\c] at (\i*24.5mm,0) {\textbf{\large\a}\\[1pt]\b};
-  \foreach \i/\t in {0/{``Hi Bob!''},1/{+ meta JSON},2/{+ 10 B header},3/{rate $\tfrac34$},4/{+ 96 + pad},5/{$336\times\SI{15.5}{\micro s}$}}
+  \foreach \i/\t in {0/{``Hi Bob!''},1/{+ meta JSON},2/{+ 10 B header},3/{rate $\tfrac34$},4/{+ 96 + pad},5/{$256\times\SI{16}{\micro s}$}}
     \node[note,anchor=north] at (\i*24.5mm,-8mm) {\t};
 \end{tikzpicture}
 \caption{Encapsulation of the message ``Hi Bob!'' from Alice to Bob, layer by layer.}\label{fig:hibob}
@@ -716,13 +806,16 @@ through two message ports: \emph{MAC$\to$PHY} and \emph{PHY$\to$MAC}. Everything
 flowgraph, so the radio processing can be inspected, modified and re-run in the GRC editor without
 touching the rest of the system.
 
-The flowgraph contains 68 processing blocks. Sixty-one are stock GNU Radio blocks (Stream CRC32,
+The flowgraph contains 73 processing blocks. Sixty-six are stock GNU Radio blocks (Stream CRC32,
 Chunks to Symbols, Repeat, Vector Source, Multiply, PDU and tagged-stream converters, PDU Filter,
 Constellation Soft Decoder, Interpolating FIR, FFT Filter and the gr-iio PlutoSDR Sink and Source).
 Seven are Embedded Python blocks that hold our own signal processing (\cref{tab:epy}). There are five
-transmit \emph{code lanes} (codes 0--4) and three receive branches (BPSK, QPSK, 16-QAM).
-\Cref{fig:grc} shows the signal path; \cref{fig:grcrender} in \cref{app:grc} shows the saved layout of the
-file itself.
+transmit \emph{code lanes} (codes 0--4) and four receive branches (BPSK, QPSK, 16-QAM, 64-QAM). The
+code family is a parameter of the flowgraph, \code{code\_family} (\code{walsh} or \code{gold}): the
+variables \code{sf} (32 or 31 chips) and \code{code\_0}\,\ldots\,\code{code\_4} take their values from
+the tables \code{walsh\_table} and \code{gold\_table}, and the Framer and Despreader receive it as a
+block parameter. \Cref{fig:grc} shows the signal path; \cref{fig:grcrender} in \cref{app:grc} shows the
+saved layout of the file itself.
 
 \begin{figure}[htbp]
 \centering
@@ -734,8 +827,8 @@ file itself.
   \node[epy,right=of t2] (t3) {LDPC Encoder};
   \node[epy,right=of t3] (t4) {CDMA PHY Framer};
   \node[stock,right=of t4] (t5) {Chunks to Symbols};
-  \node[stock,right=of t5] (t6) {Repeat $\times31$};
-  \node[stock,right=of t6] (t7) {$\times$ Gold code};
+  \node[stock,right=of t5] (t6) {Repeat $\times$\,sf};
+  \node[stock,right=of t6] (t7) {$\times$ code $k$};
   \node[epy,right=of t7] (t8) {Burst Combiner};
   \node[stock,right=of t8] (t9) {RRC Interp.\ FIR};
   \node[radio,right=of t9] (t10) {Pluto\-SDR Sink};
@@ -756,7 +849,7 @@ file itself.
   \node[epy,right=of r9] (r10) {PHY\\$\to$MAC};
   \foreach \a/\b in {r1/r2,r2/r3,r3/r4,r4/r5,r5/r6,r6/r7,r7/r8,r8/r9,r9/r10} \draw[flow] (\a) -- (\b);
   \draw[decorate,decoration={brace,mirror,amplitude=4pt},wlteal,line width=0.8pt]
-    ([yshift=-1.5mm]r4.south west) -- node[below=4pt,note,text=wlteal,text width=60mm,minimum height=0]{$\times3$ branches: BPSK, QPSK, 16-QAM} ([yshift=-1.5mm]r6.south east);
+    ([yshift=-1.5mm]r4.south west) -- node[below=4pt,note,text=wlteal,text width=60mm,minimum height=0]{$\times4$ branches: BPSK, QPSK, 16-QAM, 64-QAM} ([yshift=-1.5mm]r6.south east);
   \end{scope}
   \node[epy,minimum width=4mm,text width=4mm,minimum height=3mm] (k1) at (0.2,-52mm) {};
   \node[note,anchor=west,text width=30mm,minimum width=0,minimum height=0] at (k1.east) {Embedded Python (ours)};
@@ -765,7 +858,8 @@ file itself.
   \node[radio,minimum width=4mm,text width=4mm,minimum height=3mm] (k3) at (8.4,-52mm) {};
   \node[note,anchor=west,text width=30mm,minimum width=0,minimum height=0] at (k3.east) {Radio (gr-iio)};
 \end{tikzpicture}
-\caption{Signal path of the PHY flowgraph \code{cdma\_phy.grc}. Code lanes and receive branches are drawn once.}
+\caption{Signal path of the PHY flowgraph \code{cdma\_phy.grc}. Code lanes and receive branches are drawn
+once; sf is the code length, 32 chips (Walsh) or 31 (Gold).}
 \label{fig:grc}
 \end{figure}
 
@@ -778,9 +872,9 @@ Block & Function\\
 \midrule
 MAC$\to$PHY, PHY$\to$MAC & Hand frames between the link layer and the flowgraph as PDUs. Metadata: destination code, modulation and coding (e.g.\ \code{16qam-3/4}), power backoff and the exact chip at which the burst must start; on receive also SNR, CFO, LDPC iterations and the receive sample index.\\
 LDPC Encoder & 5G NR LDPC encoding of frame + CRC-32, rate matching to the requested rate, 5G bit interleaver.\\
-CDMA PHY Framer & Builds the burst as indices into a combined symbol table: preamble, Golay-coded header and payload symbols (BPSK 0--1, QPSK 2--5, 16-QAM 6--21).\\
+CDMA PHY Framer & Builds the burst as indices into a combined symbol table: preamble, Golay-coded header and payload symbols (BPSK 0--1, QPSK 2--5, 16-QAM 6--21, 64-QAM 22--85).\\
 CDMA Burst Combiner & Adds the five code lanes chip by chip and fills the gaps between bursts with zeros so the radio never runs dry. A burst tagged with a start chip begins exactly there; a burst that arrives late is dropped and counted.\\
-CDMA Despreader & Detection, carrier-offset estimation, fractional-delay despreading with DLL, Golay header decoding and carrier tracking; outputs corrected payload symbols tagged with modulation, rate and length.\\
+CDMA Despreader & Detection, carrier-offset estimation, fractional-delay despreading with a DLL and a straight-line timing fit, Golay header decoding and carrier tracking; outputs corrected payload symbols tagged with modulation, rate and length.\\
 LDPC Decoder & De-interleaving, de-rate-matching and layered normalised min-sum decoding with early stopping.\\
 \bottomrule
 \end{tabularx}
@@ -795,14 +889,18 @@ bits (frame length 11 bits, modulation 2 bits, code rate 3 bits and a CRC-8) enc
 Golay (24,12) codewords and sent as 48 coherent BPSK symbols, so it can be decoded at low SNR before
 anything is known about the payload. Because modulation and code rate are in the header, they may
 change from one burst to the next. The \emph{payload} is the LDPC codeword (or the plain bits of an
-uncoded frame), Gray-mapped onto BPSK, QPSK or 16-QAM and padded to a multiple of 16 symbols.
+uncoded frame), Gray-mapped onto BPSK, QPSK, 16-QAM or 64-QAM, and the burst is padded to a multiple of
+16 symbols. 64-QAM uses header values that nothing else used (uncoded BPSK is differential and never
+coded, so the modulation field for it with a code rate of 1--4 meant nothing): they now mean 64-QAM
+$\tfrac12$--$\tfrac56$, and rate 5 means uncoded 64-QAM. A station built before 64-QAM therefore
+rejects such a header instead of misreading it.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[seg/.style={draw=white,line width=1pt,minimum height=10mm,font=\sffamily\scriptsize,text=white,align=center,inner sep=1pt}]
   \node[seg,fill=wldeep,minimum width=24mm,anchor=west] (p) at (0,0) {\textbf{Preamble}\\48 BPSK symbols};
   \node[seg,fill=wlblue,minimum width=30mm,anchor=west] (h) at (p.east) {\textbf{Header}\\Golay (24,12)$\times2$ = 48 BPSK};
-  \node[seg,fill=wlsteel,minimum width=78mm,anchor=west] (d) at (h.east) {\textbf{Payload}\\LDPC codeword: BPSK, QPSK or 16-QAM};
+  \node[seg,fill=wlsteel,minimum width=78mm,anchor=west] (d) at (h.east) {\textbf{Payload}\\LDPC codeword: BPSK, QPSK, 16- or 64-QAM};
   \node[seg,fill=wlgrey,minimum width=12mm,anchor=west] (x) at (d.east) {\textbf{Pad}\\0--15};
   \foreach \t/\w/\o in {len 11/9/0,mod 2/7/9,rate 3/7/16,CRC-8/7/23}
     \node[draw=wlblue,fill=wllight,font=\sffamily\tiny,minimum height=4.5mm,minimum width=\w mm,text width=\w mm-1mm,align=center,inner sep=0pt,anchor=north west]
@@ -811,24 +909,30 @@ uncoded frame), Gray-mapped onto BPSK, QPSK or 16-QAM and padded to a multiple o
   \draw[decorate,decoration={brace,amplitude=4pt},wlgrey] ([yshift=1mm]p.north west) -- node[above=4pt,note,text width=54mm]{detection, timing, CFO, phase reference (96 known symbols once the header is decoded)} ([yshift=1mm]h.north east);
   \draw[decorate,decoration={brace,amplitude=4pt},wlgrey] ([yshift=1mm]d.north west) -- node[above=4pt,note,text width=60mm]{modulation and code rate read from the header} ([yshift=1mm]x.north east);
 \end{tikzpicture}
-\caption{Structure of a WaveLink burst. Each symbol is spread by the 31 chips of the destination's Gold code.}
+\caption{Structure of a WaveLink burst. Each symbol is spread by the 32 chips of the destination's code
+(31 with Gold codes).}
 \label{fig:burst}
 \end{figure}
 
-\subsection{Modulation, spreading and pulse shaping}
-The Framer outputs indices into a 22-entry symbol table (two BPSK, four QPSK and sixteen 16-QAM
-points, all Gray mapped with unit average energy). The stock \emph{Chunks to Symbols} block maps
-them to complex symbols, \emph{Repeat} holds each symbol for 31 chips, and \emph{Multiply} with a
-looping \emph{Vector Source} applies the Gold code of the lane. A PDU Filter in front of each lane
-selects the bursts addressed to that code. The \emph{Burst Combiner} sums the five lanes chip by
-chip, so a station can transmit to several destinations simultaneously, and starts every burst on
-the exact chip requested by the time-slot scheduler (\cref{ch:tdcdma}). Each burst is scaled by its
-power backoff (\cref{sec:power}). Finally an interpolating FIR filter applies the RRC pulse at two
-samples per chip and the PlutoSDR Sink hands the \SI{4}{MS/s} stream to the ANTSDR.
+\subsection{Modulation, spreading and pulse shaping}\label{sec:modspread}
+The Framer outputs indices into an 86-entry symbol table (two BPSK, four QPSK, sixteen 16-QAM and
+sixty-four 64-QAM points, all Gray mapped with unit average energy; 64-QAM uses the levels
+$\{\pm1,\pm3,\pm5,\pm7\}/\sqrt{42}$ on each axis). The stock \emph{Chunks to Symbols} block maps
+them to complex symbols, \emph{Repeat} holds each symbol for sf chips (32, or 31 with Gold codes), and
+\emph{Multiply} with a looping \emph{Vector Source} applies the code of the lane. A PDU Filter in front
+of each lane selects the bursts addressed to that code. The \emph{Burst Combiner} sums the five lanes
+chip by chip, so a station can transmit to several destinations simultaneously, and starts every burst
+on the exact chip requested by the time-slot scheduler (\cref{ch:tdcdma}). The bursts of a slot start
+on the same chip, every burst follows the previous one on its code without a gap, and the scheduler
+counts every burst in whole symbols, so all bursts of a slot share one symbol grid: exactly what the
+Walsh codes need to stay orthogonal. Each burst is scaled by its power backoff (\cref{sec:power}).
+Finally an interpolating FIR filter applies the RRC pulse at two samples per chip and the PlutoSDR
+Sink hands the \SI{4}{MS/s} stream to the ANTSDR.
 
 All codes in a slot are transmitted at one common level. With more than two codes in a slot the level
 is reduced by $10\log_{10}(n_\text{codes}/2)$\,dB so that the sum stays at the level of two full-power
-codes (RMS 0.35 of DAC full scale), which leaves about \SI{9}{dB} of headroom for 16-QAM peaks.
+codes (RMS 0.35 of DAC full scale), which leaves about \SI{9}{dB} of headroom for the peaks of 16- and
+64-QAM.
 \Cref{fig:psd} shows the resulting spectrum, computed from bursts produced by our modulator.
 
 \begin{figure}[htbp]
@@ -844,42 +948,48 @@ codes (RMS 0.35 of DAC full scale), which leaves about \SI{9}{dB} of headroom fo
 \node[font=\sffamily\scriptsize,text=wlcoral,fill=white,inner sep=1pt] at (axis cs:0,-55) {$R_c(1+\alpha)=2.7$\,MHz};
 \end{axis}
 \end{tikzpicture}
-\caption{Power spectral density of a WaveLink transmission (16-QAM, 2\,Mchip/s, RRC $\alpha=0.35$),
-from bursts generated by the project's modulator. The signal occupies 2.7\,MHz of the 4\,MHz channel.}
+\caption{Power spectral density of a WaveLink transmission (64-QAM, Walsh codes, 2\,Mchip/s, RRC
+$\alpha=0.35$), from bursts generated by the project's modulator. The signal occupies 2.7\,MHz of the
+4\,MHz channel.}
 \label{fig:psd}
 \end{figure}
 
 \subsection{Spreading and despreading in practice}
-\Cref{fig:despread} illustrates processing gain with the actual code set. Two users transmit BPSK
-symbols on codes 1 and 2 at the same time, at a chip SNR of \SI{-3}{dB} each. The received chips
-(top) look like noise. Correlating with code~1 (middle) produces peaks of about $\pm31$ at symbol
-boundaries that reveal user~1's data, while correlating with an unused code (bottom) produces only
-noise and cross-correlation. This is how a WaveLink station ignores traffic addressed to others.
+\Cref{fig:despread} illustrates processing gain and orthogonality with the actual code set. In her slot
+Alice sends BPSK symbols to two stations at once, on codes 1 and 2, chip and symbol aligned, at a chip
+SNR of \SI{-3}{dB} each. The received chips (top) look like noise. Correlating with code~1 (middle)
+produces peaks of about $\pm32$ at the symbol boundaries that reveal the data for station~1; at exactly
+those instants the burst on code~2 contributes nothing, because the codes are orthogonal, so the only
+error left is noise (between the boundaries the sliding correlation shows the codes' off-peak
+correlation, which no receiver uses). Correlating with an unused code (bottom) produces only noise at
+the symbol boundaries. This is how a WaveLink station ignores traffic addressed to others.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
-\begin{axis}[wl,name=a1,width=0.95\linewidth,height=30mm,xmin=0,xmax=155,ymin=-4,ymax=4,
+\begin{axis}[wl,name=a1,width=0.95\linewidth,height=30mm,xmin=0,xmax=160,ymin=-4,ymax=4,
   ylabel={chips},xticklabels={},ytick={-3,0,3},title style={font=\sffamily\scriptsize,yshift=-1.5ex},
-  title={Received chips: users on codes 1 and 2 plus noise (chip SNR $-3$\,dB per user)}]
+  title={Received chips: bursts on codes 1 and 2 plus noise (chip SNR $-3$\,dB per code)}]
 \addplot[wlsteel,line width=0.5pt,const plot] table[x=n,y=r] {data/chips.dat};
-\pgfplotsinvokeforeach{31,62,93,124}{\draw[black!25,dashed] (axis cs:#1,-4) -- (axis cs:#1,4);}
+\pgfplotsinvokeforeach{32,64,96,128}{\draw[black!25,dashed] (axis cs:#1,-4) -- (axis cs:#1,4);}
 \end{axis}
 \begin{axis}[wl,at={(a1.south west)},anchor=north west,yshift=-9mm,name=a2,width=0.95\linewidth,height=34mm,
-  xmin=0,xmax=9,ymin=-45,ymax=45,ylabel={correlation},xticklabels={},ytick={-31,0,31},
+  xmin=0,xmax=9,ymin=-46,ymax=46,ylabel={correlation},xticklabels={},ytick={-32,0,32},
   title style={font=\sffamily\scriptsize,yshift=-1.5ex},title={Sliding correlation with code 1 (the right code)}]
 \addplot[wlblue,line width=0.8pt] table[x=n,y=right] {data/despread.dat};
-\addplot[only marks,mark=*,mark size=1.6pt,wlcoral] table[x=n,y=right,each nth point=31] {data/despread.dat};
+\addplot[only marks,mark=*,mark size=1.6pt,wlcoral] table[x=n,y=right,each nth point=32] {data/despread.dat};
 \end{axis}
 \begin{axis}[wl,at={(a2.south west)},anchor=north west,yshift=-9mm,width=0.95\linewidth,height=34mm,
-  xmin=0,xmax=9,ymin=-45,ymax=45,ylabel={correlation},xlabel={Time (symbols, 31 chips each)},ytick={-31,0,31},
+  xmin=0,xmax=9,ymin=-46,ymax=46,ylabel={correlation},xlabel={Time (symbols, 32 chips each)},ytick={-32,0,32},
   title style={font=\sffamily\scriptsize,yshift=-1.5ex},title={Sliding correlation with code 3 (a code nobody uses)}]
 \addplot[wlteal,line width=0.8pt] table[x=n,y=wrong] {data/despread.dat};
+\addplot[only marks,mark=*,mark size=1.6pt,wlcoral] table[x=n,y=wrong,each nth point=32] {data/despread.dat};
 \end{axis}
 \end{tikzpicture}
-\caption{Processing gain with the WaveLink code set: the received chips are buried in noise, but
-correlating with the right code recovers the symbols (red dots at symbol boundaries); a different
-code sees only noise.}
+\caption{Processing gain and orthogonality with the WaveLink codes (Walsh $\times$ scrambling): the
+received chips are buried in noise, but correlating with the right code recovers the symbols (red dots
+at the symbol boundaries); at the same instants an unused code sees only noise, and nothing of the
+two bursts.}
 \label{fig:despread}
 \end{figure}
 
@@ -903,7 +1013,7 @@ these in the sequence of \cref{fig:rxchain}~\cite{mengali1997}.
   \node[note,below=1.5mm of s2,text width=17mm] {only where a burst can start};
   \node[note,below=1.5mm of s3,text width=17mm] {immune to CFO; $\pm16$\,kHz};
   \node[note,below=1.5mm of s4,text width=17mm] {rejects noise and other codes};
-  \node[note,below=1.5mm of s5,text width=17mm] {$1/64$-sample timing, 30\,ppm};
+  \node[note,below=1.5mm of s5,text width=17mm] {$1/64$-sample timing, 30\,ppm, line fit};
   \node[note,below=1.5mm of s6,text width=17mm] {soft ML, 4096 words};
   \node[note,below=1.5mm of s7,text width=17mm] {to stock soft decoders, LDPC, CRC};
 \end{tikzpicture}
@@ -931,16 +1041,22 @@ receiver produced no detections.
 After CFO removal, a phase and frequency fit over the known preamble symbols provides the phase
 reference. The \emph{fractional-delay despreader} despreads each symbol at a few whole-sample offsets
 and interpolates between them with an 8-tap windowed-sinc filter to $1/64$-sample
-resolution~\cite{gardner1993}. This accuracy matters for 16-QAM: without it, inter-chip interference
-limits the SNR to about \SI{12}{dB}. An early--late delay-locked loop tracks the sample-clock offset
-between the two radios, up to \SI{30}{ppm}.
+resolution~\cite{gardner1993}. This accuracy matters for 16- and 64-QAM: without it, inter-chip
+interference limits the SNR to about \SI{12}{dB}. An early--late delay-locked loop (DLL) tracks the
+sample-clock offset between the two radios, up to \SI{30}{ppm}, block by block (32 symbols). Since the
+clock offset is constant over a burst, a straight line fitted through the loop's estimates (payload
+blocks only, outliers rejected) then gives the timing at which every symbol is despread. The fit
+removes the loop's jitter, which matters most when other codes of the same slot carry symbols too:
+exact orthogonality needs exact timing, and with four codes at once the raw loop jittered by 0.1--0.2
+sample, which left \SI{39.6}{dB} and two of four uncoded 64-QAM bursts decoded; with the fit,
+\SI{41.4}{dB} and all four (\cref{tab:phyres}).
 
 The header is decoded by soft maximum likelihood: the 24 received soft values of each Golay word
 are correlated with all \num{4096} codewords and the best one is chosen. This works down to a symbol
 SNR of about \SI{1}{dB}, so the header never limits a coded frame. Once the header is known, its 48
 symbols become known too, and the carrier frequency is re-estimated over all 96 known symbols. A
 decision-directed second-order loop anchored on these symbols then tracks the carrier through the
-payload without the $90^\circ$ ambiguity of blind QPSK or 16-QAM tracking.
+payload without the $90^\circ$ ambiguity of blind QPSK or QAM tracking.
 
 \subsection{Demodulation and receiver output}
 The despreader outputs unit-energy payload symbols tagged with modulation, rate and length. A PDU
@@ -951,7 +1067,11 @@ bits; on the numpy PHY the equivalent is a max-log demapper,
 \end{equation}
 where $\mathcal{S}_j^{b}$ is the set of points whose $j$th bit equals $b$. \Cref{fig:const} shows
 despread payload symbols produced by the full receiver from bursts with a \SI{3}{kHz} carrier offset and
-an arbitrary phase; panel (c) adds a second user of equal power on another code.
+an arbitrary phase. Panels (a)--(c) show one burst alone. Panels (d) and (e) show one TD-CDMA slot in
+which a station sends uncoded 64-QAM to four destinations at once, at \SI{35}{dB} each: with Walsh codes
+the receiver of code~1 sees \SI{34.0}{dB} and decodes the frame; with Gold codes the three other bursts
+leave \SI{11.6}{dB} and the frame is lost. Panel (f) is the spread-ALOHA case, with Gold codes: a second
+station's burst of equal power on another code, at another code phase.
 
 \begin{figure}[htbp]
 \centering
@@ -959,32 +1079,63 @@ an arbitrary phase; panel (c) adds a second user of equal power on another code.
 \begin{tikzpicture}
 \begin{axis}[wl,width=50mm,height=50mm,axis equal image,xmin=-1.6,xmax=1.6,ymin=-1.6,ymax=1.6,
   xtick={-1,0,1},ytick={-1,0,1},grid=both,minor tick num=0]
-\addplot[only marks,mark=*,mark size=0.55pt,wlblue,opacity=0.55] table[x=i,y=q] {data/const_qpsk.dat};
+\addplot[only marks,mark=*,mark size=0.5pt,wlblue,opacity=0.55] table[x=i,y=q] {data/const_qpsk.dat};
 \end{axis}
 \end{tikzpicture}
-\caption{QPSK, \EsNo\ = 12.3\,dB}
+\caption{QPSK, \EsNo\ = 12.1\,dB}
 \end{subfigure}\hfill
 \begin{subfigure}[b]{0.32\linewidth}\centering
 \begin{tikzpicture}
 \begin{axis}[wl,width=50mm,height=50mm,axis equal image,xmin=-1.4,xmax=1.4,ymin=-1.4,ymax=1.4,
   xtick={-0.95,-0.32,0.32,0.95},ytick={-0.95,-0.32,0.32,0.95},xticklabels={},yticklabels={},grid=both]
-\addplot[only marks,mark=*,mark size=0.55pt,wldeep,opacity=0.55] table[x=i,y=q] {data/const_qam.dat};
+\addplot[only marks,mark=*,mark size=0.5pt,wldeep,opacity=0.55] table[x=i,y=q] {data/const_qam.dat};
 \end{axis}
 \end{tikzpicture}
-\caption{16-QAM, \EsNo\ = 25.0\,dB}
+\caption{16-QAM, \EsNo\ = 24.7\,dB}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.32\linewidth}\centering
+\begin{tikzpicture}
+\begin{axis}[wl,width=50mm,height=50mm,axis equal image,xmin=-1.35,xmax=1.35,ymin=-1.35,ymax=1.35,
+  xtick={-1.080,-0.772,-0.463,-0.154,0.154,0.463,0.772,1.080},ytick={-1.080,-0.772,-0.463,-0.154,0.154,0.463,0.772,1.080},xticklabels={},yticklabels={},grid=both]
+\addplot[only marks,mark=*,mark size=0.5pt,wlnavy,opacity=0.55] table[x=i,y=q] {data/const_q64.dat};
+\end{axis}
+\end{tikzpicture}
+\caption{64-QAM, \EsNo\ = 30.8\,dB}
+\end{subfigure}
+
+\vspace{2mm}
+\begin{subfigure}[b]{0.32\linewidth}\centering
+\begin{tikzpicture}
+\begin{axis}[wl,width=50mm,height=50mm,axis equal image,xmin=-1.35,xmax=1.35,ymin=-1.35,ymax=1.35,
+  xtick={-1.080,-0.772,-0.463,-0.154,0.154,0.463,0.772,1.080},ytick={-1.080,-0.772,-0.463,-0.154,0.154,0.463,0.772,1.080},xticklabels={},yticklabels={},grid=both]
+\addplot[only marks,mark=*,mark size=0.5pt,wlteal,opacity=0.55] table[x=i,y=q] {data/const_slot_walsh.dat};
+\end{axis}
+\end{tikzpicture}
+\caption{64-QAM, slot of 4, Walsh: 34.0\,dB}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.32\linewidth}\centering
+\begin{tikzpicture}
+\begin{axis}[wl,width=50mm,height=50mm,axis equal image,xmin=-1.35,xmax=1.35,ymin=-1.35,ymax=1.35,
+  xtick={-1.080,-0.772,-0.463,-0.154,0.154,0.463,0.772,1.080},ytick={-1.080,-0.772,-0.463,-0.154,0.154,0.463,0.772,1.080},xticklabels={},yticklabels={},grid=both]
+\addplot[only marks,mark=*,mark size=0.5pt,wlcoral,opacity=0.55] table[x=i,y=q] {data/const_slot_gold.dat};
+\end{axis}
+\end{tikzpicture}
+\caption{64-QAM, slot of 4, Gold: 11.6\,dB}
 \end{subfigure}\hfill
 \begin{subfigure}[b]{0.32\linewidth}\centering
 \begin{tikzpicture}
 \begin{axis}[wl,width=50mm,height=50mm,axis equal image,xmin=-1.6,xmax=1.6,ymin=-1.6,ymax=1.6,
   xtick={-0.95,-0.32,0.32,0.95},ytick={-0.95,-0.32,0.32,0.95},xticklabels={},yticklabels={},grid=both]
-\addplot[only marks,mark=*,mark size=0.55pt,wlteal,opacity=0.55] table[x=i,y=q] {data/const_qammui.dat};
+\addplot[only marks,mark=*,mark size=0.5pt,wlviolet,opacity=0.55] table[x=i,y=q] {data/const_qammui.dat};
 \end{axis}
 \end{tikzpicture}
-\caption{16-QAM $\tfrac34$ + 2nd user: 13.6\,dB}
+\caption{16-QAM $\tfrac34$ + 2nd station: 13.3\,dB}
 \end{subfigure}
 \caption{Despread payload constellations from the WaveLink receiver (3\,kHz carrier offset, random
-phase). In (c) an equal-power burst on another code is suppressed by about 15\,dB; the frame still
-decodes at 16-QAM rate $\tfrac34$.}\label{fig:const}
+phase). (d), (e): uncoded 64-QAM bursts for four destinations sent together at 35\,dB each; Walsh codes
+keep them apart, Gold codes do not (the frame in (e) is lost). (f): spread ALOHA, an equal-power burst on
+another code at another code phase is suppressed by about 15\,dB, and the frame still decodes at 16-QAM
+rate $\tfrac34$.}\label{fig:const}
 \end{figure}
 
 \section{Forward error correction}\label{sec:ldpc}
@@ -1005,7 +1156,7 @@ the column sums of the information part, and every extension parity block is a s
 fillers are skipped and the first $E=\lceil K/R\rceil$ bits (rounded up to whole symbols) are sent.
 Every rate is a prefix of the same mother codeword, so one matrix serves all four rates and the
 decoder simply uses fewer rows at higher rates. Finally the 5G bit interleaver spreads each codeword
-across the bit positions of the QPSK or 16-QAM symbols.
+across the bit positions of the QPSK, 16-QAM or 64-QAM symbols.
 
 \subsection{Layered normalised min-sum decoding}
 The decoder processes the rows of the parity-check matrix layer by layer~\cite{hocevar2004}. For check
@@ -1038,15 +1189,21 @@ decoder needs no noise estimate. A \SI{1}{KB} frame decodes in 3--\SI{7}{ms} at 
 \Cref{fig:fer} shows the frame error rate of 1\,KB frames over an AWGN channel for every coded rung,
 simulated with the project's own encoder, max-log demapper and decoder (up to 300 frames per point).
 The waterfalls are steep, as expected for 8-kbit codewords: each code goes from almost always failing
-to error-free within about \SI{0.3}{dB}. Uncoded 16-QAM is shown both simulated and from the exact
-Gray-mapped bit-error probability, $P_\text{fr}=1-(1-P_b)^{8192}$; the two agree to within \SI{0.1}{dB}.
+to error-free within about \SI{0.3}{dB}. Uncoded 16-QAM and 64-QAM are shown both simulated and from
+the exact symbol-error probability of Gray-mapped square $M$-QAM,
+\begin{equation}
+  P_\text{fr}=1-\left(1-P_s\right)^{8192/\log_2 M},\qquad
+  P_s=1-\left[1-2\left(1-\tfrac{1}{\sqrt M}\right)Q\!\left(\sqrt{\tfrac{3}{M-1}\tfrac{E_s}{N_0}}\right)\right]^2 ;
+\end{equation}
+the two agree to within \SI{0.1}{dB}. At a frame error rate of 10\,\%, LDPC rate $\tfrac56$ gains
+\SI{7.9}{dB} over uncoded 16-QAM and \SI{8.5}{dB} over uncoded 64-QAM.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
-\begin{semilogyaxis}[wl,width=0.95\linewidth,height=68mm,xmin=0,xmax=23,ymin=2e-3,ymax=1.5,
+\begin{semilogyaxis}[wl,width=0.97\linewidth,height=74mm,xmin=0,xmax=28.5,ymin=2e-3,ymax=1.5,
   xlabel={\EsNo\ (dB)},ylabel={Frame error rate},cycle list name=mcs,unbounded coords=jump,
-  legend style={at={(0.5,1.02)},anchor=south,legend columns=4},xtick={0,2,...,22}]
+  legend style={at={(0.5,1.02)},anchor=south,legend columns=5},xtick={0,2,...,28}]
 \addplot table[x=esn0,y=ferplot] {data/fer_qpsk12_all.dat}; \addlegendentry{QPSK $\tfrac12$}
 \addplot table[x=esn0,y=ferplot] {data/fer_qpsk34_all.dat}; \addlegendentry{QPSK $\tfrac34$}
 \addplot table[x=esn0,y=ferplot] {data/fer_qpsk56_all.dat}; \addlegendentry{QPSK $\tfrac56$}
@@ -1055,13 +1212,20 @@ Gray-mapped bit-error probability, $P_\text{fr}=1-(1-P_b)^{8192}$; the two agree
 \addplot table[x=esn0,y=ferplot] {data/fer_qam34_all.dat}; \addlegendentry{16-QAM $\tfrac34$}
 \addplot table[x=esn0,y=ferplot] {data/fer_qam56_all.dat}; \addlegendentry{16-QAM $\tfrac56$}
 \addplot table[x=esn0,y=ferplot] {data/fer_qamunc_all.dat}; \addlegendentry{16-QAM uncoded}
-\addplot[wlviolet,dashed,line width=0.8pt,mark=none,forget plot] table[x=esn0,y=fer] {data/fer_qamunc_theory.dat};
-\node[font=\sffamily\scriptsize,text=wlviolet,anchor=west] at (axis cs:20.6,0.3) {theory};
-\draw[<->,wlgrey,line width=0.6pt] (axis cs:11.45,0.012) -- node[below,font=\sffamily\scriptsize,text=wlgrey]{16-QAM $\tfrac56$ vs uncoded: 7.9\,dB} (axis cs:19.3,0.012);
+\addplot table[x=esn0,y=ferplot] {data/fer_q64_12_all.dat}; \addlegendentry{64-QAM $\tfrac12$}
+\addplot table[x=esn0,y=ferplot] {data/fer_q64_23_all.dat}; \addlegendentry{64-QAM $\tfrac23$}
+\addplot table[x=esn0,y=ferplot] {data/fer_q64_34_all.dat}; \addlegendentry{64-QAM $\tfrac34$}
+\addplot table[x=esn0,y=ferplot] {data/fer_q64_56_all.dat}; \addlegendentry{64-QAM $\tfrac56$}
+\addplot table[x=esn0,y=ferplot] {data/fer_q64unc_all.dat}; \addlegendentry{64-QAM uncoded}
+\addplot[wlviolet,dotted,line width=1pt,mark=none,forget plot] table[x=esn0,y=fer] {data/fer_qamunc_theory.dat};
+\addplot[black!65,dotted,line width=1pt,mark=none,forget plot] table[x=esn0,y=fer] {data/fer_q64unc_theory.dat};
+\node[font=\sffamily\scriptsize,text=wlgrey,anchor=west] at (axis cs:20.3,0.35) {theory};
+\node[font=\sffamily\scriptsize,text=wlgrey,anchor=west] at (axis cs:26.4,0.35) {theory};
 \end{semilogyaxis}
 \end{tikzpicture}
 \caption{Frame error rate of 1\,KB frames on AWGN with ideal synchronisation, simulated with the
-project's LDPC code. Points with no errors in 300 frames are not drawn.}\label{fig:fer}
+project's LDPC code (64-QAM dashed, theory dotted). Points with no errors in 300 frames are not
+drawn.}\label{fig:fer}
 \end{figure}
 
 The LDPC decoder's effort falls quickly above the threshold (\cref{fig:iters}). Near the waterfall it
@@ -1071,8 +1235,8 @@ count per frame as a live indicator of how close a link is to its limit.
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
-\begin{axis}[wl,width=0.9\linewidth,height=52mm,xmin=-1,xmax=14,ymin=0,ymax=21,
-  xlabel={\EsNo\ (dB)},ylabel={Mean LDPC iterations},cycle list name=mcs,
+\begin{axis}[wl,width=0.92\linewidth,height=56mm,xmin=-1,xmax=18.5,ymin=0,ymax=21,
+  xlabel={\EsNo\ (dB)},ylabel={Mean LDPC iterations},cycle list name=mcsiter,
   legend style={at={(0.5,1.03)},anchor=south,legend columns=4}]
 \addplot table[x=esn0,y=iters] {data/fer_qpsk12_all.dat}; \addlegendentry{QPSK $\tfrac12$}
 \addplot table[x=esn0,y=iters] {data/fer_qpsk34_all.dat}; \addlegendentry{QPSK $\tfrac34$}
@@ -1081,6 +1245,10 @@ count per frame as a live indicator of how close a link is to its limit.
 \addplot table[x=esn0,y=iters] {data/fer_qam23_all.dat}; \addlegendentry{16-QAM $\tfrac23$}
 \addplot table[x=esn0,y=iters] {data/fer_qam34_all.dat}; \addlegendentry{16-QAM $\tfrac34$}
 \addplot table[x=esn0,y=iters] {data/fer_qam56_all.dat}; \addlegendentry{16-QAM $\tfrac56$}
+\addplot table[x=esn0,y=iters] {data/fer_q64_12_all.dat}; \addlegendentry{64-QAM $\tfrac12$}
+\addplot table[x=esn0,y=iters] {data/fer_q64_23_all.dat}; \addlegendentry{64-QAM $\tfrac23$}
+\addplot table[x=esn0,y=iters] {data/fer_q64_34_all.dat}; \addlegendentry{64-QAM $\tfrac34$}
+\addplot table[x=esn0,y=iters] {data/fer_q64_56_all.dat}; \addlegendentry{64-QAM $\tfrac56$}
 \end{axis}
 \end{tikzpicture}
 \caption{Mean number of layered min-sum iterations per frame (maximum 20), from the same simulation.}
@@ -1088,62 +1256,82 @@ count per frame as a live indicator of how close a link is to its limit.
 \end{figure}
 
 \section{The modulation and coding ladder}\label{sec:ladder}
-The link layer chooses among eight \emph{rungs} (\cref{tab:mcs}). Each rung's threshold is the despread
+The link layer chooses among the \emph{rungs} of \cref{tab:mcs}. Each rung's threshold is the despread
 symbol SNR at which the \emph{full receiver}, including detection, synchronisation and carrier
 tracking, delivers practically all 1\,KB frames, plus a margin of 0.5--\SI{1.5}{dB}. QPSK $\tfrac12$ is the
 floor: it is also used for acknowledgements, beacons and broadcasts, and its low end is set by burst
 detection (about \SI{4}{dB}) rather than by the code. BPSK remains available for the mid-evaluation
 tools and as a forced mode.
 
+The ladder depends on the medium access. Under TD-CDMA it has eleven rungs and climbs to uncoded
+64-QAM: 64-QAM $\tfrac23$ carries the four bits per symbol of uncoded 16-QAM at \SI{6}{dB} less SNR and
+takes its place, while 64-QAM $\tfrac12$, which carries no more than 16-QAM $\tfrac34$ but needs more SNR,
+is skipped. Spread ALOHA keeps its eight rungs up to uncoded 16-QAM. There, every link's power is
+interference for the others, and 64-QAM would raise every station's power-control target by \SI{5}{dB}
+(\cref{sec:power}) for a rate that rarely survives while other stations are on the air;
+\code{-{}-mod 64qam} still allows it.
+
 \begin{table}[htbp]
 \centering\small
-\caption{The modulation and coding ladder. Rates are payload information rates on the air.}\label{tab:mcs}
-\setlength{\tabcolsep}{4.5pt}
-\begin{tabular}{@{}lccccc@{}}
+\caption{The modulation and coding ladder. Rates are payload information rates on the air with Walsh
+codes (Gold codes: 3\,\% more). T: on the TD-CDMA ladder; A: on the spread-ALOHA ladder.}\label{tab:mcs}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccccc@{}}
 \toprule
-\textbf{Rung} & \textbf{Bits/symbol} & \textbf{Rate (kb/s)} & \textbf{AWGN, FER 10\,\%} & \textbf{Full receiver} & \textbf{Threshold}\\
+\textbf{Rung} & \textbf{Bits/symbol} & \textbf{Rate (kb/s)} & \textbf{AWGN, FER 10\,\%} & \textbf{Full receiver} & \textbf{Threshold} & \textbf{Ladder}\\
 \midrule
-QPSK $\tfrac12$ & 1.00 & 64.5 & \SI{1.1}{dB} & \SI{5.0}{dB}$^\dagger$ & floor\\
-QPSK $\tfrac34$ & 1.50 & 96.8 & \SI{4.1}{dB} & \SI{5.5}{dB} & \SI{6.0}{dB}\\
-QPSK $\tfrac56$ & 1.67 & 107.5 & \SI{5.2}{dB} & \SI{6.0}{dB} & \SI{7.0}{dB}\\
-16-QAM $\tfrac12$ & 2.00 & 129.0 & \SI{6.7}{dB} & \SI{9.0}{dB} & \SI{9.5}{dB}\\
-16-QAM $\tfrac23$ & 2.67 & 172.0 & \SI{8.9}{dB} & \SI{10.0}{dB} & \SI{11.0}{dB}\\
-16-QAM $\tfrac34$ & 3.00 & 193.5 & \SI{10.1}{dB} & \SI{11.0}{dB} & \SI{12.5}{dB}\\
-16-QAM $\tfrac56$ & 3.33 & 215.1 & \SI{11.4}{dB} & \SI{12.5}{dB} & \SI{14.0}{dB}\\
-16-QAM uncoded & 4.00 & 258.1 & \SI{19.3}{dB} & 20--\SI{22}{dB} & \SI{22.5}{dB}\\
+QPSK $\tfrac12$ & 1.00 & 62.5 & \SI{1.1}{dB} & \SI{5.0}{dB}$^\dagger$ & floor & T\,A\\
+QPSK $\tfrac34$ & 1.50 & 93.8 & \SI{4.1}{dB} & \SI{5.5}{dB} & \SI{6.0}{dB} & T\,A\\
+QPSK $\tfrac56$ & 1.67 & 104.2 & \SI{5.2}{dB} & \SI{6.0}{dB} & \SI{7.0}{dB} & T\,A\\
+16-QAM $\tfrac12$ & 2.00 & 125.0 & \SI{6.7}{dB} & \SI{9.0}{dB} & \SI{9.5}{dB} & T\,A\\
+16-QAM $\tfrac23$ & 2.67 & 166.7 & \SI{8.9}{dB} & \SI{10.0}{dB} & \SI{11.0}{dB} & T\,A\\
+16-QAM $\tfrac34$ & 3.00 & 187.5 & \SI{10.1}{dB} & \SI{11.0}{dB} & \SI{12.5}{dB} & T\,A\\
+16-QAM $\tfrac56$ & 3.33 & 208.3 & \SI{11.4}{dB} & \SI{12.5}{dB} & \SI{14.0}{dB} & T\,A\\
+16-QAM uncoded & 4.00 & 250.0 & \SI{19.3}{dB} & 20--\SI{22}{dB} & \SI{22.5}{dB} & A\\
+64-QAM $\tfrac12$ & 3.00 & 187.5 & \SI{11.3}{dB} & \SI{13.0}{dB}$^\ddagger$ & \SI{14.0}{dB} & --\\
+64-QAM $\tfrac23$ & 4.00 & 250.0 & \SI{13.9}{dB} & \SI{15.0}{dB}$^\ddagger$ & \SI{16.5}{dB} & T\\
+64-QAM $\tfrac34$ & 4.50 & 281.3 & \SI{15.3}{dB} & \SI{17.0}{dB}$^\ddagger$ & \SI{17.5}{dB} & T\\
+64-QAM $\tfrac56$ & 5.00 & 312.5 & \SI{16.9}{dB} & \SI{18.0}{dB}$^\ddagger$ & \SI{19.0}{dB} & T\\
+64-QAM uncoded & 6.00 & 375.0 & \SI{25.4}{dB} & \SI{26.0}{dB}$^\ddagger$ & \SI{27.5}{dB} & T\\
 \bottomrule
-\multicolumn{6}{@{}l}{\footnotesize $^\dagger$ detection-limited: the code alone would decode at about 1.5\,dB.}
+\multicolumn{7}{@{}l}{\footnotesize $^\dagger$ detection-limited: the code alone would decode at about 1.5\,dB.}\\
+\multicolumn{7}{@{}l}{\footnotesize $^\ddagger$ 95--100\,\% of frames (12\,kHz carrier, 20\,ppm clock offset); all of them from 1\,dB more.}
 \end{tabular}
 \end{table}
 
 \Cref{fig:se} places the ladder against the Shannon capacity $\log_2(1+\EsNo)$. On an ideal AWGN channel
-our LDPC rungs operate 1.1--\SI{1.9}{dB} from capacity at a 10\,\% frame error rate. The full
-receiver, measured for practically error-free delivery rather than 10\,\% FER, needs another
-0.8--\SI{2.3}{dB} for synchronisation and channel estimation (about \SI{4}{dB} for QPSK $\tfrac12$, where
-burst detection sets the limit), and the thresholds add a safety margin. Uncoded 16-QAM sits \SI{7.6}{dB} from capacity,
-which is the room the code exploits.
+our LDPC rungs operate 1.1--\SI{2.1}{dB} from capacity at a 10\,\% frame error rate (64-QAM $\tfrac12$,
+which the automatic ladder skips, \SI{2.8}{dB}). The full receiver, measured for practically error-free
+delivery rather than 10\,\% FER, needs another 0.6--\SI{2.3}{dB} for synchronisation and channel
+estimation (about \SI{4}{dB} for QPSK $\tfrac12$, where burst detection sets the limit), and the
+thresholds add a safety margin. Uncoded 16-QAM and 64-QAM sit \SI{7.6}{dB} and \SI{7.4}{dB} from
+capacity, which is the room the code exploits.
 
-\begin{figure}[htbp]
+\begin{figure}[tp]
 \centering
 \begin{tikzpicture}
-\begin{axis}[wl,width=0.92\linewidth,height=66mm,xmin=-2,xmax=24,ymin=0,ymax=4.6,
+\begin{axis}[wl,width=0.94\linewidth,height=60mm,xmin=-2,xmax=30,ymin=0,ymax=6.8,
   xlabel={\EsNo\ (dB)},ylabel={Information bits per symbol},
   legend style={at={(0.02,0.98)},anchor=north west}]
-\addplot[black!70,line width=1.1pt,domain=-2:24,samples=120] {ln(1+10^(x/10))/ln(2)};
+\addplot[black!70,line width=1.1pt,domain=-2:30,samples=140] {ln(1+10^(x/10))/ln(2)};
 \addlegendentry{Shannon capacity $\log_2(1+E_s/N_0)$}
 \addplot[only marks,mark=*,mark size=2pt,wlblue] table[x=awgn,y=bits] {data/se.dat};
 \addlegendentry{our code, AWGN (FER 10\,\%)}
 \addplot[only marks,mark=square*,mark size=1.9pt,wlteal] table[x=fullrx,y=bits] {data/se.dat};
 \addlegendentry{full receiver}
-\addplot[const plot,wlcoral,line width=1.1pt] coordinates {(5,1)(6,1.5)(7,1.6667)(9.5,2)(11,2.6667)(12.5,3)(14,3.3333)(22.5,4)(24,4)};
-\addlegendentry{ladder used by the link layer}
-\node[font=\sffamily\scriptsize,anchor=south,text=wlgrey] at (axis cs:20.2,4.08) {uncoded 16-QAM};
-\node[font=\sffamily\scriptsize,anchor=west,text=wlgrey] at (axis cs:14.4,3.12) {16-QAM $\tfrac56$};
+\addplot[const plot,wlcoral,line width=1.1pt] coordinates {(5,1)(6,1.5)(7,1.6667)(9.5,2)(11,2.6667)(12.5,3)(14,3.3333)(16.5,4)(17.5,4.5)(19,5)(27.5,6)(30,6)};
+\addlegendentry{ladder, TD-CDMA}
+\addplot[const plot,wlcoral,densely dashed,line width=0.9pt] coordinates {(14,3.3333)(22.5,4)(30,4)};
+\addlegendentry{ladder, spread ALOHA}
+\node[font=\sffamily\scriptsize,anchor=south,text=wlgrey] at (axis cs:22.8,4.08) {uncoded 16-QAM};
+\node[font=\sffamily\scriptsize,anchor=south,text=wlgrey] at (axis cs:27.0,6.08) {uncoded 64-QAM};
+\node[font=\sffamily\scriptsize,anchor=west,text=wlgrey] at (axis cs:19.4,4.9) {64-QAM $\tfrac56$};
+\node[font=\sffamily\scriptsize,anchor=north west,text=wlgrey] at (axis cs:14.2,3.25) {16-QAM $\tfrac56$};
 \node[font=\sffamily\scriptsize,anchor=west,text=wlgrey] at (axis cs:1.6,0.85) {QPSK $\tfrac12$};
 \end{axis}
 \end{tikzpicture}
 \caption{Spectral efficiency of the WaveLink rungs against Shannon capacity: ideal decoding of our
-LDPC code, the full receiver, and the thresholds the link layer uses.}\label{fig:se}
+LDPC code, the full receiver, and the thresholds of the two ladders the link layer uses.}\label{fig:se}
 \end{figure}
 %% =====================================================================
 \chapter{Link Layer Design}\label{ch:mac}
@@ -1199,7 +1387,7 @@ Every frame states its own transmit power backoff in bits 3--7 of the flags byte
 compute the path gain at full power from any frame (\cref{sec:power}).
 
 \section{Addressing}\label{sec:addr}
-Addressing is enforced twice. In the physical layer a frame for station $N$ is spread with Gold code
+Addressing is enforced twice. In the physical layer a frame for station $N$ is spread with code
 $N$; station $N$ despreads only code $N$ and the broadcast code~0, so it never spends CPU on traffic
 for others. In the link layer every frame carries a destination byte: frames whose destination is
 neither the station itself nor the broadcast address \code{0xFF} are dropped and never
@@ -1272,7 +1460,7 @@ quality of each link. The rung for each frame is chosen by the following rules.
 \begin{enumerate}[leftmargin=*,label=\arabic*.]
   \item Take the latest \EsNo\ report for the destination, corrected for the power the sender will
         use (\cref{sec:power}).
-  \item Choose the fastest rung of \cref{tab:mcs} whose threshold the report meets.
+  \item Choose the fastest rung of the ladder in use (\cref{tab:mcs}) whose threshold the report meets.
   \item If recent windows (every 8 acknowledged frames under TD-CDMA) lost more than 20\,\% of their
         frames, step down one rung for \SI{10}{s}.
   \item For a message of one or two fragments, go two rungs lower (a lost frame costs a whole round
@@ -1284,7 +1472,9 @@ quality of each link. The rung for each frame is chosen by the following rules.
 
 Interference counts as noise in the reports. Under spread ALOHA, a second equal-power link on the
 channel reduces the measured SNR to about 12--\SI{15}{dB}, and the link moves from uncoded 16-QAM to
-16-QAM $\tfrac34$ or $\tfrac23$ rather than collapsing to QPSK.
+16-QAM $\tfrac34$ or $\tfrac23$ rather than collapsing to QPSK. Under TD-CDMA nothing else is on the
+air during a slot, and with Walsh codes the other bursts of the slot leave nothing behind, so a link
+keeps the rung its path allows: uncoded 64-QAM from \SI{27.5}{dB}.
 
 \section{Priority handling}\label{sec:prio}
 Each message belongs to one of four priority classes: \emph{control} (protocol and game-center
@@ -1300,7 +1490,7 @@ Alice talks at full power to Carol beside her, her signal swamps Bob's weak sign
 room at Dave, also beside her. Despreading leaves an interferer at its chip-level SNR, so every
 decibel that Alice arrives above what Carol needs is a decibel of extra noise for Dave. TD-CDMA
 removes the problem by construction, but power control is still useful there: it sets each slot's
-level to what its weakest listener needs, so a station next to us arrives at about \SI{25}{dB}
+level to what its weakest listener needs, so a station next to us arrives at about \SI{30}{dB}
 instead of 40--\SI{50}{dB} and overdrives no receiver.
 
 \begin{figure}[htbp]
@@ -1308,7 +1498,7 @@ instead of 40--\SI{50}{dB} and overdrives no receiver.
 \begin{tikzpicture}[pc/.style={blk,minimum width=42mm,text width=40mm,minimum height=13mm,font=\sffamily\scriptsize}]
   \node[pc] (a) at (0,0) {\textbf{1. Every frame states its backoff}\\flags bits 3--7: 0--31\,dB};
   \node[pc] (b) at (62mm,0) {\textbf{2. Receiver reports \EsNo\ at full power}\\measured \EsNo\ + backoff, in ACKs and link tables};
-  \node[pc,fill=wldeep,text=white] (c) at (62mm,-26mm) {\textbf{3. Sender backs off to 25.5\,dB}\\22.5\,dB for uncoded 16-QAM + 3\,dB};
+  \node[pc,fill=wldeep,text=white] (c) at (62mm,-26mm) {\textbf{3. Sender backs off to the target}\\top rung + 3\,dB: 30.5\,dB (TD-CDMA), 25.5\,dB (ALOHA)};
   \node[pc] (d) at (0,-26mm) {\textbf{4. Rate chosen for that power}\\power $\leftarrow$ best report, rate $\leftarrow$ latest};
   \draw[flow] (a) -- (b); \draw[flow] (b) -- (c); \draw[flow] (c) -- (d); \draw[flow] (d) -- (a);
   \node[circle,draw=wlblue,fill=wllight,font=\sffamily\scriptsize\bfseries,text=wldeep,minimum size=14mm,align=center] at (31mm,-13mm) {closed\\[-2pt]loop};
@@ -1317,7 +1507,9 @@ instead of 40--\SI{50}{dB} and overdrives no receiver.
 \end{figure}
 
 \Cref{fig:pcloop} shows the loop. Let $\hat\gamma_\text{full}$ be the receiver's \EsNo\ at full power and
-$\Gamma=\SI{25.5}{dB}$ the target. The backoff is
+$\Gamma$ the target: the threshold of the fastest rung on the ladder plus \SI{3}{dB}, that is
+\SI{30.5}{dB} under TD-CDMA (uncoded 64-QAM, \SI{27.5}{dB}) and \SI{25.5}{dB} under spread ALOHA
+(uncoded 16-QAM, \SI{22.5}{dB}). The backoff is
 \begin{equation}
   \beta=\min\!\left(30\,\mathrm{dB},\ \max\!\left(0,\ \hat\gamma_\text{full}-\Gamma-\delta_\text{outer}\right)\right),
 \end{equation}
@@ -1327,80 +1519,83 @@ down only in steps of at least \SI{2}{dB}. Crucially, the reports are SINR value
 someone else is on the air. Power therefore follows the \emph{best} recent report (which tracks the
 path), while the rate follows the \emph{latest} one (which includes interference). A burst of
 interference then lowers the rate rather than raising the power, which would only start a power race
-between stations. The target of \SI{25.5}{dB} removes only power that the link cannot use: a lower
-target such as \SI{17}{dB} protects weak neighbours more, but forces every strong link onto slower
-coded rungs, which costs airtime and receiver CPU at every station.
+between stations. The target removes only power that the link cannot use: a strong link keeps its
+fastest rung. A lower target such as \SI{17}{dB} protects weak neighbours more, but forces every strong
+link onto slower coded rungs, which costs airtime and receiver CPU at every station.
 
 %% =====================================================================
 \chapter{TD-CDMA Medium Access and Relaying}\label{ch:tdcdma}
 %% =====================================================================
 TD-CDMA (\code{tdma.py}) organises the stations into a repeating \emph{cycle} of time slots. In its
 own slot a station is the only transmitter on the air, and it uses code division to reach every other
-station at once. This chapter describes the cycle, how stations agree on it without a central
-controller, how slots are timed to the radio sample, and how messages reach stations that cannot
-hear each other.
+station at once. Its bursts start on the same chip and stay on one symbol grid, so with the default
+Walsh codes they are exactly orthogonal and do not disturb one another (\cref{sec:walsh}). This chapter
+describes the cycle, how stations agree on it without a central controller, how slots are timed to
+the radio sample, and how messages reach stations that cannot hear each other.
 
 \section{The cycle}\label{sec:cycle}
 \Cref{fig:cycle} is drawn to scale for a busy cycle with four stations in which Alice sends a photo to
 Bob and a voice note to Carol at the same time. Every slot begins with its owner's \emph{slot header}
-on the broadcast code at QPSK $\tfrac12$ (4.6--\SI{9.6}{ms}). From the same chip, the owner's frames for
+on the broadcast code at QPSK $\tfrac12$ (4.7--\SI{9.9}{ms}). From the same chip, the owner's frames for
 each destination start on that destination's code. A slot with queued data grows to a whole number
-of frames close to \SI{100}{ms} (at most \SI{250}{ms}); an idle slot is \SI{15}{ms}; the \emph{join slot}
-at the end of the cycle (\SI{11.5}{ms}) is where newcomers announce themselves. A guard of \SI{0.5}{ms}
-separates slots; the plan is counted in ticks of \SI{0.25}{ms}.
+of frames close to \SI{100}{ms} (at most \SI{250}{ms}): four frames of uncoded 64-QAM, \SI{23.4}{ms}
+each, in \cref{fig:cycle}. An idle slot is \SI{15}{ms}; the \emph{join slot} at the end of the cycle
+(\SI{11.75}{ms}) is where newcomers announce themselves. A guard of \SI{0.5}{ms} separates slots; the
+plan is counted in ticks of \SI{0.25}{ms}.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[x=0.86mm,y=1mm]
-  % slots: Alice 103 ms, Bob 15, Carol 15, Dave 15, join 11.5  (scale 1 ms = 0.86 mm)
-  \fill[wlblue!10] (0,0) rectangle (103,30);   \draw[wlblue] (0,0) rectangle (103,30);
-  \fill[wlsky!12] (103.5,0) rectangle (118,30); \draw[wlsky] (103.5,0) rectangle (118,30);
-  \fill[wlsky!12] (118.5,0) rectangle (133,30); \draw[wlsky] (118.5,0) rectangle (133,30);
-  \fill[wlsky!12] (133.5,0) rectangle (148,30); \draw[wlsky] (133.5,0) rectangle (148,30);
-  \fill[wlsteel!15] (148.5,0) rectangle (160,30); \draw[wlsteel] (148.5,0) rectangle (160,30);
-  \node[lbl,anchor=south west] at (0,30.5) {Alice (lead): data slot $\approx$103\,ms};
-  \foreach \x/\n in {110.75/Bob,125.75/Carol,140.75/Dave}{\node[lbl,anchor=south] at (\x,30.5) {\n};}
-  \node[lbl,anchor=south,text=wlgrey] at (154.25,30.5) {join};
+  % slots as measured: Alice 97 ms, Bob 15, Carol 15, Dave 15, join 11.75 (scale 1 ms = 0.86 mm)
+  \fill[wlblue!10] (0,0) rectangle (96.5,30);   \draw[wlblue] (0,0) rectangle (96.5,30);
+  \fill[wlsky!12] (97,0) rectangle (111.5,30); \draw[wlsky] (97,0) rectangle (111.5,30);
+  \fill[wlsky!12] (112,0) rectangle (126.5,30); \draw[wlsky] (112,0) rectangle (126.5,30);
+  \fill[wlsky!12] (127,0) rectangle (141.5,30); \draw[wlsky] (127,0) rectangle (141.5,30);
+  \fill[wlsteel!15] (142,0) rectangle (153.75,30); \draw[wlsteel] (142,0) rectangle (153.75,30);
+  \node[lbl,anchor=south west] at (0,30.5) {Alice (lead): data slot 97\,ms};
+  \foreach \x/\n in {104.25/Bob,119.25/Carol,134.25/Dave}{\node[lbl,anchor=south] at (\x,30.5) {\n};}
+  \node[lbl,anchor=south,text=wlgrey] at (147.9,30.5) {join};
   % Alice's lanes
   \node[draw=wlteal,fill=wlteal!60,font=\sffamily\tiny\bfseries,text=white,minimum height=5mm,minimum width=6.9mm,inner sep=0,anchor=south west] at (1,23.5) {H};
-  \node[font=\sffamily\tiny,anchor=west,text=wlgrey] at (10,26) {code 0: slot header (plan, ACK records, link table), then race state, beacon, group data};
-  \foreach \i in {0,1,2}{
-    \node[draw=wldeep,fill=wlblue,font=\sffamily\tiny\bfseries,text=white,minimum height=7mm,minimum width=28.4mm,inner sep=0,anchor=south west] at (1+\i*33.4,13) {$\to$ Bob \#\the\numexpr\i+1\relax};
-    \node[draw=wlteal!70!black,fill=wlteal,font=\sffamily\tiny\bfseries,text=white,minimum height=7mm,minimum width=28.4mm,inner sep=0,anchor=south west] at (1+\i*33.4,3) {$\to$ Carol \#\the\numexpr\i+1\relax};
+  \node[font=\sffamily\tiny,anchor=west,text=wlgrey] at (10,26) {code 0: slot header (plan, ACK records, links), then race state, beacon, group data};
+  \foreach \i in {0,1,2,3}{
+    \node[draw=wldeep,fill=wlblue,font=\sffamily\tiny\bfseries,text=white,minimum height=7mm,minimum width=19.6mm,inner sep=0,anchor=south west] at (1+\i*23.4,13) {$\to$ Bob \#\the\numexpr\i+1\relax};
+    \node[draw=wlteal!70!black,fill=wlteal,font=\sffamily\tiny\bfseries,text=white,minimum height=7mm,minimum width=19.6mm,inner sep=0,anchor=south west] at (1+\i*23.4,3) {$\to$ Carol \#\the\numexpr\i+1\relax};
   }
-  \node[font=\sffamily\tiny,text=wlblue,anchor=west] at (101.5,16.5) {};
   % idle slots
-  \foreach \x/\t in {104.5/ACKs,119.5/idle,134.5/idle}{
+  \foreach \x/\t in {98/ACKs,113/idle,128/idle}{
     \node[draw=wlteal,fill=wlteal!60,font=\sffamily\tiny\bfseries,text=white,minimum height=5mm,minimum width=5.4mm,inner sep=0,anchor=south west] at (\x,23.5) {H};
-    \node[font=\sffamily\tiny,text=wlgrey] at (\x+6.75,15) {\t};
+    \node[font=\sffamily\tiny,text=wlgrey] at (\x+6.25,15) {\t};
   }
   % code labels
   \node[font=\sffamily\tiny,text=wldeep,anchor=east] at (-1,16.5) {code 2};
   \node[font=\sffamily\tiny,text=wlteal,anchor=east] at (-1,6.5) {code 3};
   \node[font=\sffamily\tiny,text=wlteal,anchor=east] at (-1,26) {code 0};
   % axis
-  \draw[->,wlgrey,line width=0.6pt] (0,-3) -- (163,-3) node[right,note]{$t$};
+  \draw[->,wlgrey,line width=0.6pt] (0,-3) -- (158,-3) node[right,note]{$t$};
   \foreach \x/\l in {0/0,50/50,100/100,150/150}{\draw[wlgrey] (\x,-2.2) -- (\x,-3.8) node[below,note]{\l\,ms};}
 \end{tikzpicture}
-\caption{One TD-CDMA cycle drawn to scale: Alice's data slot carries frames for Bob (code~2) and Carol
-(code~3) simultaneously, followed by the idle slots of Bob, Carol and Dave and the join slot.}
+\caption{One TD-CDMA cycle drawn to scale (slot plan from the simulator): Alice's data slot carries four
+frames of uncoded 64-QAM each for Bob (code~2) and Carol (code~3), simultaneously and on orthogonal
+codes, followed by the idle slots of Bob, Carol and Dave and the join slot.}
 \label{fig:cycle}
 \end{figure}
 
 The cycle length adapts to demand (\cref{fig:cyclelen}). With every station idle it is about
 \SI{100}{ms}: the spare time is spread over the slots, which keeps the header rate at ten per station
 per second and leaves room in an idle slot for a beacon or a short message without changing the plan.
-With every station sending, it grows to 213.5, 333.5 and \SI{415.5}{ms} for two, three and four
-stations. A cycle longer than \SI{700}{ms} has its data slots shortened in proportion.
+With every station sending, it grows to 241.75, 356.75 and \SI{471.75}{ms} for two, three and four
+stations; in that run, with links of 22--\SI{28}{dB}, every data slot held four frames of 64-QAM
+$\tfrac56$ (\SI{115}{ms}). A cycle longer than \SI{700}{ms} has its data slots shortened in proportion.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
-\begin{axis}[wlbar,width=0.8\linewidth,height=52mm,ymin=0,ymax=480,bar width=14pt,
+\begin{axis}[wlbar,width=0.8\linewidth,height=52mm,ymin=0,ymax=540,bar width=14pt,
   symbolic x coords={2 stations,3 stations,4 stations},xtick=data,ylabel={Cycle length (ms)},
   legend style={at={(0.5,1.03)},anchor=south,legend columns=2},enlarge x limits=0.25]
-\addplot[fill=wlsky,draw=wlsky!70!black] coordinates {(2 stations,100)(3 stations,100)(4 stations,99.5)};
-\addplot[fill=wldeep,draw=wldeep] coordinates {(2 stations,213.5)(3 stations,333.5)(4 stations,415.5)};
+\addplot[fill=wlsky,draw=wlsky!70!black] coordinates {(2 stations,99.75)(3 stations,99.5)(4 stations,99.75)};
+\addplot[fill=wldeep,draw=wldeep] coordinates {(2 stations,241.75)(3 stations,356.75)(4 stations,471.75)};
 \legend{all idle,all sending}
 \end{axis}
 \end{tikzpicture}
@@ -1528,9 +1723,11 @@ The application shrinks the content first (zlib for text and compressible files,
 for voice notes), wraps it in one envelope (paying the metadata and the 28 bytes of AES-GCM once),
 and the link layer cuts it into fragments, each a DATA frame with 14 bytes of overhead and its own
 burst with 96 symbols of preamble and header. A short message fits into the sender's next slot: a text
-from Alice reaches Bob in about \SI{75}{ms}. A large transfer asks for a data slot of whole frames close
-to \SI{100}{ms}, granted about \SI{1.4}{s} later (plan changes are announced \SI{1}{s} ahead), after which
-three full frames go out per cycle: \SI{187}{kb/s} with two stations and \SI{152}{kb/s} with four.
+from Alice reaches Bob in about \SI{0.1}{s}. A large transfer asks for a data slot of whole frames close
+to \SI{100}{ms}, granted about \SI{1.4}{s} later (plan changes are announced \SI{1}{s} ahead); with two
+stations its first frames go out meanwhile in the sender's idle slot, which at \SI{44}{ms} has room for
+one 64-QAM frame beside the header. Then four frames of uncoded 64-QAM go out per cycle:
+\SI{261}{kb/s} with two stations and \SI{211}{kb/s} with four.
 
 \begin{figure}[htbp]
 \centering
@@ -1544,35 +1741,35 @@ three full frames go out per cycle: \SI{187}{kb/s} with two stations and \SI{152
 \caption{The packetization pipeline shared by every message.}\label{fig:pipeline}
 \end{figure}
 
-\Cref{fig:delivery} shows typical delivery times for representative messages, from a model of the slot
-schedule of \code{tdma.py} that agrees with the simulator running the project's code to within
-\SI{0.06}{s} for short messages and 15\,\% for long ones. Note the logarithmic axis: delivery time spans
-more than three orders of magnitude, and with four stations a two-fragment message already waits for
-its sender's slot to grow.
+\Cref{fig:delivery} shows delivery times for representative messages, measured with the simulator
+running the project's code. Note the logarithmic axis: delivery time spans almost four orders of
+magnitude, and with four stations a two-fragment message already waits for its sender's slot to grow
+(an idle slot is then \SI{22}{ms}, shorter than one frame).
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
 \begin{axis}[wl,xbar,xmode=log,log basis x=10,width=0.84\linewidth,height=96mm,
-  xmin=0.03,xmax=3000,bar width=4.2pt,
+  xmin=0.03,xmax=2500,bar width=4.2pt,
   symbolic y coords={vid,orig,pdf,csv,hd,v30,v10,std,saver,notes,para,hi},log origin=infty,
   ytick={vid,orig,pdf,csv,hd,v30,v10,std,saver,notes,para,hi},yticklabels={Video 20\,MB,Original photo 3\,MB,PDF 1\,MB,{CSV 1\,MB (zlib)},Photo HD 154\,KB,Voice note 30\,s,Voice note 10\,s,Photo Standard 29\,KB,Photo Saver 15\,KB,{Notes, 2.7k chars},Paragraph,``Hi Bob!''},y dir=normal,xlabel={Delivered after (s), log scale},
   legend style={at={(0.99,0.98)},anchor=north east},xmajorgrids,ymajorgrids=false,
   nodes near coords,every node near coord/.append style={font=\sffamily\tiny,text=black!70,anchor=west},
   point meta=explicit symbolic,enlarge y limits=0.05]
 \addplot[fill=wlblue,draw=wlblue] coordinates {
- (0.075,hi)[75 ms] (0.09,para)[90 ms] (0.19,notes)[0.19 s] (1.51,saver)[1.5 s]
- (2.08,std)[2.1 s] (2.28,v10)[2.3 s] (2.92,v30)[2.9 s] (7.44,hd)[7.4 s]
- (11.5,csv)[11.5 s] (43.6,pdf)[44 s] (129,orig)[2 min 9 s] (856,vid)[14 min]};
+ (0.09,hi)[90 ms] (0.11,para)[110 ms] (0.13,notes)[130 ms] (1.51,saver)[1.5 s]
+ (1.51,std)[1.5 s] (1.55,v10)[1.6 s] (2.47,v30)[2.5 s] (5.83,hd)[5.8 s]
+ (8.75,csv)[8.8 s] (31.7,pdf)[32 s] (92.9,orig)[1 min 33 s] (613,vid)[10.2 min]};
 \addplot[fill=wlteal,draw=wlteal] coordinates {
- (0.075,hi)[75 ms] (0.09,para)[90 ms] (1.53,notes)[1.5 s] (2.27,saver)[2.3 s]
- (2.95,std)[3.0 s] (3.16,v10)[3.2 s] (3.95,v30)[4.0 s] (9.52,hd)[9.5 s]
- (14.6,csv)[14.6 s] (54.1,pdf)[54 s] (160,orig)[2 min 40 s] (1055,vid)[17.6 min]};
+ (0.09,hi)[90 ms] (0.07,para)[70 ms] (1.52,notes)[1.5 s] (2.01,saver)[2.0 s]
+ (2.53,std)[2.5 s] (2.67,v10)[2.7 s] (3.26,v30)[3.3 s] (7.39,hd)[7.4 s]
+ (11.1,csv)[11.1 s] (39.5,pdf)[40 s] (115,orig)[1 min 55 s] (760,vid)[12.7 min]};
 \legend{2 stations,4 stations}
 \end{axis}
 \end{tikzpicture}
-\caption{Typical delivery times from Alice to Bob on a link running uncoded 16-QAM, with two and with
-four stations (model of the TD-CDMA schedule, calibrated against the simulator).}\label{fig:delivery}
+\caption{Delivery times from Alice to Bob on a link running uncoded 64-QAM (\SI{31}{dB}), with two and
+with four stations, in the numpy simulator. Short messages: median of nine sends; 3\,MB and 20\,MB:
+extrapolated from the 1\,MB transfer at its measured rate (261 and \SI{211}{kb/s}).}\label{fig:delivery}
 \end{figure}
 %% =====================================================================
 \chapter{Application Layer}\label{ch:app}
@@ -1624,7 +1821,8 @@ indicators map directly onto link-layer events (\cref{tab:ticks}).
 \caption{Choosing the photo quality}
 \end{subfigure}
 \caption{The WaveLink chat (screenshots of the running application). The header shows the live link:
-code, \EbNo, carrier offset and the current rung (here uncoded 16-QAM, 258\,kb/s).}\label{fig:chat}
+code, \EbNo, carrier offset and the current rung (here uncoded 16-QAM at 258\,kb/s: the screenshots were
+taken with the earlier Gold-code configuration, before 64-QAM was added).}\label{fig:chat}
 \end{figure}
 
 \begin{table}[htbp]
@@ -1698,7 +1896,7 @@ The race track and city are generated from a shared random seed, so nothing but 
 air. Each browser runs its own car's physics at 120 steps per second and posts the state to its
 station 20 times a second. The station places the newest state in its own slot as an unacknowledged
 datagram on the broadcast code: 28 bytes, plus 13 bytes per game event; with one event the frame is
-52 bytes and \SI{7.9}{ms} at QPSK $\tfrac12$. Events (a missile fired, a mine dropped, a hit) are repeated
+52 bytes and \SI{8.2}{ms} at QPSK $\tfrac12$. Events (a missile fired, a mine dropped, a hit) are repeated
 in the next four packets so that a single lost packet loses nothing. A hit is decided by the
 \emph{victim's} station, which knows exactly where its own car was. Other cars are drawn by dead
 reckoning along the track, and clocks are synchronised with datagram pings that keep the sample with
@@ -1764,7 +1962,11 @@ hardware replaced one simulated component with the real one (\cref{fig:envs}).
 The emulated ANTSDRs proved their worth: nine timing bugs appeared there and nowhere else, among them
 a hidden station's join, a newcomer's first join request, bursts after a transmit underrun, slots held
 while a slot grew, a restart mistaken for a duplicate address and two stations compiling the flowgraph
-at once. All were fixed.
+at once. All were fixed. The GNU Radio channel simulation caught a tenth after the Walsh codes were
+added: the flowgraph's LDPC Encoder blocks computed the code-specific preamble patterns as the
+flowgraph started, which held up its start by 12--\SI{14}{s}, made every station's first estimate of its
+transmit-to-receive offset seconds wrong and left the simulated stations joining for ever. The patterns
+are now computed once per process.
 
 \section{Test suites}
 \Cref{tab:tests} lists the automated test suites. Every result quoted in \cref{ch:results} comes from
@@ -1778,16 +1980,18 @@ one of them.
 \textrm{\textbf{Suite}} & \textbf{What it checks} & \textbf{Result}\\
 \midrule
 test\_ldpc & Encoder at all 51 lifting sizes, rate matching, AWGN curves, Golay & all pass\\
-test\_modem, test\_profiles & PHY impairments, false alarms, multi-user, SNR sweeps, decode cost & all pass\\
-test\_grc\_flowgraph & The real flowgraph in GNU Radio: every rung, unicast and broadcast, 3 senders & 10/10, 3/3 frames\\
-test\_grc\_cores & The flowgraph's Python cores with imitated stock blocks; numpy--GRC interoperability & all pass\\
+test\_modem, test\_profiles & PHY impairments, false alarms, multi-user, one slot with Walsh and Gold codes, SNR sweeps, decode cost & all pass\\
+test\_grc\_flowgraph & The real flowgraph in GNU Radio, both code families: every rung incl.\ 64-QAM, unicast and broadcast, 3 senders at once & 23/23 as expected\\
+test\_grc\_cores & The flowgraph's Python cores with imitated stock blocks; numpy--GRC interoperability (every modulation) & all pass\\
 test\_tdma\_phy & Bursts on exact samples, receive indices, $D$ under drift, underruns & 19/19\\
 test\_edge & 17 TD-CDMA edge-case scenarios on the simulated air & 93/93 checks\\
-test\_fake\_antsdr & 12 scenarios: full app on \code{cdma\_phy.grc} with emulated ANTSDRs & 55/58 checks\\
-test\_power & Power-control loop, flowgraph power tags, near--far with and without control & 18/18\\
+test\_fake\_antsdr & 12 scenarios: full app on \code{cdma\_phy.grc} with emulated ANTSDRs & 57/58 checks$^\ast$\\
+test\_power & Power-control loop, flowgraph power tags, near--far with and without control & 22/22\\
+test\_hardening & Malformed frames and browser input, \code{-{}-key} enforcement, long ACK sections, restarts & 33/33\\
 test\_uno, test\_games & UNO rules (300 random games); game center over the simulated air & all pass\\
 ui\_features, ui\_games & Browser UI driven by Playwright on every station's page & 65/65; games played\\
 \bottomrule
+\multicolumn{3}{@{}p{\linewidth}@{}}{\footnotesize $^\ast$ The one failure, a count in the timing-slip scenario, passed when that scenario was repeated (\cref{sec:fakeres}).}
 \end{tabularx}
 \end{table}
 
@@ -1813,6 +2017,10 @@ This chapter presents the measured performance of WaveLink. Unless stated otherw
 from the numpy channel simulator running the project's own PHY and link-layer code with Es/N0
 specified per link; results labelled \emph{GNU Radio} come from the real flowgraph, either in the
 GNU Radio channel simulation or with emulated ANTSDRs. Ranges give the spread over two to four runs.
+Results were measured with the final code, Walsh codes and 64-QAM included, except where a result
+cannot depend on them: the application timings, the receiver's CPU load and the near--far measurements
+under spread ALOHA (which keeps the Gold codes and its ladder up to uncoded 16-QAM) come from the
+version before.
 
 \section{Physical layer}
 \Cref{tab:phyres} collects the main physical-layer results; the error-rate curves were shown in
@@ -1826,30 +2034,34 @@ GNU Radio channel simulation or with emulated ANTSDRs. Ranges give the spread ov
 \textbf{Test} & \textbf{Result}\\
 \midrule
 LDPC alone, BPSK on AWGN & rate $\tfrac12$: 0/20 frame errors at $E_b/N_0=\SI{1.5}{dB}$; $\tfrac34$ at \SI{2.5}{dB}; $\tfrac56$ at \SI{3.5}{dB} (uncoded needs $\approx$\SI{10.5}{dB})\\
-Full receiver, \EsNo\ for $\approx$100\,\% delivery & QPSK $\tfrac12$ $\approx$\SI{5}{dB} (detection-limited) \ldots\ 16-QAM $\tfrac56$ \SI{12.5}{dB}; uncoded 16-QAM 20--\SI{22}{dB}\\
-Second equal-power link on another code, \EsNo\ \SI{20}{dB} & uncoded 16-QAM 2/4 frames; 16-QAM $\tfrac34$ and $\tfrac56$ 4/4\\
-Two senders to one receiver, overlapping & 20/20 bursts decoded\\
-QPSK $\tfrac12$, 200-byte frames, $\pm\SI{12}{kHz}$ CFO, \SI{20}{ppm} clock offset & 10/12 at \SI{4}{dB}, 11/12 at \SI{6}{dB}\\
-Interferer \SI{10}{dB} stronger on another code (BPSK) & both links decoded\\
-Three seconds of pure noise on two codes & 0 detections, 0 frames\\
+Full receiver, \EsNo\ for $\approx$100\,\% delivery & QPSK $\tfrac12$ $\approx$\SI{5}{dB} (detection-limited) \ldots\ 16-QAM $\tfrac56$ \SI{12.5}{dB}; uncoded 16-QAM 20--\SI{22}{dB}; 64-QAM $\tfrac12$ 13--14, $\tfrac23$ 15--16, $\tfrac34$ \SI{17}{dB}, $\tfrac56$ \SI{18}{dB}; uncoded 64-QAM 26--\SI{27}{dB}\\
+One slot: bursts on 1/2/4 codes starting together, \EsNo\ \SI{45}{dB}, at code 1's receiver & Walsh: 44.9/44.2/\SI{41.4}{dB}, 4/4 uncoded 64-QAM bursts decoded; Gold: 45.1/12.6/\SI{9.8}{dB}, 1/4\\
+Second equal-power link on another code at another code phase (Gold), \EsNo\ \SI{20}{dB} & uncoded 16-QAM 2/4 frames; 16-QAM $\tfrac34$ and $\tfrac56$ 4/4\\
+Two senders to one receiver, overlapping (Gold) & 20/20 bursts decoded\\
+200-byte frames, $\pm\SI{12}{kHz}$ CFO, \SI{20}{ppm} clock offset (12 frames per point) & QPSK $\tfrac12$: 9/12 at \SI{4}{dB}, 10/12 at \SI{6}{dB}; 64-QAM $\tfrac34$: 11/12 at \SI{17}{dB}, 12/12 at \SI{19}{dB}\\
+Interferer \SI{10}{dB} stronger on another code (BPSK, Gold) & both links decoded\\
+Pure noise on two codes & 0 detections, 0 frames\\
 Implementation SNR ceiling & about \SI{44}{dB} for every modulation\\
-Signal-to-interference between codes of one transmitter & 1/2/3 codes: 39.9/29.4/\SI{25.3}{dB} (16-QAM needs 22.5)\\
 Receive and decode cost per 1\,KB frame & 27--\SI{97}{ms} of CPU for 33--\SI{128}{ms} on air\\
-GNU Radio: three stations transmitting at once & 3/3 delivered, including 16-QAM $\tfrac12$ at \SI{12}{dB}\\
+GNU Radio: lone frames, every rung incl.\ 64-QAM, unicast and broadcast & 13/13 delivered (\EsNo\ $\approx$\SI{46}{dB}), with Walsh and with Gold codes\\
+GNU Radio: three stations transmitting at the same instant & 3/3 delivered; Walsh 43/43/\SI{46}{dB}, Gold 12/12/\SI{17}{dB}\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \section{Single-link throughput and coding gain}
-On a clean link (\SI{28}{dB}) a \SI{2}{MB} file was delivered in \SI{67.7}{s}, a goodput of \SI{236}{kb/s} with
-no retransmissions under spread ALOHA, against \SI{258}{kb/s} on the air; a \SI{10}{MB} file achieved
-\SI{235}{kb/s}. Under TD-CDMA the same transfer runs at \SI{190}{kb/s}, about 80\,\% of ALOHA, because each
-cycle also contains the receiver's slot, the join slot and the headers. On a weaker link the code
-pays off (\cref{fig:codinggain}): at \SI{14}{dB} a \SI{1}{MB} file was delivered at 176--\SI{178}{kb/s} with
-adaptive LDPC (16-QAM $\tfrac34$) against \SI{37}{kb/s} uncoded, a factor of $4.8$. Through the real
-flowgraph in GNU Radio, at a quarter of the hardware sample rate, a \SI{100}{KB} file at \SI{12}{dB} went at
-\SI{37.8}{kb/s} with adaptive LDPC against \SI{15.6}{kb/s} uncoded, a factor of $2.4$, with no
-retransmissions.
+On a clean link (\SI{31}{dB}) under TD-CDMA, with uncoded 64-QAM, a \SI{1}{MB} file was delivered at
+\SI{252}{kb/s} with two stations and \SI{209}{kb/s} with four, without retransmissions; once its data slot
+has been granted the transfer runs at 261 and \SI{211}{kb/s}, four frames per cycle. Spread ALOHA, with
+its ladder up to uncoded 16-QAM, delivered the same file at \SI{237}{kb/s} (earlier, a \SI{10}{MB} file
+at \SI{235}{kb/s}); allowed 64-QAM with \code{-{}-mod 64qam}, it reached \SI{345}{kb/s}. At equal
+modulation a single link under TD-CDMA therefore gets about three quarters of ALOHA's speed, the
+price of the receiver's slot, the join slot and the headers in every cycle. On a weaker link the code
+pays off (\cref{fig:codinggain}): at \SI{14}{dB} a \SI{1}{MB} file was delivered at \SI{178}{kb/s} with
+adaptive LDPC (16-QAM $\tfrac34$) against \SI{61}{kb/s} uncoded (BPSK), a factor of $2.9$, both without
+retransmissions. Through the real flowgraph in GNU Radio, at a quarter of the hardware sample rate, a
+\SI{100}{KB} file at \SI{12}{dB} went at \SI{35.5}{kb/s} with adaptive LDPC against \SI{15.5}{kb/s}
+uncoded, a factor of $2.3$.
 
 \begin{figure}[htbp]
 \centering
@@ -1857,11 +2069,11 @@ retransmissions.
 \begin{axis}[wlbar,width=0.8\linewidth,height=56mm,ymin=0,ymax=240,bar width=20pt,
   symbolic x coords={sim,grc},xtick=data,xticklabels={{1\,MB at 14\,dB (simulator)},{100\,KB at 12\,dB (GNU Radio, 1\,MS/s)}},
   ylabel={Goodput (kb/s)},legend style={at={(0.98,0.97)},anchor=north east},enlarge x limits=0.35]
-\addplot[fill=wlblue,draw=wlblue] coordinates {(sim,177)(grc,37.8)};
-\addplot[fill=wlsteel,draw=wlsteel] coordinates {(sim,37)(grc,15.6)};
+\addplot[fill=wlblue,draw=wlblue] coordinates {(sim,178)(grc,35.5)};
+\addplot[fill=wlsteel,draw=wlsteel] coordinates {(sim,61)(grc,15.5)};
 \legend{adaptive LDPC,uncoded}
-\node[font=\sffamily\bfseries\small,text=wldeep] at (axis cs:sim,218) {$4.8\times$ faster};
-\node[font=\sffamily\bfseries\small,text=wldeep] at (axis cs:grc,78) {$2.4\times$ faster};
+\node[font=\sffamily\bfseries\small,text=wldeep] at (axis cs:sim,218) {$2.9\times$ faster};
+\node[font=\sffamily\bfseries\small,text=wldeep] at (axis cs:grc,78) {$2.3\times$ faster};
 \end{axis}
 \end{tikzpicture}
 \caption{End-to-end goodput with adaptive LDPC and without coding.}\label{fig:codinggain}
@@ -1871,27 +2083,27 @@ retransmissions.
 Both medium-access schemes were run on the same simulated air (\cref{fig:mac,tab:mac}). The decisive
 scenario is the first: four stations each send \SI{100}{KB} to the next, all at once, and every station
 hears its own transmitter \SI{25}{dB} above the others, as on the ANTSDRs. TD-CDMA moved
-\SIrange{173}{181}{kb/s} in total with 6--24 retransmissions; spread ALOHA moved only
-\SIrange{53}{58}{kb/s} and needed 755--900 retransmissions, because every frame that arrived while its
+\SI{236}{kb/s} in total in both runs, without a single retransmission; spread ALOHA moved only
+\SIrange{58}{65}{kb/s} and needed 681--904 retransmissions, because every frame that arrived while its
 receiver was transmitting was lost. Only on idealised radios that can receive while they transmit
-(self-leak \SI{3}{dB}) does ALOHA win, with \SIrange{294}{321}{kb/s}: that is CDMA doing what it was made
-for, on radios we do not have.
+(self-leak \SI{3}{dB}) does ALOHA win, with \SIrange{302}{323}{kb/s} against \SIrange{222}{226}{kb/s}:
+that is CDMA doing what it was made for, on radios we do not have.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
 \begin{axis}[wl,xbar,width=0.8\linewidth,height=72mm,xmin=0,xmax=360,bar width=6pt,
   symbolic y coords={hid,one,far,ideal,real},
-  ytick=data,yticklabels={Hidden pair via relay,{One link alone, 2\,MB},Far station beside a near pair,{4 senders, idealised radios},{4 senders, realistic radios}},xlabel={Throughput (kb/s), midpoint of runs},xmajorgrids,ymajorgrids=false,
+  ytick=data,yticklabels={Hidden pair via relay,{One link alone, 1\,MB},Far station beside a near pair,{4 senders, idealised radios},{4 senders, realistic radios}},xlabel={Throughput (kb/s), midpoint of runs},xmajorgrids,ymajorgrids=false,
   legend style={at={(0.98,0.03)},anchor=south east},
   nodes near coords,every node near coord/.append style={font=\sffamily\tiny,text=black!70},enlarge y limits=0.13]
-\addplot[fill=wlsteel,draw=wlsteel] coordinates {(0,hid)(236,one)(43.5,far)(307.5,ideal)(55.5,real)};
-\addplot[fill=wlblue,draw=wlblue] coordinates {(48,hid)(190,one)(66.5,far)(170,ideal)(177,real)};
+\addplot[fill=wlsteel,draw=wlsteel] coordinates {(0,hid)(237,one)(43.5,far)(312.5,ideal)(61.5,real)};
+\addplot[fill=wlblue,draw=wlblue] coordinates {(107,hid)(252,one)(69,far)(224,ideal)(236,real)};
 \legend{spread ALOHA,TD-CDMA}
 \end{axis}
 \end{tikzpicture}
 \caption{TD-CDMA against spread ALOHA on the simulated air. With realistic (self-deafening) radios
-TD-CDMA carries three times as much; a hidden pair is reachable only through a TD-CDMA relay.}\label{fig:mac}
+TD-CDMA carries about four times as much; a hidden pair is reachable only through a TD-CDMA relay.}\label{fig:mac}
 \end{figure}
 
 \begin{table}[htbp]
@@ -1901,17 +2113,17 @@ TD-CDMA carries three times as much; a hidden pair is reachable only through a T
 \toprule
 \textbf{Scenario} & \textbf{TD-CDMA} & \textbf{Spread ALOHA}\\
 \midrule
-4 senders at once, own transmitter 25\,dB above others & \textbf{173--181\,kb/s}, 6--24 resends & 53--58\,kb/s, 755--900 resends\\
-4 senders, idealised radios (self-leak 3\,dB) & 160--180\,kb/s, 6--10 resends & \textbf{294--321\,kb/s}, 14--38 resends\\
-Near--far, power control off: far station ($-6$\,dB) to a receiver beside a near pair ($+20$\,dB) & far station \textbf{65--68\,kb/s}, 0 resends & far station 43--44\,kb/s, 16 resends\\
-One \SI{2}{MB} transfer, \SI{28}{dB} & 190\,kb/s & \textbf{236\,kb/s}\\
-Two stations out of each other's range & via relay, \textbf{45--51\,kb/s} & not reachable\\
+4 senders at once, own transmitter 25\,dB above others & \textbf{236\,kb/s}, 0 resends & 58--65\,kb/s, 681--904 resends\\
+4 senders, idealised radios (self-leak 3\,dB) & 222--226\,kb/s, 0 resends & \textbf{302--323\,kb/s}, 19--21 resends\\
+Near--far, power control off: far station ($-6$\,dB) to a receiver beside a near pair ($+20$\,dB) & far station \textbf{69\,kb/s}, 0 resends & far station 43--44\,kb/s, 16 resends\\
+One \SI{1}{MB} transfer, \SI{31}{dB} & \textbf{252\,kb/s} (uncoded 64-QAM) & 237\,kb/s (uncoded 16-QAM); 345\,kb/s with \code{-{}-mod 64qam}\\
+Two stations out of each other's range & via relay, \textbf{107\,kb/s} & not reachable\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 TD-CDMA is also fair by construction: every sender gets the same airtime, so the rates of concurrent
-senders differ only by their links' rungs (slowest to fastest ratio 0.69--0.82), whereas under ALOHA
+senders differ only by their links' rungs (slowest to fastest ratio 0.66--0.83), whereas under ALOHA
 the shares depend on who collides with whom.
 
 \section{Near--far problem and power control}
@@ -1919,6 +2131,8 @@ Under spread ALOHA we measured the near--far problem and the effect of power con
 (\cref{fig:nearfar}). Alice, Carol and Dave stood together (paths \SI{24}{dB} stronger than to Bob) while
 Alice sent a long file to Carol and Bob sent \SI{40}{KB} to Dave. Without power control, Bob's file was
 never delivered; with it, Alice backed off by 16--\SI{20}{dB} and Bob's file arrived in 4.6--\SI{9.1}{s}.
+A run with the final code gave the same picture: \SI{1.8}{s} with Alice silent, never without power
+control, and \SI{4.3}{s} with it, Alice \SI{19}{dB} down.
 Where no station is much nearer than the others, power control cost no speed: in the GNU Radio
 channel simulation three simultaneous \SI{150}{KB} transfers took 54.1--\SI{58.1}{s} with it against
 64.9--\SI{66.4}{s} before.
@@ -1944,7 +2158,7 @@ The edge-case suite runs 17 scenarios on the simulated air in which every receiv
 starts at a random value and every link has a random delay of up to \SI{100}{\micro s}, so nothing works unless
 the offsets are measured. The simulated air records every moment at which two stations transmit while a
 third hears both; once a network has formed, this never happened. \Cref{tab:edge} summarises the
-results (93 of 93 checks).
+results of the final code (93 of 93 checks, in the suite's shorter form).
 
 \begin{table}[htbp]
 \centering\small
@@ -1953,13 +2167,13 @@ results (93 of 93 checks).
 \toprule
 \textbf{Scenario} & \textbf{Result}\\
 \midrule
-Start orders; four switched on at once; two lone networks meeting & One network every time; four together led by station 1 after 1.4--\SI{2.3}{s}; networks merge under the lower address\\
-Station joins and lead leaves during a \SI{300}{KB} transfer & Delivered intact at 136--\SI{163}{kb/s}; no burst late\\
-Lead's application closed mid-transfer, then restarted & Successor took over after 0.3--\SI{1.0}{s}; transfer continued; old lead returned as a member\\
-Clocks at $+25$, $-25$, $+10$\,ppm for 10 minutes & All 299 messages delivered; $D$ did not move; clock ratios measured within \SI{0.1}{ppm}\\
-Six TX underruns and lost RX buffers; a station that cannot hear itself & Both transfers delivered; every jump of $D$ re-measured; the deaf station steered by the others' reports\\
-\EsNo\ \SI{5}{dB}; bursty interference \SI{3}{dB} below the signal 25\,\% of the time & Network forms and delivers at \SI{5}{dB}; 117--\SI{138}{kb/s} under interference; no false takeover\\
-A station misses every plan announcement (16 changes) & It holds its slot instead of following a stale plan; never overlaps anyone\\
+Start orders; four switched on at once; two lone networks meeting & One network every time; four together led by station 1 after \SI{2.3}{s}; networks merge under the lower address\\
+Station joins and lead leaves during a \SI{150}{KB} transfer & Delivered intact at \SI{171}{kb/s}; no burst late\\
+Lead's application closed mid-transfer, then restarted & Successor took over after \SI{0.5}{s}; transfer continued (\SI{183}{kb/s}); old lead returned as a member\\
+Clocks at $+25$, $-25$, $+10$\,ppm for 2 minutes & All 60 messages delivered; $D$ did not move; clock ratios measured as $-50.0$ and \SI{-15.0}{ppm} (true: $-50$, $-15$)\\
+Six TX underruns and lost RX buffers; a station that cannot hear itself & Both transfers delivered (105, \SI{98}{kb/s}); every jump of $D$ re-measured; the deaf station steered by the others' reports\\
+\EsNo\ \SI{5}{dB}; bursty interference \SI{3}{dB} below the signal 25\,\% of the time & Network forms and delivers at \SI{5}{dB}; 157--\SI{171}{kb/s} under interference; no false takeover\\
+A station misses every plan announcement (6 changes) & It holds its slot instead of following a stale plan; never overlaps anyone\\
 A station stops hearing the lead for \SI{4}{s} & No takeover; it keeps time by the plan another member repeats; transfer continues\\
 Group message with a member out of range & Relayed copy for the far member, acknowledgements from both\\
 UNO: player away and back; host away & Game pauses and resumes; next player hosts, hands kept\\
@@ -1970,25 +2184,32 @@ UNO: player away and back; host away & Game pauses and resumes; next player host
 \section{The real flowgraph with emulated ANTSDRs}\label{sec:fakeres}
 The strongest evidence before the hardware sessions is the full application running on the unchanged
 \code{cdma\_phy.grc}, one process per station, with only the radio blocks emulated (\cref{tab:fake}). The
-test PC had two cores, so the air ran at $0.4\times$ real time; 55 of 58 checks passed. The three failures
-are one scenario, real-time operation of two stations on the two-core PC, which ran out of CPU (358 TX
-underruns and 124 lost RX buffers). Even there no burst was late and no slots overlapped.
+test PC had two cores, so for three stations the air ran at $0.4\times$ real time; in the suite's shorter
+form, 57 of 58 checks passed. The one failure was a count in the timing-slip scenario: after five injected underruns and
+lost buffers, one station re-measured its transmit-to-receive offset once where two re-measurements
+were expected, although every offset had moved by exactly the injected slip; the scenario passed all
+five checks when it was repeated. Real-time operation of two stations on the two-core PC, which ran
+out of CPU in an earlier version, now passes: no underrun, no lost receive buffer and no late burst
+(and again, at 179 and \SI{203}{kb/s}, in two further runs).
 
 \begin{table}[htbp]
 \centering\small
-\caption{TD-CDMA on GNU Radio with emulated ANTSDRs (GNU Radio 3.10.9, air at $0.4\times$ real time).}\label{tab:fake}
+\caption{TD-CDMA on GNU Radio with emulated ANTSDRs (GNU Radio 3.10.9; the suite's shorter form; air at
+$0.4\times$ real time except in the real-time scenario).}\label{tab:fake}
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{55mm}L@{}}
 \toprule
 \textbf{Scenario} & \textbf{Result}\\
 \midrule
-Start orders; radios switched on together; two lone stations meet & One network every time; led by station 1 after \SI{4.8}{s}; lone networks merged in \SI{1.5}{s}\\
-Three \SI{60}{KB} files at once on three links, then a group message & All intact (92, 72 and \SI{51}{kb/s}); group message reached both\\
-Lead's process killed mid-transfer & Station 2 took over after \SI{0.71}{s}; transfer continued at \SI{150}{kb/s}, intact\\
-Clocks at $+25$, $-25$, $+10$\,ppm & 80 of 80 messages; followers measured $-50.0$ and \SI{-15.0}{ppm}\\
-Hidden station, station 2 relays & One network; \SI{40}{KB} from 1 to 3 through 2 at \SI{43}{kb/s}, intact\\
-\EsNo\ \SI{10}{dB}; interference 20\,\% of the time & File at \SI{53}{kb/s}; \SI{111}{kb/s} under interference; no false takeover\\
-Race and UNO over the slots & 16 of 16 UNO moves seen by both other players\\
-\rowcolor{wlcoralpale}Real time, two stations, 2-core PC & \textbf{Failed}: CPU-bound (underruns, lost buffers); still no overlap\\
+Start orders; radios switched on together; two lone stations meet & One network every time; led by station 1 after \SI{2.7}{s}; lone networks merged in \SI{1.4}{s}\\
+Three \SI{30}{KB} files at once on three links, then a group message & All intact (95, 50 and \SI{44}{kb/s}); group message reached both\\
+Lead's process killed mid-transfer & Station 2 took over after \SI{0.66}{s}; transfer continued at \SI{93}{kb/s}, intact\\
+Clocks at $+25$, $-25$, $+10$\,ppm & 30 of 30 messages; followers measured $-49.7$ and \SI{-15.0}{ppm}\\
+Five TX underruns and lost RX buffers during two transfers & Both intact (67, \SI{53}{kb/s}); every offset moved by exactly the slip; one count check passed on a repeat\\
+Hidden station, station 2 relays & One network; \SI{20}{KB} from 1 to 3 through 2 at \SI{24}{kb/s}, intact\\
+\EsNo\ \SI{10}{dB}; interference 20\,\% of the time & \SI{15}{KB} at \SI{49}{kb/s}; \SI{30}{KB} at \SI{78}{kb/s} under interference; no false takeover\\
+Spread ALOHA on the same flowgraph & \SI{20}{KB} at \SI{113}{kb/s} and a message delivered\\
+Race and UNO over the slots & 15 of 15 UNO moves seen by both other players\\
+\rowcolor{wltealpale}Real time, two stations, 2-core PC & \textbf{Passed}: \SI{124}{kb/s}; no underrun, no lost buffer, no late burst\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1996,8 +2217,10 @@ Race and UNO over the slots & 16 of 16 UNO moves seen by both other players\\
 \section{Application performance}
 \Cref{fig:uno} shows how long a UNO move takes to appear on every screen, and \cref{tab:race} the race
 update statistics, both under TD-CDMA in the simulator at \SI{25}{dB}. The move latency grows with the
-number of stations because each view waits for its host's slot and each cycle has more slots. Delivery
-times for chat messages of every size were shown in \cref{fig:delivery}.
+number of stations because each view waits for its host's slot and each cycle has more slots. A run with
+the final code gave the same picture (three stations: UNO median \SI{0.22}{s}, 90th percentile
+\SI{0.28}{s}; 6.8 race updates per car per second, none lost). Delivery times for chat messages of every
+size were shown in \cref{fig:delivery}.
 
 \begin{figure}[htbp]
 \centering
@@ -2035,27 +2258,27 @@ receiver, not by the slots; on hardware every car is heard once per cycle, ten t
 file transfer stretches the cycle.
 
 \section{Computational load}\label{sec:cpu}
-Receiver CPU is the binding constraint of the current implementation (\cref{fig:cpu}). Measured with
-GNU Radio and emulated ANTSDRs on a \SI{2.8}{GHz} Xeon, a station needs about 1.1 cores per second of air
-when idle, 1.2 when sending and 2.1 when receiving at \SI{153}{kb/s}. Of the 2.1 cores, 1.6 are Python
-running under a single interpreter lock: the despreader's search and tracking, the link layer, and the
-combiner, despreader and LDPC blocks.
+Receiver CPU shaped the implementation throughout (\cref{fig:cpu}). Measured with GNU Radio and emulated
+ANTSDRs running in real time on a \SI{2.1}{GHz} Xeon, a station of the final version needs about 0.5
+cores when idle, 0.5 when sending and 0.9 when receiving at \SI{203}{kb/s}; the emulated air adds about
+0.1. Two stations therefore fit on the two-core test PC in real time. An earlier version, measured with
+the air at $0.4\times$ real time on a \SI{2.8}{GHz} Xeon, had needed 1.1, 1.2 and 2.1 cores per second of
+air. The work is mostly Python under one interpreter lock: the despreader's search and tracking, the
+link layer, and the combiner, despreader and LDPC blocks.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
-\begin{axis}[wl,xbar stacked,width=0.78\linewidth,height=40mm,xmin=0,xmax=2.4,bar width=10pt,
-  symbolic y coords={rx,tx,idle},ytick=data,yticklabels={receiving at 153\,kb/s,sending,idle},xlabel={CPU cores per second of air},
-  legend style={at={(0.5,1.04)},anchor=south,legend columns=3},xmajorgrids,ymajorgrids=false,enlarge y limits=0.3]
-\addplot[fill=wlblue,draw=wlblue] coordinates {(1.6,rx)(0,tx)(0,idle)};
-\addplot[fill=wlsky,draw=wlsky] coordinates {(0.5,rx)(0,tx)(0,idle)};
-\addplot[fill=wlsteel,draw=wlsteel] coordinates {(0,rx)(1.2,tx)(1.1,idle)};
-\legend{Python (one interpreter lock),{other (stock blocks, radio I/O)},total}
-\draw[wlcoral,dashed,line width=0.8pt] (rel axis cs:0.8333,0) -- (rel axis cs:0.8333,1);
+\begin{axis}[wl,xbar,width=0.78\linewidth,height=40mm,xmin=0,xmax=1.25,bar width=10pt,
+  symbolic y coords={rx,tx,idle},ytick=data,yticklabels={receiving at 203\,kb/s,sending,idle},xlabel={CPU cores (real time)},
+  xmajorgrids,ymajorgrids=false,enlarge y limits=0.3,nodes near coords,
+  every node near coord/.append style={font=\sffamily\tiny,text=black!70}]
+\addplot[fill=wlblue,draw=wlblue] coordinates {(0.87,rx)(0.53,tx)(0.51,idle)};
+\draw[wlcoral,dashed,line width=0.8pt] ({axis cs:1,rx}|-{rel axis cs:0,0}) -- ({axis cs:1,rx}|-{rel axis cs:0,1});
 \end{axis}
 \end{tikzpicture}
-\caption{CPU needed by one station (GNU Radio with emulated ANTSDRs, 2.8\,GHz Xeon). The dashed line
-marks the two cores of the test PC.}\label{fig:cpu}
+\caption{CPU needed by one station of the final version (GNU Radio with emulated ANTSDRs in real time,
+2.1\,GHz Xeon). The dashed line marks one core: the share of each of two stations on the two-core test PC.}\label{fig:cpu}
 \end{figure}
 
 \section{Requirement compliance}
@@ -2069,15 +2292,15 @@ marks the two cores of the test PC.}\label{fig:cpu}
 Requirement & Evidence & Status\\
 \midrule
 Two-way link over SDRs & 2--4 stations, any pair, both directions; flowgraph with gr-iio blocks & \yes\\
-Digital modulation & BPSK, QPSK, 16-QAM over DS-CDMA; FER curves, constellations & \yes\\
-Unique addressing & Gold code per station + destination byte; traffic for others never despread & \yes\\
+Digital modulation & BPSK, QPSK, 16-QAM, 64-QAM over DS-CDMA (Walsh or Gold codes); FER curves, constellations & \yes\\
+Unique addressing & Spreading code per station + destination byte; traffic for others never despread & \yes\\
 ACK mechanism & Selective-repeat ARQ; ACK records in slot headers; group ACKs per member & \yes\\
 CRC error detection & CRC-8 header, CRC-32 frame; dropped frames counted on the dashboard & \yes\\
 Packetization and reassembly & \num{1009}-byte fragments, up to \num{65535} per message; tested to \SI{10}{MB} & \yes\\
 Text, images, audio & Text, WebP photos, Opus voice notes, any file to \SI{64}{MB} & \yes\\
 Application & Chat, UNO and real-time race & \yes\\
 Bonus: encryption, priority, dashboard & AES-256-GCM; four priority classes; live radio dashboard & \yes\\
-Beyond the brief & LDPC + AMC, power control, TD-CDMA, relaying, emulated-ANTSDR testing & $\bigstar$\\
+Beyond the brief & LDPC + AMC, orthogonal codes, power control, TD-CDMA, relaying, emulated-ANTSDR testing & $\bigstar$\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -2099,13 +2322,14 @@ Challenge & Solution\\
 \midrule
 Station deaf while transmitting & One transmitter per slot (TD-CDMA); ACKs in the receiver's own slot\\
 0.2--\SI{0.6}{s} transmit latency & Bursts scheduled to the chip in radio samples; plan changes announced \SI{1}{s} ahead\\
-Near--far problem & One transmitter at a time; closed-loop power control (target \SI{25.5}{dB})\\
+Near--far problem & One transmitter at a time; closed-loop power control (target \SI{30.5}{dB}; \SI{25.5}{dB} under spread ALOHA)\\
+Codes of one slot interfering (Gold: $\approx$\SI{13}{dB} for station 1) & Walsh codes under one scrambling sequence, bursts on one symbol grid, a straight-line timing fit: 41--\SI{45}{dB}, room for 64-QAM\\
 Hidden stations & Link tables in every header; one-hop relaying; plan repeated for stations that miss the lead\\
 Carrier and clock offsets between radios & Differential detector ($\pm\SI{16}{kHz}$), 96-symbol CFO fit, 2nd-order carrier loop, DLL to \SI{30}{ppm}\\
-16-QAM limited to $\approx$\SI{12}{dB} by timing error & Fractional-delay despreading with $1/64$-sample resolution\\
+16- and 64-QAM limited to $\approx$\SI{12}{dB} by timing error & Fractional-delay despreading with $1/64$-sample resolution\\
 CPU-bound Python receiver & Slot-aware search (3.2$\to$\SI{1.2}{s} per second of air); DSP in a worker thread\\
 Clock drift, stream slips, unknown buffering & TX$\to$RX offset $D$ measured from own bursts; quiet probes; timing feedback\\
-Low and changing SNR & 5G NR LDPC with adaptive modulation and coding: $4.8\times$ at \SI{14}{dB}\\
+Low and changing SNR & 5G NR LDPC with adaptive modulation and coding: $2.9\times$ at \SI{14}{dB}\\
 Bugs that only the real flowgraph shows & Emulated ANTSDRs running the unchanged flowgraph: nine timing bugs found and fixed\\
 \bottomrule
 \end{tabularx}
@@ -2113,19 +2337,25 @@ Bugs that only the real flowgraph shows & Emulated ANTSDRs running the unchanged
 
 \section{Limitations}
 \begin{warnbox}[Real-time operation on the ANTSDRs]
-The TD-CDMA system has run on the real flowgraph only with emulated ANTSDRs, at $0.4\times$ real time,
-because the test PC has two cores. A receiving station needs about 2.1 cores, so real-time operation
-needs a PC with four or more cores, and has still to be demonstrated on the physical radios.
+The TD-CDMA system has run on the real flowgraph only with emulated ANTSDRs. Two stations kept up in
+real time on a two-core PC, but most scenarios ran at $0.4\times$ real time, and a station needs close to
+a core while it receives, so laboratory PCs with four or more cores remain advisable. Real-time
+operation on the physical radios has still to be demonstrated.
 \end{warnbox}
 
 \begin{itemize}
   \item \textbf{Analog front end not modelled.} AGC, IQ imbalance, DC offset, phase noise, multipath, the
         E200's Ethernet jitter and the real self-leak level are outside our simulators. Power control,
         in particular, has run only in simulation and is digital: the transmitter's own noise floor does
-        not drop with it.
+        not drop with it. Uncoded 64-QAM needs \SI{27.5}{dB}, which the radios' own noise and
+        distortion may not leave on every link; the ladder then stops at a coded 64-QAM rung.
+  \item \textbf{Orthogonality needs alignment.} Walsh codes are orthogonal only between bursts that start
+        together, as the bursts of one slot do. Spread ALOHA, whose bursts arrive at arbitrary shifts,
+        therefore keeps the Gold codes, and a receiver whose timing is off by a fraction of a chip lets
+        some of the other codes of a slot leak in (\cref{sec:rx}).
   \item \textbf{Single path.} There is no RAKE receiver or equaliser. With \SI{0.5}{\micro s} chips,
-        indoor delay spreads of tens of nanoseconds mostly stay within one chip, but 16-QAM in a large
-        room may suffer.
+        indoor delay spreads of tens of nanoseconds mostly stay within one chip, but 16- and 64-QAM in a
+        large room may suffer.
   \item \textbf{Detection limits the low end.} Coded QPSK $\tfrac12$ would decode at about \SI{1.5}{dB}, but
         the 48-symbol preamble is detected reliably only from about \SI{4}{dB}.
   \item \textbf{Slot latency for mid-size messages.} With three or four stations an idle slot is shorter
@@ -2133,8 +2363,9 @@ needs a PC with four or more cores, and has still to be demonstrated on the phys
         grow; relayed transfers start 2--\SI{5}{s} late for the same reason.
   \item \textbf{One hop, four stations, one key.} Relaying is limited to one hop, the flowgraph has five
         code lanes (four stations plus broadcast), and encryption uses one pre-shared key.
-  \item \textbf{Throughput ceiling.} About \SI{236}{kb/s} per link under ALOHA and \SI{190}{kb/s} under
-        TD-CDMA, limited by the chip rate that Python DSP can sustain.
+  \item \textbf{Throughput ceiling.} About \SI{261}{kb/s} per link under TD-CDMA with two stations
+        (uncoded 64-QAM) and \SI{345}{kb/s} for one link alone under spread ALOHA with \code{-{}-mod 64qam},
+        limited by the chip rate that Python DSP can sustain.
 \end{itemize}
 
 \section{Future work}
@@ -2148,9 +2379,6 @@ needs a PC with four or more cores, and has still to be demonstrated on the phys
   \item \textbf{A longer preamble} (96 symbols) to gain about \SI{3}{dB} of detection range.
   \item \textbf{A 2--3 finger RAKE receiver} for multipath in large rooms.
   \item \textbf{Adaptive spreading} (31, 63 or 127 chips by measured SNR) to extend range further.
-  \item \textbf{Orthogonal codes inside a slot.} Walsh codes under one scrambling code would remove the
-        residual interference between the codes of one transmitter (29.4\,dB with two codes), at the cost of
-        chip-synchronous bursts and new preambles.
   \item \textbf{Multi-hop relaying, more stations and per-pair keys} (X25519 key exchange in the
         beacons for forward secrecy).
   \item \textbf{Fragments that fit an idle slot}, so that mid-size messages need not wait for a slot to grow.
@@ -2161,7 +2389,7 @@ needs a PC with four or more cores, and has still to be demonstrated on the phys
 %% =====================================================================
 WaveLink Chat meets every requirement of the \CourseCode\ project brief and goes well beyond it. Instead of
 a single point-to-point link, we designed and implemented a self-organising radio network of two to
-four ANTSDR\,E200 stations, with a physical layer built as a 68-block GNU Radio flowgraph, a link layer
+four ANTSDR\,E200 stations, with a physical layer built as a 73-block GNU Radio flowgraph, a link layer
 with reliable, prioritised and adaptive delivery, and an application that combines a modern messenger
 with two multiplayer games.
 
@@ -2171,15 +2399,19 @@ transmit; measuring this led us to TD-CDMA, which keeps the advantages of codes 
 addressing, simultaneous transmission to several destinations, processing gain) while giving every
 transmission the channel to itself. Keeping time in radio samples, with each station's
 transmit-to-receive offset measured from its own bursts, made slots with a \SI{0.5}{ms} guard possible
-despite hundreds of milliseconds of software latency. The 5G NR LDPC code with adaptive modulation and
-coding operates within about \SI{2}{dB} of capacity on an ideal channel and multiplied the goodput of a
-weak link by $4.8$.
+despite hundreds of milliseconds of software latency. Because the bursts of a slot all come from one
+transmitter and start together, orthogonal Walsh codes under a common scrambling sequence could replace
+the Gold codes there: they removed the interference between the codes of a slot, which had held a
+receiver to about \SI{13}{dB}, and made room for 64-QAM, up to \SI{375}{kb/s} on the air. The 5G NR LDPC
+code with adaptive modulation and coding operates within about \SI{2}{dB} of capacity on an ideal channel
+and nearly tripled the goodput of a weak link.
 
 Equally important was the verification strategy. A ladder of simulation environments, ending with the
 unchanged flowgraph running against emulated ANTSDRs, exposed nine timing bugs that no simpler
 simulation could show, and gave us confidence in every layer before the shared hardware was available.
-The remaining step, real-time operation on the physical radios, depends mainly on giving each station
-enough CPU; the clear path beyond it is to move the signal-processing hot spots into C++ blocks.
+The remaining step is real-time operation on the physical radios, which the emulated radios already
+sustain for two stations on a two-core PC; the clear path beyond it is to move the signal-processing hot
+spots into C++ blocks.
 
 %% =====================================================================
 %%  References
@@ -2208,6 +2440,9 @@ Upper Saddle River, NJ, USA: Prentice Hall, 2001.
 
 \bibitem{viterbi1995} A.~J. Viterbi, \emph{CDMA: Principles of Spread Spectrum Communication}.
 Reading, MA, USA: Addison-Wesley, 1995.
+
+\bibitem{ts25213} 3GPP, ``Spreading and modulation (FDD),'' 3rd Generation Partnership Project, Tech.
+Spec. TS~25.213.
 
 \bibitem{abramson1970} N.~Abramson, ``The ALOHA system---Another alternative for computer
 communications,'' in \emph{Proc. AFIPS Fall Joint Computer Conf.}, 1970, pp.~281--285.
@@ -2290,11 +2525,12 @@ IETF RFC~6716, Sep. 2012.
 \chapter{The PHY Flowgraph as Saved}\label{app:grc}
 \Cref{fig:grcrender} is a rendering of the block layout stored in \code{grc/cdma\_phy.grc}, produced
 from the file itself by the project's \code{tools/render\_grc.py}. From top to bottom: the parameter
-and variable blocks (sample rate, samples per chip, spreading factor, preamble length, roll-off, the
-five Gold codes and the three constellation objects); the transmit chain with its five code lanes
-converging on the CDMA Burst Combiner, the RRC filter and the PlutoSDR Sink; and the receive chain from
-the PlutoSDR Source through the FFT filter and CDMA Despreader to the three soft-decoder branches, the
-LDPC Decoder and the CRC check. Embedded Python blocks are drawn in yellow.
+and variable blocks (sample rate, samples per chip, the code family and the spreading factor, preamble
+length, roll-off, the Walsh and Gold code tables and the five codes taken from them, and the four
+constellation objects); the transmit chain with its five code lanes converging on the CDMA Burst
+Combiner, the RRC filter and the PlutoSDR Sink; and the receive chain from the PlutoSDR Source through
+the FFT filter and CDMA Despreader to the four soft-decoder branches, the LDPC Decoder and the CRC check.
+Embedded Python blocks are drawn in yellow.
 
 \begin{figure}[p]
 \centering
@@ -2327,13 +2563,14 @@ centimetres apart.
 \toprule
 \textrm{\textbf{Option}} & \textrm{\textbf{Default}} & \textbf{Meaning}\\
 \midrule
--{}-id, -{}-name & \textrm{--} & Station address (1--4, also its Gold code) and display name\\
+-{}-id, -{}-name & \textrm{--} & Station address (1--4, also its code) and display name\\
 -{}-uri & ip:192.168.1.10 & ANTSDR libiio address (\code{fake:} for emulated radios)\\
--{}-mod, -{}-fec & auto, auto & Restrict modulation (bpsk, qpsk, 16qam) or code rate (off, 1/2 \ldots\ 5/6)\\
+-{}-mod, -{}-fec & auto, auto & Restrict modulation (bpsk, qpsk, 16qam, 64qam) or code rate (off, 1/2 \ldots\ 5/6)\\
 -{}-mac & tdcdma & Medium access: TD-CDMA or the earlier spread ALOHA\\
+-{}-codes & walsh & Spreading codes: Walsh $\times$ scrambling (32 chips) or Gold (31 chips; the default and the only choice with spread ALOHA); the same on every station\\
 -{}-relay & on & Pass on messages for stations that cannot hear each other\\
 -{}-key & \textrm{--} & Passphrase for AES-256-GCM encryption\\
--{}-power-control & on & Transmit power control; \code{-{}-pc-target} sets the target (25.5\,dB)\\
+-{}-power-control & on & Transmit power control; \code{-{}-pc-target} sets the target (30.5\,dB; 25.5\,dB with spread ALOHA)\\
 -{}-tx-atten, -{}-rx-gain & 10\,dB, 40\,dB & ANTSDR transmit attenuation and receive gain\\
 -{}-tx-buffer & 65536 & ANTSDR transmit buffer in samples\\
 -{}-freq & 2.5e9 & Carrier frequency (must match on every station)\\
@@ -2349,6 +2586,8 @@ python3 -m wavelink sim --nodes 4
 python3 -m wavelink sim --nodes 3 --cut 1:3
 # the flowgraph PHY over a GNU Radio channel model (three stations)
 python3 -m wavelink grc-sim --noise 0.05
+# the same with spread ALOHA (which uses the 31-chip Gold codes)
+python3 -m wavelink grc-sim --noise 0.05 --mac aloha
 # emulated ANTSDRs: start the air, then one real station per terminal
 python3 -m wavelink fake-air
 python3 -m wavelink run --id 1 --name Alice --uri fake: --port 8081
@@ -2363,7 +2602,7 @@ python3 -m wavelink run --id 1 --name Alice --uri fake: --port 8081
 \toprule
 Member & Responsibility\\
 \midrule
-\MemberA & PHY signal processing and coding: Gold codes, modem, LDPC and Golay codes, error-rate measurements, hardware gain tuning\\
+\MemberA & PHY signal processing and coding: Walsh and Gold codes, modem up to 64-QAM, LDPC and Golay codes, error-rate measurements, hardware gain tuning\\
 \MemberB & GNU Radio and hardware: the \code{cdma\_phy.grc} flowgraph and its Embedded Python blocks, ANTSDR set-up, mid-evaluation tools\\
 \MemberC & Link layer and medium access: ARQ, adaptive modulation and coding, power control, priority, TD-CDMA time slots, relaying, simulators\\
 \MemberD & Application and user interface: messaging, encryption, game center, radio dashboard, demonstration script\\
