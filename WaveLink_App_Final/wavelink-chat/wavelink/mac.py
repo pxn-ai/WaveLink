@@ -35,19 +35,23 @@ coding and ahead of anything queued on their code: for traffic where a late copy
 started yet can be withdrawn (the UNO host replaces a player's stale view with a newer one).
 
 Transmit power control (the near-far problem).  A station close to a receiver arrives far
-stronger than one further away; after despreading, the strong station's code still leaks
-about 1/31 of its power into the weak one's (Gold-code cross-correlation), so without
-control a near station transmitting can drown a far one.  Every station therefore sends
-each frame at the lowest power its receiver needs, and no lower:
+stronger than one further away; with spread ALOHA's asynchronous Gold codes the strong
+station's code still leaks about 1/31 of its power into the weak one's after despreading, so
+without control a near station transmitting can drown a far one.  (With TD-CDMA only one
+station transmits at a time: there it keeps receivers from being overdriven and the band
+quieter.)  Every station therefore sends each frame at the lowest power its receiver needs,
+and no lower:
   * Every frame carries its own power backoff (flags bits 3-7).  A receiver adds it to the
     Es/N0 it measures, so it knows each path at full power whatever power was used.
   * It reports that number back: in every ACK (snr byte) and in its beacons (n entries of
     address + Es/N0 heard, every 5 s), so a station learns how every other one hears it
     even with no traffic between them.
   * The sender backs off to the target: what the fastest allowed modulation needs plus 3 dB
-    (uncoded 16-QAM: 22.5 + 3 = 25.5 dB).  Only power a link cannot use is taken away: it keeps
-    its fastest modulation (unless interference at its receiver lowers its rate, see below), and
-    a link that needs less than the target keeps full power.  A station next to its receiver then arrives at 25.5 dB instead of 40-50 dB, which
+    (TD-CDMA, uncoded 64-QAM: 27.5 + 3 = 30.5 dB; spread ALOHA, uncoded 16-QAM: 22.5 + 3 =
+    25.5 dB).  Only power a link cannot use is taken away: it keeps its fastest modulation
+    (unless interference at its receiver lowers its rate, see below), and a link that needs
+    less than the target keeps full power.  With spread ALOHA a station next to its receiver
+    then arrives at 25.5 dB instead of 40-50 dB, which
     is what drowns a weak link at a receiver close by: a transmission raises the noise of
     everything else heard there by its chip-level SNR (despread Es/N0 minus the 14.9 dB
     processing gain), ~11 dB at 25.5 dB instead of 25-35 dB at full power.  --pc-target 17

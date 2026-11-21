@@ -351,14 +351,14 @@ footer.sources ul { columns: 2 280px; padding-left: 18px; }
       <h1>WaveLink <span>Chat</span></h1>
     </div>
   </div>
-  <p class="lede">A WhatsApp-style chat and game center for two to four stations. Each station is one PC with one ANTSDR E200. All stations share one 4 MHz channel at 2.5 GHz: they take turns in time slots, and inside its slot a station reaches every other station at once, each on its own Gold code. This page explains how every layer is built, why each design choice beat the alternatives, how the two games work and which edge cases the system survives; a playground lets you switch stations on and off and move them around; and the last chapters cover running, testing and what is still open.</p>
+  <p class="lede">A WhatsApp-style chat and game center for two to four stations. Each station is one PC with one ANTSDR E200. All stations share one 4 MHz channel at 2.5 GHz: they take turns in time slots, and inside its slot a station reaches every other station at once, each on its own code. This page explains how every layer is built, why each design choice beat the alternatives, how the two games work and which edge cases the system survives; a playground lets you switch stations on and off and move them around; and the last chapters cover running, testing and what is still open.</p>
   <ul class="specs" aria-label="Key parameters">
     <li><b>2.5 GHz</b> carrier, 4 MHz</li>
     <li><b>4 MS/s</b> · 2 Mchip/s</li>
-    <li><b>31-chip</b> Gold codes · 14.9 dB gain</li>
-    <li><b>BPSK · QPSK · 16-QAM</b> + 5G NR LDPC</li>
+    <li><b>32-chip</b> Walsh codes · 15.1 dB gain</li>
+    <li><b>BPSK · QPSK · 16-QAM · 64-QAM</b> + 5G NR LDPC</li>
     <li><b>TD-CDMA</b> slots + one-hop relaying</li>
-    <li>up to <b>258 kb/s</b> per link</li>
+    <li>up to <b>375 kb/s</b> per link</li>
   </ul>
 </header>
 
@@ -386,7 +386,7 @@ footer.sources ul { columns: 2 280px; padding-left: 18px; }
         </li>
         <li><a href="#access"><span class="n">2</span><span>Why TD-CDMA, not CSMA, FDMA, TDMA, DS-CDMA or OFDMA</span></a></li>
         <li><a href="#topology"><span class="n">3</span><span>Why relaying, not a hub or a ring</span></a></li>
-        <li><a href="#gold"><span class="n">4</span><span>Why Gold codes</span></a></li>
+        <li><a href="#codes"><span class="n">4</span><span>Why Walsh codes</span></a></li>
         <li><a href="#evolution"><span class="n">5</span><span>Why relaying and time slots were added</span></a></li>
         <li><a href="#games"><span class="n">6</span><span>The two games</span></a></li>
         <li><a href="#features"><span class="n">7</span><span>Special features</span></a></li>
@@ -432,7 +432,7 @@ footer.sources ul { columns: 2 280px; padding-left: 18px; }
     <li><div><span class="layer">Application · node.py</span>The station wraps it in an envelope (<code>crypto byte | meta length | meta JSON | body</code>), compresses it with zlib if that helps, and with <code>--key</code> seals it with AES-256-GCM, using the addresses (1, 2) as associated data.</div></li>
     <li><div><span class="layer">Link layer · mac.py</span>The message is cut into 1,009-byte fragments (up to 65,535 of them) with a message id, gets the <em>bulk</em> priority, and gets the fastest modulation and code rate that Bob's last SNR report allows.</div></li>
     <li><div><span class="layer">Time slots · tdma.py</span>When Alice's slot comes round, her slot header goes out on the broadcast code 0 and, starting on the same chip, the photo's fragments go out on code 2, Bob's code. Each burst is handed to the flowgraph with an <code>at</code> tag: the exact chip it must start on.</div></li>
-    <li><div><span class="layer">Flowgraph TX</span>CRC-32 is appended, the LDPC Encoder adds parity, the Framer turns the bits into constellation indices behind a preamble and a Golay-coded header, lane 2 spreads every symbol with Gold code 2, the Burst Combiner puts the burst on its chip, and the RRC filter and the PlutoSDR Sink send it to the ANTSDR.</div></li>
+    <li><div><span class="layer">Flowgraph TX</span>CRC-32 is appended, the LDPC Encoder adds parity, the Framer turns the bits into constellation indices behind a preamble and a Golay-coded header, lane 2 spreads every symbol with code 2, the Burst Combiner puts the burst on its chip, and the RRC filter and the PlutoSDR Sink send it to the ANTSDR.</div></li>
     <li><div><span class="layer">Flowgraph RX at Bob</span>The matched filter and the CDMA Despreader find the preamble on code 2, read the header, track timing and carrier, and hand the symbols to the Constellation Soft Decoder for that modulation, then the LDPC Decoder, then the CRC-32 check. Frames with a bad CRC are dropped there.</div></li>
     <li><div><span class="layer">Link layer at Bob</span>Bob's station puts the fragments back together and acknowledges them in its next two slot headers (an ACK record: cumulative base plus a SACK bitmap and the SNR it measured). Alice resends only what is missing.</div></li>
     <li><div><span class="layer">Application at Bob</span>The station decrypts, stores the photo in its history and pushes it to Bob's browser with Server-Sent Events. Alice's tick turns ✓✓, and blue when Bob opens the chat (a read receipt).</div></li>
@@ -441,8 +441,8 @@ footer.sources ul { columns: 2 280px; padding-left: 18px; }
   <div class="tbl"><table>
     <thead><tr><th>Brief requirement</th><th>How WaveLink meets it</th></tr></thead>
     <tbody>
-      <tr><th>Digital modulation</th><td>DS-CDMA with 31-chip Gold codes, RRC α = 0.35. BPSK preamble and Golay-coded header; payload BPSK, QPSK or 16-QAM, with LDPC rate ½, ⅔, ¾, ⅚ or uncoded, chosen per link from the measured SNR.</td></tr>
-      <tr><th>Unique addressing</th><td>Twice: node N listens on Gold code N (a frame for someone else is never even despread), and every frame carries a <code>dst</code> byte that the link layer checks.</td></tr>
+      <tr><th>Digital modulation</th><td>DS-CDMA with 32-chip Walsh codes under one scrambling sequence (31-chip Gold codes for spread ALOHA), RRC α = 0.35. BPSK preamble and Golay-coded header; payload BPSK, QPSK, 16-QAM or 64-QAM, with LDPC rate ½, ⅔, ¾, ⅚ or uncoded, chosen per link from the measured SNR.</td></tr>
+      <tr><th>Unique addressing</th><td>Twice: node N listens on code N (a frame for someone else is never even despread), and every frame carries a <code>dst</code> byte that the link layer checks.</td></tr>
       <tr><th>Acknowledgements</th><td>Selective-repeat ARQ with cumulative and selective (SACK) acknowledgements, carried in the next slot headers.</td></tr>
       <tr><th>CRC error detection</th><td>CRC-8 on the PHY header, CRC-32 on every frame (stock <b>Stream CRC32</b> blocks in the flowgraph). Bad frames are dropped.</td></tr>
       <tr><th>Packetization and reassembly</th><td>1,009-byte fragments, up to 65,535 per message (≈ 66 MB; the app allows 64 MB).</td></tr>
@@ -454,8 +454,8 @@ footer.sources ul { columns: 2 280px; padding-left: 18px; }
 
   <h3 id="phy">1.2 The physical layer: the GNU Radio flowgraph</h3>
   <div class="prose">
-    <p>The flowgraph has 68 processing blocks: 7 Embedded Python blocks that hold the project's own DSP, and 61 stock GNU Radio blocks for everything else (CRC, spreading, symbol mapping, filtering, soft decoding and the radio). Its variables fix the air interface: <code>samp_rate = 4e6</code>, <code>sps = 2</code> samples per chip (so <code>chip_rate</code> = 2 Mchip/s), <code>sf = 31</code> chips per symbol, <code>preamble_bits = 48</code>, <code>max_payload = 1024</code> bytes and <code>rolloff = 0.35</code>. The Gold codes themselves are the variables <code>code_0</code> … <code>code_4</code>, written into the file as ±1 lists.</p>
-    <p>Click any block below to see what it does and the parameters it has in <code>cdma_phy.grc</code>. The code lanes and the receive branches are drawn once and stacked: the real graph has five lanes (codes 0 to 4) and three branches (BPSK, QPSK, 16-QAM).</p>
+    <p>The flowgraph has 73 processing blocks: 7 Embedded Python blocks that hold the project's own DSP, and 66 stock GNU Radio blocks for everything else (CRC, spreading, symbol mapping, filtering, soft decoding and the radio). Its variables fix the air interface: <code>samp_rate = 4e6</code>, <code>sps = 2</code> samples per chip (so <code>chip_rate</code> = 2 Mchip/s), <code>sf = 32</code> chips per symbol (31 with Gold codes), <code>preamble_bits = 48</code>, <code>max_payload = 1024</code> bytes and <code>rolloff = 0.35</code>. The codes themselves are written into the file as ±1 lists: <code>walsh_table</code> (the five Walsh codes in use, already multiplied by the scrambling sequence) and <code>gold_table</code>; <code>code_0</code> … <code>code_4</code> take theirs from one of the two, as the parameter <code>code_family</code> says (<code>walsh</code> unless it is <code>gold</code>).</p>
+    <p>Click any block below to see what it does and the parameters it has in <code>cdma_phy.grc</code>. The code lanes and the receive branches are drawn once and stacked: the real graph has five lanes (codes 0 to 4) and four branches (BPSK, QPSK, 16-QAM, 64-QAM).</p>
   </div>
   <figure class="panel">
     <div class="panel-head"><span class="t">grc/cdma_phy.grc, block by block</span><span class="k">interactive · click a block</span></div>
@@ -468,7 +468,7 @@ footer.sources ul { columns: 2 280px; padding-left: 18px; }
   </figure>
 
   <div class="prose">
-    <p>Two details make the stock blocks fit a burst system. First, a burst carries its metadata as stream tags: <b>PDU to Tagged Stream</b> turns the PDU's <code>pwr</code> (power backoff) and <code>at</code> (start chip) into tags on the burst's first chip, and <b>Tagged Stream Multiply Length</b> keeps <code>packet_len</code> right after <b>Repeat ×31</b> has made 31 chips of every symbol. Second, the radio must never run dry, so the <b>CDMA Burst Combiner</b> sends zeros between bursts. The stock <i>PDU to Stream</i> block stops instead, which starves the PlutoSDR Sink.</p>
+    <p>Two details make the stock blocks fit a burst system. First, a burst carries its metadata as stream tags: <b>PDU to Tagged Stream</b> turns the PDU's <code>pwr</code> (power backoff) and <code>at</code> (start chip) into tags on the burst's first chip, and <b>Tagged Stream Multiply Length</b> keeps <code>packet_len</code> right after <b>Repeat ×sf</b> has made 32 chips of every symbol (31 with Gold codes). Second, the radio must never run dry, so the <b>CDMA Burst Combiner</b> sends zeros between bursts. The stock <i>PDU to Stream</i> block stops instead, which starves the PlutoSDR Sink.</p>
   </div>
   <pre class="code"><span class="cap">tools/epy/combiner.py · CDMA Burst Combiner, general_work()</span><code class="language-python">for t in tags:
     if pmt.eq(t.key, self.len_key):          # one entry per complete burst on this lane
@@ -485,13 +485,18 @@ self.core.read_into(out)                     # zeros when no lane has anything t
 
   <h3 id="spreading">1.3 Spreading and despreading</h3>
   <div class="prose">
-    <p>In the transmit lane, <b>Chunks to Symbols</b> turns each symbol index into a constellation point, <b>Repeat</b> holds it for <code>sf = 31</code> chips, and <b>Multiply</b> multiplies it chip by chip with a <b>Vector Source</b> that repeats the lane's Gold code. The result occupies 31 times the bandwidth of the symbols. The receiver multiplies the incoming chips by the same code and adds up the 31 products: the wanted symbol adds up coherently (×31), while noise and every other code add up like random numbers. That ratio is the <b>processing gain</b>, 10·log10(31) = <b>14.9 dB</b>.</p>
-    <p>Try it: Alice sends four BPSK symbols to Bob on code 2 while Carol sends to Dave on code 4. Pick the code the receiver despreads with, make Carol louder (the near-far problem), or shift her code phase.</p>
+    <p>In the transmit lane, <b>Chunks to Symbols</b> turns each symbol index into a constellation point, <b>Repeat</b> holds it for <code>sf = 32</code> chips, and <b>Multiply</b> multiplies it chip by chip with a <b>Vector Source</b> that repeats the lane's code. The result occupies 32 times the bandwidth of the symbols. The receiver multiplies the incoming chips by the same code and adds up the 32 products: the wanted symbol adds up coherently (×32), while noise adds up like random numbers, and so does every code that is not on the same symbol grid. The other codes of a slot, which start on the same chip, add up to exactly zero (chapter 4). That ratio is the <b>processing gain</b>, 10·log10(32) = <b>15.1 dB</b> (14.9 dB with the 31-chip Gold codes).</p>
+    <p>Try it: Alice sends four BPSK symbols to Bob on code 2 while Carol sends to Dave on code 4. Pick the code the receiver despreads with, make Carol louder (the near-far problem), or shift her code phase, with the project's Walsh codes or its Gold codes.</p>
   </div>
   <figure class="panel">
     <div class="panel-head"><span class="t">Two transmissions on one carrier, separated by their codes</span><span class="k">interactive</span></div>
     <div class="panel-body">
       <div class="controls">
+        <span class="field">Codes</span>
+        <div class="seg" role="group" aria-label="Code family" id="sp-fam">
+          <button type="button" data-v="walsh" aria-pressed="true">Walsh × scrambling, 32</button>
+          <button type="button" data-v="gold" aria-pressed="false">Gold, 31</button>
+        </div>
         <span class="field">Receiver despreads with</span>
         <div class="seg" role="group" aria-label="Receiver code" id="sp-code">
           <button type="button" data-v="2" aria-pressed="true">code 2 (Bob)</button>
@@ -502,16 +507,16 @@ self.core.read_into(out)                     # zeros when no lane has anything t
       <div class="controls">
         <label class="field" for="sp-int">Carol's power <input type="range" id="sp-int" min="-10" max="20" step="1" value="0"><output id="sp-int-o">0 dB</output></label>
         <label class="field" for="sp-noise">Chip SNR <input type="range" id="sp-noise" min="-15" max="20" step="1" value="0"><output id="sp-noise-o">0 dB</output></label>
-        <label class="field" for="sp-off">Carol's code phase <input type="range" id="sp-off" min="0" max="30" step="1" value="0"><output id="sp-off-o">0 chips</output></label>
+        <label class="field" for="sp-off">Carol's code phase <input type="range" id="sp-off" min="0" max="31" step="1" value="0"><output id="sp-off-o">0 chips</output></label>
         <button type="button" class="btn" id="sp-new">New data</button>
       </div>
       <canvas id="sp-chips" height="170" aria-label="Chip waveforms"></canvas>
       <canvas id="sp-out" height="150" aria-label="Despread symbols"></canvas>
       <dl class="readout" id="sp-read"></dl>
     </div>
-    <figcaption>Top: Alice's spread signal (code 2), Carol's (code 4) and what the antenna receives, the sum plus noise. Bottom: the receiver's output after despreading, one bar per symbol. With code 2 the bars show Alice's symbols even when every chip is buried in noise (chip SNR −10 dB); with any other code they collapse towards zero. Cross-correlation between two codes is at most 9/31 at any shift, so a Carol 10 dB louder still leaks through at about 0.9 of a symbol: that is why the project keeps one transmitter on the air at a time (chapter 2).</figcaption>
+    <figcaption>Top: Alice's spread signal (code 2), Carol's (code 4) and what the antenna receives, the sum plus noise. Bottom: the receiver's output after despreading, one bar per symbol. With code 2 the bars show Alice's symbols even when every chip is buried in noise (chip SNR −10 dB); with any other code they collapse towards zero. With Walsh codes and Carol's chips aligned with Alice's (phase 0, as for two bursts of one slot), code 4 cancels exactly, however loud it is; shift it by a chip and it leaks through like any other code. Gold codes leak at every phase, up to 9/31 of a symbol, so a Carol 10 dB louder still leaks through at about 0.9 of a symbol. Between stations the timing is never exact to a chip: that is why the project keeps one transmitter on the air at a time (chapter 2).</figcaption>
   </figure>
-  <pre class="code"><span class="cap">wavelink/config.py · receiver-based code assignment</span><code class="language-python">BROADCAST_CODE = 0          # Gold-code index used for broadcast / beacons
+  <pre class="code"><span class="cap">wavelink/config.py · receiver-based code assignment</span><code class="language-python">BROADCAST_CODE = 0          # code index used for broadcast / beacons
 
 def code_index_for(addr: int) -&gt; int:
     """Receiver-based code assignment: a frame is spread with the code of the
@@ -530,11 +535,11 @@ def code_index_for(addr: int) -&gt; int:
   <figure class="panel">
     <div class="panel-head"><span class="t">"Hi Bob!" from Alice to Bob, layer by layer</span><span class="k">encapsulation</span></div>
     <div class="panel-body"><div class="scroll-x"><div id="encfig"></div></div></div>
-    <figcaption>Each row is the payload of the row below it. Seven bytes of text become a 73-byte envelope, an 87-byte frame with its CRC-32, 928 coded bits and 336 symbols: 5.2 ms on the air at 16-QAM ¾. Dashed boxes are bits the code works with but never sends.</figcaption>
+    <figcaption>Each row is the payload of the row below it. Seven bytes of text become a 73-byte envelope, an 87-byte frame with its CRC-32, 930 coded bits and 256 symbols: 4.1 ms on the air at 64-QAM ¾. Dashed boxes are bits the code works with but never sends.</figcaption>
   </figure>
 
   <h4>The burst on the air</h4>
-  <div class="prose"><p>The <b>CDMA PHY Framer</b> builds every burst as a list of symbol indices into <code>sym_table</code> (0–1 BPSK, 2–5 QPSK, 6–21 16-QAM), so one code lane can carry any modulation and the modulation can change from one burst to the next.</p></div>
+  <div class="prose"><p>The <b>CDMA PHY Framer</b> builds every burst as a list of symbol indices into <code>sym_table</code> (0–1 BPSK, 2–5 QPSK, 6–21 16-QAM, 22–85 64-QAM), so one code lane can carry any modulation and the modulation can change from one burst to the next.</p></div>
   <figure class="panel">
     <div class="panel-head"><span class="t">The same frame as a burst: preamble, header bits, Golay codewords, LDPC</span><span class="k">physical layer</span></div>
     <div class="panel-body"><div class="scroll-x"><div id="phyfig"></div></div></div>
@@ -543,10 +548,10 @@ def code_index_for(addr: int) -&gt; int:
   <div class="tbl"><table>
     <thead><tr><th>Part</th><th>Size</th><th>What it carries</th><th>Why it is there</th></tr></thead>
     <tbody>
-      <tr><th>Preamble</th><td class="num">48 BPSK symbols</td><td>A known ±1 pattern, a different one for each Gold code</td><td>The receiver finds the burst with it (a differential correlator that a carrier offset doesn't disturb) and takes symbol timing, carrier phase and frequency from it. Because the pattern belongs to one code, a strong burst on another code that leaks through is not mistaken for one of ours.</td></tr>
+      <tr><th>Preamble</th><td class="num">48 BPSK symbols</td><td>A known ±1 pattern, a different one for each code</td><td>The receiver finds the burst with it (a differential correlator that a carrier offset doesn't disturb) and takes symbol timing, carrier phase and frequency from it. Because the pattern belongs to one code, a strong burst on another code that leaks through is not mistaken for one of ours.</td></tr>
       <tr><th>Header: length</th><td class="num">11 bits</td><td>Bytes in the payload, CRC-32 included (at most 1,024; 11 bits would allow 2,047)</td><td>Where the payload ends (bursts are padded), and with modulation and rate it fixes the LDPC codeword size, so decoding can start.</td></tr>
-      <tr><th>Header: modulation</th><td class="num">2 bits</td><td>0 differential BPSK, 1 QPSK, 2 16-QAM, 3 coherent BPSK</td><td>The link layer picks it per frame from the receiver's SNR reports; the receiver just reads it here, so it can change with every frame.</td></tr>
-      <tr><th>Header: code rate</th><td class="num">3 bits</td><td>0 uncoded, 1 ½, 2 ⅔, 3 ¾, 4 ⅚</td><td>The same for the LDPC rate.</td></tr>
+      <tr><th>Header: modulation</th><td class="num">2 bits</td><td>0 differential BPSK, 1 QPSK, 2 16-QAM, 3 coherent BPSK; 0 with a code rate is 64-QAM</td><td>The link layer picks it per frame from the receiver's SNR reports; the receiver just reads it here, so it can change with every frame.</td></tr>
+      <tr><th>Header: code rate</th><td class="num">3 bits</td><td>0 uncoded, 1 ½, 2 ⅔, 3 ¾, 4 ⅚; with modulation 0, 1–4 are 64-QAM ½–⅚ and 5 is uncoded 64-QAM</td><td>The same for the LDPC rate. Differential BPSK is never coded, so its unused codes name 64-QAM, and the header keeps its 16 bits.</td></tr>
       <tr><th>Header: CRC-8</th><td class="num">8 bits</td><td>Over the 16 bits above (polynomial 0x07)</td><td>Throws away a "header" decoded from noise or from another code's leakage before the receiver spends time on a payload.</td></tr>
       <tr><th>Golay (24,12) × 2</th><td class="num">48 BPSK symbols</td><td>The 24 header bits, coded</td><td>The header has to be read before anything else, at a lower SNR than the payload: minimum distance 8, any 3 errors per codeword corrected, soft decoding to about 1 dB.</td></tr>
       <tr><th>Payload</th><td class="num">E bits as symbols</td><td>The LDPC codeword's sent part (or the plain bits, uncoded), Gray-mapped</td><td>The link-layer frame itself.</td></tr>
@@ -586,13 +591,13 @@ def code_index_for(addr: int) -&gt; int:
   <h4>What a burst costs</h4>
   <div id="fx-cost"></div>
   <div class="prose">
-    <p>Every burst pays 96 symbols of preamble and header (1.49 ms) whatever it carries, and every fragment 14 bytes of MAC header, fragment fields and CRC-32. A short text is therefore mostly overhead: 7 bytes take 5.2 ms. A full 1,009-byte fragment at uncoded 16-QAM carries 243 kb/s of information while it is on the air, 94 % of the raw 258 kb/s, which is why files go in full fragments.</p>
+    <p>Every burst pays 96 symbols of preamble and header (1.54 ms) whatever it carries, and every fragment 14 bytes of MAC header, fragment fields and CRC-32. A short text is therefore mostly overhead: 7 bytes take 4.1 ms. A full 1,009-byte fragment at uncoded 64-QAM carries 343 kb/s of information while it is on the air, 91 % of the raw 375 kb/s, which is why files go in full fragments.</p>
   </div>
 
   <h4>Why the frames look like this</h4>
   <div class="prose">
     <ul>
-      <li><b>Addressed twice.</b> The burst is spread with the destination's Gold code, so a station never despreads frames for others; the <code>dst</code> byte then catches anything decoded from cross-correlation, marks broadcasts (255, on code 0) and lets a relay take FWD frames that are not its own.</li>
+      <li><b>Addressed twice.</b> The burst is spread with the destination's code, so a station never despreads frames for others; the <code>dst</code> byte then catches anything decoded from cross-correlation, marks broadcasts (255, on code 0) and lets a relay take FWD frames that are not its own.</li>
       <li><b>Every frame describes itself.</b> Modulation and code rate are in the PHY header, the transmit power in the flags. Each frame can use a different rate and power, and nothing has to be negotiated or announced.</li>
       <li><b>CRC and numbering per fragment.</b> <code>msg_id</code>, <code>frag_idx</code> and <code>frag_count</code> with a CRC-32 on every frame make selective repeat possible: only the fragments that were lost go again, and fragments may arrive in any order (directly and through a relay).</li>
       <li><b>1,009-byte fragments.</b> One burst holds at most 1,024 bytes: one LDPC codeword (base graph 1 takes up to 1,056 bytes) and an 11-bit length. 4 bytes go to the CRC and 11 to the largest header, FWD's, so a fragment can be relayed unchanged.</li>
@@ -633,9 +638,9 @@ def code_index_for(addr: int) -&gt; int:
   </figure>
 
   <h4>Typical messages</h4>
-  <div class="prose"><p>Bob close to Alice (16-QAM uncoded), nothing else to send, no losses, times from the moment the message is queued; photo sizes are typical ones for a 12-megapixel phone photo:</p></div>
+  <div class="prose"><p>Bob close to Alice (uncoded 64-QAM), nothing else to send, no losses, times from the moment the message is queued; photo sizes are typical ones for a 12-megapixel phone photo:</p></div>
   <div id="pk-table"></div>
-  <div class="prose"><p>A text of up to a few hundred bytes arrives within about 0.1 s, however many stations are on the air. A bigger message goes one frame per cycle at first (with three or four stations an idle slot is shorter than a full frame, so it waits instead), and once Alice's slot has grown, about 1.4 s in, three full frames per cycle: 187 kb/s with two stations, 152 kb/s with four. So a Standard photo takes about 2 s and an original 3 MB photo over two minutes. Because a four-station idle slot (22 ms) is shorter than any full frame (33.2 ms even uncoded), a text of two fragments takes 1.5 s there instead of 0.2 s (chapter 11). Compression counts for more than the rate: the 1 MB CSV goes in a quarter of the PDF's time.</p></div>
+  <div class="prose"><p>A text of up to a few hundred bytes arrives within about 0.1 s, however many stations are on the air. A bigger message goes one frame per cycle at first (with four stations an idle slot is shorter than a full frame, so it waits instead; with three a full frame just fits at 64-QAM ⅚ or uncoded), and once Alice's slot has grown, about 1.4 s in, four full frames per cycle: 261 kb/s with two stations, 210 kb/s with four. So a Standard photo takes 1.5–2.5 s and an original 3 MB photo about a minute and a half. Because a four-station idle slot (22 ms) is shorter than any full frame (23.4 ms even at uncoded 64-QAM), a text of two fragments takes 1.5 s there instead of 0.1 s (chapter 11). Compression counts for more than the rate: the 1 MB CSV goes in a quarter of the PDF's time.</p></div>
 
   <h4>The rules, whatever the size</h4>
   <div class="prose">
@@ -659,7 +664,7 @@ def code_index_for(addr: int) -&gt; int:
     <li><div><b>Code correlation</b> at every sample offset, but only where a burst can start: around each other station's slot start (±0.27 ms), right after a burst just found on a code, and over the whole join slot. Every 8th cycle, and for 1.5 s after a possible timing slip, it searches everywhere. With three idle stations this cut the receiver's CPU from 3.2 to 1.2 s per second of air in the simulator.</div></li>
     <li><div><b>Differential preamble detector</b> <code>|Σ q_k c_k c*_{k−1}|</code>, normalised by the despread energy. Comparing each symbol with the one before cancels the carrier offset, so bursts are found with up to ±16 kHz between two ANTSDR crystals. It also gives symbol timing and a coarse CFO.</div></li>
     <li><div><b>A second, coherent check</b> of every detection against the known preamble in four segments rejects noise and other codes' data before any decoding.</div></li>
-    <li><div><b>Fractional-delay despreading</b>: each symbol is despread at a few whole-sample offsets and an 8-tap windowed-sinc filter interpolates to 1/64 of a sample. 16-QAM needs that accuracy. An early-late <b>DLL</b> tracks a sample-clock difference of up to 30 ppm.</div></li>
+    <li><div><b>Fractional-delay despreading</b>: each symbol is despread at a few whole-sample offsets and an 8-tap windowed-sinc filter interpolates to 1/64 of a sample. 16-QAM and 64-QAM need that accuracy. An early-late <b>DLL</b> tracks a sample-clock difference of up to 30 ppm, block by block; one straight line fitted through its estimates then gives the timing every symbol is despread at. That removes the loop's jitter, which matters when other codes of the slot carry symbols too: they stay orthogonal only within about 1 % of a chip.</div></li>
     <li><div><b>Header and carrier.</b> The Golay header is decoded by soft maximum likelihood (correlation with all 4,096 codewords) and checked with CRC-8. Its 48 symbols then become known, and the CFO is re-estimated over all 96 known symbols. A decision-directed 2nd-order loop, anchored on the preamble and header, tracks the carrier through the payload.</div></li>
     <li><div><b>Out to the stock blocks.</b> The symbols leave as a PDU tagged with modulation, code rate, length, SNR, CFO and the burst's <b>receive sample index</b> (the time slots need it). A <b>PDU Filter</b> on <code>mod</code> routes it to the matching <b>Constellation Soft Decoder</b>, whose soft bits go to the <b>LDPC Decoder</b> and the <b>CRC32</b> check.</div></li>
   </ol>
@@ -667,25 +672,29 @@ def code_index_for(addr: int) -&gt; int:
 
   <h3 id="fec">1.7 LDPC and adaptive modulation and coding</h3>
   <div class="prose">
-    <p>Every frame is one codeword of the <b>5G NR LDPC code</b> (3GPP TS 38.212, base graph 1). Its 46 × 68 base matrix is lifted by a factor Z (51 sizes from 2 to 384) to fit the frame: a 1 KB frame uses Z = 384, a 30-byte ACK Z = 11. The encoder works systematically, as 5G does. All rates are prefixes of one mother codeword (the first 2Z information bits are punctured, then the first E = K/R bits are sent), so one matrix serves ½, ⅔, ¾ and ⅚, and the 5G bit interleaver spreads each codeword across the bits of QPSK and 16-QAM symbols. The decoder is a layered normalised min-sum (α = 0.75) that stops as soon as every parity check passes: 1–3 iterations at good SNR, at most <code>ldpc_max_iter = 20</code>.</p>
+    <p>Every frame is one codeword of the <b>5G NR LDPC code</b> (3GPP TS 38.212, base graph 1). Its 46 × 68 base matrix is lifted by a factor Z (51 sizes from 2 to 384) to fit the frame: a 1 KB frame uses Z = 384, a 30-byte ACK Z = 11. The encoder works systematically, as 5G does. All rates are prefixes of one mother codeword (the first 2Z information bits are punctured, then the first E = K/R bits are sent), so one matrix serves ½, ⅔, ¾ and ⅚, and the 5G bit interleaver spreads each codeword across the bits of QPSK, 16-QAM and 64-QAM symbols. The decoder is a layered normalised min-sum (α = 0.75) that stops as soon as every parity check passes: 1–3 iterations at good SNR, at most <code>ldpc_max_iter = 20</code>.</p>
     <p>Each ACK carries the SNR the receiver measured, and the sender picks the fastest rung whose threshold that SNR meets (<code>mac.MCS_TABLE</code>). A window that loses more than 20 % of its frames drops the link one rung for 10 s. Drag the link quality:</p>
   </div>
   <figure class="panel">
-    <div class="panel-head"><span class="t">Rate ladder at 2 Mchip/s (64.5 ksymbol/s)</span><span class="k">interactive</span></div>
+    <div class="panel-head"><span class="t">Rate ladder at 2 Mchip/s (62.5 ksymbol/s)</span><span class="k">interactive</span></div>
     <div class="panel-body">
-      <div class="controls"><label class="field" for="mcs-snr">Es/N0 the receiver reports <input type="range" id="mcs-snr" min="0" max="28" step="0.5" value="13"><output id="mcs-snr-o">13 dB</output></label></div>
+      <div class="controls"><label class="field" for="mcs-snr">Es/N0 the receiver reports <input type="range" id="mcs-snr" min="0" max="32" step="0.5" value="13"><output id="mcs-snr-o">13 dB</output></label></div>
       <div class="scroll-x"><div id="mcs"></div></div>
       <dl class="readout" id="mcs-read"></dl>
     </div>
-    <figcaption>Thresholds are the despread symbol SNR at which the full receiver delivers about 100 % of 1 KB frames, plus 0.5–1 dB of margin. QPSK ½ is the floor and also carries ACKs, beacons and broadcasts. Measured on the numpy PHY: a 1 MB file at 14 dB goes at 176 kb/s with LDPC (16-QAM ¾) against 37 kb/s uncoded, 4.8 times faster.</figcaption>
+    <figcaption>Thresholds are the despread symbol SNR at which the full receiver delivers about 100 % of 1 KB frames, plus 0.5–1.5 dB of margin. QPSK ½ is the floor and also carries ACKs, beacons and broadcasts. This is the TD-CDMA ladder; spread ALOHA stops at uncoded 16-QAM (22.5 dB, dashed), because there every link's power is interference for the others. Measured on the numpy PHY (spread ALOHA): a 1 MB file at 14 dB goes at 178 kb/s with LDPC (16-QAM ¾) against 61 kb/s uncoded, 2.9 times faster.</figcaption>
   </figure>
   <pre class="code"><span class="cap">wavelink/mac.py · the table the sender climbs</span><code class="language-python">MCS_TABLE = [   # (name, Es/N0 needed in dB, info bits per symbol)
     ("qpsk-1/2", 5.0, 1.0), ("qpsk-3/4", 6.0, 1.5), ("qpsk-5/6", 7.0, 1.667), ("qpsk", 15.5, 2.0),
     ("16qam-1/2", 9.5, 2.0), ("16qam-2/3", 11.0, 2.667), ("16qam-3/4", 12.5, 3.0),
     ("16qam-5/6", 14.0, 3.333), ("16qam", 22.5, 4.0),
+    ("64qam-1/2", 14.0, 3.0), ("64qam-2/3", 16.5, 4.0), ("64qam-3/4", 17.5, 4.5),
+    ("64qam-5/6", 19.0, 5.0), ("64qam", 27.5, 6.0),
 ]   # (BPSK rungs omitted here)
 AUTO_LADDER = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16qam-3/4",
-               "16qam-5/6", "16qam"]</code></pre>
+               "16qam-5/6", "64qam-2/3", "64qam-3/4", "64qam-5/6", "64qam"]
+AUTO_LADDER_ALOHA = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16qam-3/4",
+                     "16qam-5/6", "16qam"]     # spread ALOHA: 64-QAM only with --mod 64qam</code></pre>
   <div class="prose"><p>LDPC, CRC-32 and ARQ together are <b>hybrid ARQ type I</b>: the code corrects most errors, the CRC catches what it can't, and ARQ resends those frames. Adaptive modulation keeps that rare.</p></div>
 
   <h3 id="link">1.8 The link layer</h3>
@@ -695,7 +704,7 @@ AUTO_LADDER = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16
     <div class="card"><h4>Selective-repeat ARQ</h4><p>Each receiver puts an ACK record in its next two slot headers: sender, msg_id, fragment count, cumulative base, the fragment heard last, Es/N0 and a SACK bitmap of up to 512 fragments. A fragment older than the one heard last and still missing is known lost and goes again in the sender's next slot. A timeout (3 cycles + 2 hand-over times + 0.1 s, or 2.5 × the round trip + a cycle) resends what is in flight.</p></div>
     <div class="card"><h4>Priority</h4><p>Four classes: control/ACK, urgent ⚡, normal, bulk media. In a slot each code serves its messages in that order, so an urgent text overtakes a 10 MB transfer in the sender's next slot.</p></div>
     <div class="card"><h4>Group messages</h4><p>One broadcast on code 0 at the rate the weakest member can take. Every member acknowledges it in its own header; the sender resends what any member misses, shows a tick count per member (<em>2/3</em>), and gives a silent member its own copy after 4 timeouts.</p></div>
-    <div class="card"><h4>Transmit power control</h4><p>Each frame carries its backoff, receivers report Es/N0 at full power, and senders back off to a target of 25.5 dB at the receiver: what uncoded 16-QAM needs (22.5 dB) plus 3 dB. Power follows the best recent report, rate follows the latest, so interference lowers the rate instead of starting a power race.</p></div>
+    <div class="card"><h4>Transmit power control</h4><p>Each frame carries its backoff, receivers report Es/N0 at full power, and senders back off to what the fastest rung needs plus 3 dB at the receiver: 30.5 dB with TD-CDMA (uncoded 64-QAM needs 27.5 dB), 25.5 dB with spread ALOHA (uncoded 16-QAM needs 22.5 dB). Power follows the best recent report, rate follows the latest, so interference lowers the rate instead of starting a power race.</p></div>
   </div>
 
   <h4>Transmit power control, step by step</h4>
@@ -704,7 +713,7 @@ AUTO_LADDER = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16
     <tbody>
       <tr><th>Each frame says its power</th><td>Bits 3–7 of the flags byte carry the frame's backoff (0–31 dB). The receiver adds it to the Es/N0 it measures, so it knows every path at full power, whatever power was used.</td></tr>
       <tr><th>Receivers report</th><td>In every ACK record, and in the link tables of slot headers and beacons: how each station hears each other one, at full power.</td></tr>
-      <tr><th>Senders back off</th><td>To 25.5 dB at the receiver, what uncoded 16-QAM needs (22.5 dB) plus 3 dB, so only power the link can't use is taken away. Up at once, down in steps of 2 dB or more, at most 30 dB, and back to full power when a station's reports stop for 60 s. The modulation is then chosen for the Es/N0 the receiver will see at that power.</td></tr>
+      <tr><th>Senders back off</th><td>To what the fastest rung needs plus 3 dB at the receiver (30.5 dB with TD-CDMA, 25.5 dB with spread ALOHA), so only power the link can't use is taken away. Up at once, down in steps of 2 dB or more, at most 30 dB, and back to full power when a station's reports stop for 60 s. The modulation is then chosen for the Es/N0 the receiver will see at that power.</td></tr>
       <tr><th>Power from the path, rate from the interference</th><td>The reports are SINR. Power follows the best recent report (which falls 0.5 dB/s), the modulation follows the latest, so a burst of interference lowers the rate instead of starting a power race between stations.</td></tr>
       <tr><th>Outer loop</th><td>A backed-off link that keeps losing frames although its receiver reports no interference aims 3 dB higher, up to +12 dB, and 1 dB lower per 30 s without losses: impairments the Es/N0 estimate doesn't show.</td></tr>
       <tr><th>One power per slot</th><td>With TD-CDMA a slot goes at what its weakest listener needs; a station that hasn't reported yet counts as needing full power, so a newcomer hears us. With more than two codes in a slot each gets 10·log<sub>10</sub>(codes / 2) dB less, so their sum never exceeds two full-power codes (<code>tdma._slot_bo</code>).</td></tr>
@@ -712,12 +721,12 @@ AUTO_LADDER = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16
     </tbody>
   </table></div>
   <div class="prose">
-    <p>With TD-CDMA one station transmits at a time, so power control isn't needed against near-far there: it keeps receivers from being overdriven (a neighbour arrives at about 25 dB instead of 40–50 dB) and the lab's band quieter. With spread ALOHA it is what makes the scheme work at all. On the simulated air, with Alice, Carol and Dave 24 dB closer to each other than to Bob, Bob's 40 KB to Dave <b>failed</b> without it while Alice sent a file to Carol, and arrived in 4.6–9.1 s with it (Alice 16–20 dB down). Where no station is much nearer than the others it costs nothing: three 150 KB files at once took 54–58 s on the GNU Radio simulation with it, 65–66 s without. A lower target such as 17 dB would protect weak neighbours more, but would put every strong link on coded modulation: slower, an LDPC decode per frame and more receiver CPU at every station.</p>
+    <p>With TD-CDMA one station transmits at a time, so power control isn't needed against near-far there: it keeps receivers from being overdriven (a neighbour arrives at about 30 dB instead of 40–50 dB) and the lab's band quieter. With spread ALOHA it is what makes the scheme work at all. On the simulated air, with Alice, Carol and Dave 24 dB closer to each other than to Bob, Bob's 40 KB to Dave <b>failed</b> without it while Alice sent a file to Carol, and arrived in 4.6–9.1 s with it (Alice 16–20 dB down). Where no station is much nearer than the others it costs nothing: three 150 KB files at once took 54–58 s on the GNU Radio simulation with it, 65–66 s without. A lower target such as 17 dB would protect weak neighbours more, but would put every strong link on coded modulation: slower, an LDPC decode per frame and more receiver CPU at every station.</p>
   </div>
 
   <h3 id="tdcdma">1.9 TD-CDMA: time slots in radio samples</h3>
   <div class="prose">
-    <p>The stations take turns. A repeating <b>cycle</b> has one slot per station plus a <b>join slot</b> for newcomers. In its slot a station sends its <b>slot header</b> on the broadcast code (QPSK ½, 4.6–9.6 ms) and, starting on the same chip, its frames for each destination on that destination's code, all at one power. Nobody else transmits during the slot, so nobody is deafened by their own transmitter and no near station drowns a far one. Pick which stations have data queued:</p>
+    <p>The stations take turns. A repeating <b>cycle</b> has one slot per station plus a <b>join slot</b> for newcomers. In its slot a station sends its <b>slot header</b> on the broadcast code (QPSK ½, 4.7–9.9 ms) and, starting on the same chip, its frames for each destination on that destination's code, all at one power. Nobody else transmits during the slot, so nobody is deafened by their own transmitter and no near station drowns a far one. Pick which stations have data queued:</p>
   </div>
   <figure class="panel">
     <div class="panel-head"><span class="t">One TD-CDMA cycle</span><span class="k">interactive · click a slot</span></div>
@@ -739,7 +748,7 @@ AUTO_LADDER = ["qpsk-1/2", "qpsk-3/4", "qpsk-5/6", "16qam-1/2", "16qam-2/3", "16
       <dl class="readout" id="cy-read"></dl>
       <div class="detail" id="cy-detail" aria-live="polite"></div>
     </div>
-    <figcaption>Slot sizes follow the rules in <code>tdma.py</code>: 15 ms for an idle station, about 101 ms (three frames of uncoded 16-QAM) for one with data, at most 250 ms, a join slot of 11.5 ms, and a cycle shorter than 100 ms padded so every station sends ten headers a second. Measured cycles with every station sending were 213.5, 333.5 and 415.5 ms for 2, 3 and 4 stations.</figcaption>
+    <figcaption>Slot sizes follow the rules in <code>tdma.py</code>: 15 ms for an idle station, about 97 ms (four frames of uncoded 64-QAM) for one with data, at most 250 ms, a join slot of 11.75 ms, and a cycle shorter than 100 ms padded so every station sends ten headers a second. Measured cycles with every station sending were 241.75, 356.75 and 471.75 ms for 2, 3 and 4 stations (data slots of 115 ms: four frames of 64-QAM ⅚ on links of 22–28 dB).</figcaption>
   </figure>
 
   <h4>Who leads, who joins, who takes over</h4>
@@ -838,12 +847,12 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
 <!-- =============================================================== 2 -->
 <section class="chap" id="access">
   <div class="chap-head"><span class="chap-num">2</span><h2>Why TD-CDMA, and not CSMA, FDMA, TDMA, DS-CDMA or OFDMA</h2></div>
-  <p class="answer">TD-CDMA takes one rule from TDMA (only one station transmits at a time) and keeps CDMA inside each slot (one Gold code per destination). Four facts about this hardware decided it: a station is deaf while it transmits, a burst leaves the antenna 0.2–0.6 s after it is built, all stations share one 4 MHz channel with CPU-bound receivers, and the lab has near, far and hidden stations.</p>
+  <p class="answer">TD-CDMA takes one rule from TDMA (only one station transmits at a time) and keeps CDMA inside each slot (one code per destination). Four facts about this hardware decided it: a station is deaf while it transmits, a burst leaves the antenna 0.2–0.6 s after it is built, all stations share one 4 MHz channel with CPU-bound receivers, and the lab has near, far and hidden stations.</p>
 
   <div class="cards">
     <div class="card"><h4>1 · Deaf while transmitting</h4><p>TX and RX antennas sit a few centimetres apart on the same frequency, so a station's own signal reaches its receiver about 25 dB above anyone else's. While it sends, it hears nothing else.</p></div>
     <div class="card"><h4>2 · Slow, jittery path to the antenna</h4><p>The flowgraph gets a burst 120–450 ms before its slot, and libiio keeps about 82 ms of samples in its TX buffers. The PC cannot react to the channel in milliseconds, let alone microseconds.</p></div>
-    <div class="card"><h4>3 · One channel, CPU-bound receivers</h4><p>One ANTSDR per PC, one 4 MHz channel, and Python DSP: a receiving station already needs about 2.1 cores of a 2.8 GHz Xeon.</p></div>
+    <div class="card"><h4>3 · One channel, CPU-bound receivers</h4><p>One ANTSDR per PC, one 4 MHz channel, and Python DSP: a receiving station needs about 0.9 cores of a 2.1 GHz Xeon at 203 kb/s, most of it Python under one interpreter lock.</p></div>
     <div class="card"><h4>4 · Near, far and hidden stations</h4><p>Stations can be 1 m or 10 m apart, and in another room a pair may not hear each other at all.</p></div>
   </div>
 
@@ -853,9 +862,9 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
       <tr><th>CSMA/CA</th><td><span class="p">partly</span>: no collision detection</td><td><span class="n">fails</span>: sensing is stale</td><td><span class="y">ok</span></td><td><span class="n">collisions</span> (RTS/CTS costs round trips)</td><td><span class="n">no</span></td><td>full</td><td>no, reasoned</td></tr>
       <tr><th>FDMA</th><td><span class="p">ok</span> if the front end has the range</td><td><span class="y">ok</span></td><td><span class="p">leakage and IQ images</span></td><td><span class="n">no help</span></td><td><span class="n">no</span>: one channel per sender</td><td><span class="n">¼</span> of the band</td><td>no, reasoned</td></tr>
       <tr><th>TDMA, one code</th><td><span class="y">ok</span></td><td><span class="y">ok</span> with sample timing</td><td><span class="y">ok</span></td><td><span class="p">needs relays</span></td><td><span class="n">no</span>: one destination at a time</td><td>full</td><td>no, reasoned</td></tr>
-      <tr><th>DS-CDMA alone (spread ALOHA)</th><td><span class="n">fails</span>: 755–900 retransmissions</td><td><span class="y">ok</span></td><td><span class="p">needs power control</span></td><td><span class="n">unreachable</span></td><td><span class="y">yes</span></td><td>full</td><td>yes: <code>--mac aloha</code></td></tr>
+      <tr><th>DS-CDMA alone (spread ALOHA)</th><td><span class="n">fails</span>: 681–904 retransmissions</td><td><span class="y">ok</span></td><td><span class="p">needs power control</span></td><td><span class="n">unreachable</span></td><td><span class="y">yes</span></td><td>full</td><td>yes: <code>--mac aloha</code></td></tr>
       <tr><th>OFDMA</th><td><span class="p">needs scheduling</span></td><td><span class="p">needs a central scheduler</span></td><td><span class="p">needs power control</span></td><td><span class="n">no help</span></td><td><span class="y">yes</span></td><td>share of subcarriers</td><td>no, reasoned</td></tr>
-      <tr class="ours"><th>TD-CDMA (WaveLink)</th><td><span class="y">ok</span>: nobody else is on the air</td><td><span class="y">ok</span>: slots in radio samples</td><td><span class="y">none</span>: one transmitter</td><td><span class="y">one-hop relay</span></td><td><span class="y">yes</span>: one code each</td><td>~80 % of ALOHA's</td><td>yes, the default</td></tr>
+      <tr class="ours"><th>TD-CDMA (WaveLink)</th><td><span class="y">ok</span>: nobody else is on the air</td><td><span class="y">ok</span>: slots in radio samples</td><td><span class="y">none</span>: one transmitter</td><td><span class="y">one-hop relay</span></td><td><span class="y">yes</span>: one code each</td><td>~¾ of ALOHA's at the same modulation; 64-QAM, which ALOHA leaves out</td><td>yes, the default</td></tr>
     </tbody>
   </table></div>
 
@@ -865,7 +874,7 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
       <div class="legend"><span><i style="background: var(--accent)"></i>TD-CDMA</span><span><i style="background: var(--st0)"></i>Spread ALOHA</span><span class="muted">bars at the middle of the measured range, whiskers at its ends</span></div>
       <div class="scroll-x"><div id="accchart"></div></div>
     </div>
-    <figcaption>The only scenario ALOHA wins is the one real radios cannot do: receiving while transmitting. With the ANTSDR's 25 dB self-leak, four simultaneous senders get three times more data through with time slots, and a hidden pair can only talk at all through TD-CDMA's relay.</figcaption>
+    <figcaption>The only scenario ALOHA wins is the one real radios cannot do: receiving while transmitting. With the ANTSDR's 25 dB self-leak, four simultaneous senders get about four times more data through with time slots, and a hidden pair can only talk at all through TD-CDMA's relay.</figcaption>
   </figure>
 
   <h3>CSMA: listening before talking needs a fast radio</h3>
@@ -890,17 +899,17 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
     <ul>
       <li><b>Several destinations in one slot.</b> Alice's slot can carry a photo to Bob on code 2 and a voice note to Carol on code 3 at the same time. With one code they would have to share the slot in time.</li>
       <li><b>Addressing in the physical layer.</b> A station despreads only its own code and code 0, so it never spends CPU demodulating traffic for others. With one code every receiver would decode every frame to read its <code>dst</code>.</li>
-      <li><b>Processing gain.</b> 14.9 dB against noise and against other groups' signals in the shared 2.4 GHz lab band. The preamble detector works at about 4 dB symbol SNR, which is −11 dB per chip.</li>
+      <li><b>Processing gain.</b> 15.1 dB against noise and against other groups' signals in the shared 2.4 GHz lab band. The preamble detector works at about 4 dB symbol SNR, which is −11 dB per chip.</li>
       <li><b>Safe join attempts.</b> Two newcomers whose join requests collide in the join slot usually still separate by code phase, and the quiet probes on a station's own code, 20 dB down, disturb nobody.</li>
     </ul>
-    <p>The price is rate. Without spreading, 4 MHz could carry about 2 Msymbol/s instead of 64.5 ksymbol/s. But the Python receiver already needs about 2 cores at 64.5 ksymbol/s, so the bandwidth that spreading spends could not have been used for speed on these PCs anyway.</p>
+    <p>The price is rate. Without spreading, 4 MHz could carry about 2 Msymbol/s instead of 62.5 ksymbol/s. But the Python receiver already needs about 0.9 cores at 62.5 ksymbol/s, and demodulating and decoding thirty-two times as many symbols would need many cores, so the bandwidth that spreading spends could not have been used for speed on these PCs anyway.</p>
   </div>
 
   <h3>DS-CDMA on its own: our first design, and why it lost</h3>
   <div class="prose">
-    <p>The project started with spread ALOHA: every station transmits whenever it likes, on the receiver's code, and CDMA separates the simultaneous links. It is still there (<code>--mac aloha</code>), and where a station could receive while transmitting it is the fastest scheme: 294–321 kb/s together for four senders against 160–180 kb/s for TD-CDMA. On real radios three things go wrong:</p>
+    <p>The project started with spread ALOHA: every station transmits whenever it likes, on the receiver's code, and CDMA separates the simultaneous links. It is still there (<code>--mac aloha</code>), and where a station could receive while transmitting it is the fastest scheme: 302–323 kb/s together for four senders against 222–226 kb/s for TD-CDMA. On real radios three things go wrong:</p>
     <ul>
-      <li>A station that is transmitting misses everything sent to it. ALOHA needs an <em>ACK gap</em> after every ACK request and a half-duplex deferral, and still lost 755–900 frames per test to deafness.</li>
+      <li>A station that is transmitting misses everything sent to it. ALOHA needs an <em>ACK gap</em> after every ACK request and a half-duplex deferral, and still lost 681–904 frames per test to deafness.</li>
       <li>The near-far problem: Alice talking to Carol right next to her drowns Bob's weak signal to Dave on another code, because despreading only suppresses her by about 15 dB. Transmit power control was built to fix this: Bob's 40 KB went from not delivered at all to 4.6–9.1 s. It works, but it costs the strong links speed.</li>
       <li>Stations that cannot hear each other cannot talk, and a group message is one unicast per member.</li>
     </ul>
@@ -912,7 +921,7 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
     <p>OFDM's big advantage is resistance to multipath. With 0.5 µs chips and indoor delay spreads of tens of nanoseconds, the lab channel stays within one chip, so that advantage buys little here. Building a multi-user OFDMA receiver in Python on top of everything else would have been a second project.</p>
   </div>
 
-  <div class="callout"><h4>What TD-CDMA costs</h4><p>One link alone gets about 80 % of ALOHA's speed (190 against 236 kb/s for a 2 MB file between two stations), because every cycle also has the receiver's own slot, the join slot (11.5 ms) and the headers (5–15 ms each). Keeping slots aligned to the sample needs the TX → RX offset measurement, probes and the hold rule described in 1.9. In exchange it works on radios that go deaf while transmitting, it has no near-far problem, and it makes relaying possible.</p></div>
+  <div class="callout"><h4>What TD-CDMA costs</h4><p>At the same modulation one link alone gets about three quarters of ALOHA's speed (252 against 345 kb/s for a 1 MB file between two stations, both at uncoded 64-QAM), because every cycle also has the receiver's own slot, the join slot (11.75 ms) and the headers (5–16 ms each). By default TD-CDMA's link is still the faster one: its orthogonal codes let it climb to 64-QAM, where spread ALOHA stops at uncoded 16-QAM (237 kb/s). Keeping slots aligned to the sample needs the TX → RX offset measurement, probes and the hold rule described in 1.9. In exchange it works on radios that go deaf while transmitting, it has no near-far problem, and it makes relaying possible.</p></div>
 </section>
 
 <!-- =============================================================== 3 -->
@@ -960,7 +969,7 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
       <tr><th>Hops for a message</th><td>2 (1 to or from the hub)</td><td>1 to 3 with four stations</td><td>1; 2 only for a hidden pair</td></tr>
       <tr><th>Airtime per message</th><td>2× for almost every message</td><td>1× to 3×</td><td>1×; 2× only through a relay</td></tr>
       <tr><th>One station fails</th><td>The hub: everything stops</td><td>The ring is broken until it is rebuilt</td><td>Only its own traffic stops; another relay is chosen</td></tr>
-      <tr><th>Load</th><td>The hub receives and resends everything (receiving costs ~2.1 cores)</td><td>Every station forwards traffic</td><td>A relay forwards only for hidden pairs</td></tr>
+      <tr><th>Load</th><td>The hub receives and resends everything (receiving costs ~0.9 cores)</td><td>Every station forwards traffic</td><td>A relay forwards only for hidden pairs</td></tr>
       <tr><th>Setup</th><td>Pick a hub that hears everyone</td><td>Fix an order that keeps neighbours in range</td><td>None: chosen from link tables, back to direct when the path recovers</td></tr>
     </tbody>
   </table></div>
@@ -970,18 +979,19 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
 </section>
 
 <!-- =============================================================== 4 -->
-<section class="chap" id="gold">
-  <div class="chap-head"><span class="chap-num">4</span><h2>Why Gold codes</h2></div>
-  <p class="answer">The receivers see other stations' bursts at arbitrary code phases, so the codes must stay nearly uncorrelated at <em>every</em> shift, not only when aligned. Gold codes of length 31 guarantee a cross-correlation of at most 9/31 (−10.7 dB) at any shift, give 33 codes from one generator pair, have sharp autocorrelation for finding the preamble, and keep the symbol rate at 64.5 ksymbol/s.</p>
+<section class="chap" id="codes">
+  <div class="chap-head"><span class="chap-num">4</span><h2>Why Walsh codes</h2></div>
+  <p class="answer">Inside a TD-CDMA slot one station sends to every destination at once, and all its bursts start on the same chip and on one symbol grid. There, Walsh codes are exactly orthogonal: the codes of a slot don't interfere at all, which is what lets a link climb to 64-QAM. Multiplied by one common scrambling sequence they also correlate little off the peak (at most 12/32 for the five in use), so the receiver still finds a preamble and tells a burst from noise, and the symbol rate is 62.5 ksymbol/s. Spread ALOHA, whose bursts arrive at any code phase, keeps 31-chip Gold codes (<code>--codes gold</code>), which stay below 9/31 at every shift.</p>
   <figure class="panel">
     <div class="panel-head"><span class="t">Periodic correlation of two codes at every shift</span><span class="k">interactive</span></div>
     <div class="panel-body">
       <div class="controls">
         <span class="field">Family</span>
         <div class="seg" role="group" aria-label="Code family" id="gc-fam">
-          <button type="button" data-v="gold" aria-pressed="true">Gold, 31</button>
+          <button type="button" data-v="wl" aria-pressed="true">Walsh × scrambling, 32</button>
+          <button type="button" data-v="gold" aria-pressed="false">Gold, 31</button>
           <button type="button" data-v="mseq" aria-pressed="false">m-sequences, 31</button>
-          <button type="button" data-v="walsh" aria-pressed="false">Walsh-Hadamard, 32</button>
+          <button type="button" data-v="walsh" aria-pressed="false">Walsh-Hadamard alone, 32</button>
         </div>
       </div>
       <div class="controls">
@@ -996,44 +1006,55 @@ def seal(self, data: bytes, src: int, dst: int) -&gt; bytes:
       <div class="scroll-x"><div id="gcchart"></div></div>
       <dl class="readout" id="gc-read"></dl>
     </div>
-    <figcaption>The Gold codes here are the project's own: indices 0–4 are the flowgraph's <code>code_0</code> … <code>code_4</code>. Walsh codes are perfectly orthogonal only when aligned to the chip; shifted by one chip some pairs become identical, and their autocorrelation has peaks as high as the main one, so a receiver could not find the start of a burst.</figcaption>
+    <figcaption>The Walsh × scrambling and Gold codes here are the project's own: indices 0–4 are the flowgraph's <code>code_0</code> … <code>code_4</code> (<code>walsh_table</code> and <code>gold_table</code>). Two of the WaveLink Walsh codes correlate at exactly 0 at shift 0, the shift of two bursts in one slot, and at most 12/32 anywhere else. Walsh rows alone are just as orthogonal at shift 0, but shifted by one chip some pairs become identical, and their autocorrelation has peaks as high as the main one, so a receiver could not find the start of a burst; the scrambling sequence fixes that. Gold codes never reach 0: codes 0 and 1 correlate at 7/31 even when aligned.</figcaption>
   </figure>
   <div class="tbl"><table>
-    <thead><tr><th>Code family</th><th>Length</th><th>Codes available</th><th>Worst cross-correlation, any shift</th><th>Autocorrelation sidelobes</th><th>Works unsynchronised</th><th>Symbol rate at 2 Mchip/s</th></tr></thead>
+    <thead><tr><th>Code family</th><th>Length</th><th>Codes available</th><th>Worst cross-correlation</th><th>Autocorrelation sidelobes</th><th>Works unsynchronised</th><th>Symbol rate at 2 Mchip/s</th></tr></thead>
     <tbody>
-      <tr class="ours"><th>Gold (WaveLink)</th><td class="num">31</td><td class="num">33</td><td class="num">9/31 (−10.7 dB)</td><td class="num">≤ 9/31</td><td class="y">yes</td><td class="num">64.5 k/s</td></tr>
+      <tr class="ours"><th>Walsh × scrambling (WaveLink, TD-CDMA)</th><td class="num">32</td><td class="num">32</td><td class="num">0 in a slot; ≤ 12/32 at other shifts (codes 0–4)</td><td class="num">≤ 12/32 (codes 0–4)</td><td class="p">orthogonal only on one chip and symbol grid</td><td class="num">62.5 k/s</td></tr>
+      <tr class="ours"><th>Gold (WaveLink, spread ALOHA)</th><td class="num">31</td><td class="num">33</td><td class="num">9/31 (−10.7 dB) at any shift; 7/31 aligned (codes 0 and 1)</td><td class="num">≤ 9/31</td><td class="y">yes</td><td class="num">64.5 k/s</td></tr>
       <tr><th>m-sequences</th><td class="num">31</td><td class="num">6</td><td class="num">11/31 (−9.0 dB)</td><td class="num">1/31, ideal</td><td class="p">too few codes</td><td class="num">64.5 k/s</td></tr>
-      <tr><th>Walsh-Hadamard</th><td class="num">32</td><td class="num">32</td><td class="num">0 aligned, 32/32 shifted</td><td class="num">up to 32/32</td><td class="n">no: needs chip sync and a scrambling code</td><td class="num">62.5 k/s</td></tr>
+      <tr><th>Walsh-Hadamard alone</th><td class="num">32</td><td class="num">32</td><td class="num">0 aligned, 32/32 shifted</td><td class="num">up to 32/32</td><td class="n">no: needs chip sync and a scrambling code</td><td class="num">62.5 k/s</td></tr>
       <tr><th>Kasami (small set)</th><td class="num">63</td><td class="num">8</td><td class="num">9/63 (−16.9 dB)</td><td class="num">≤ 9/63</td><td class="y">yes</td><td class="num">31.7 k/s</td></tr>
       <tr><th>Gold, longer</th><td class="num">63 · 127</td><td class="num">65 · 129</td><td class="num">17/63 · 17/127</td><td class="num">same bound</td><td class="y">yes</td><td class="num">31.7 · 15.7 k/s</td></tr>
     </tbody>
   </table></div>
   <div class="prose">
-    <p><b>Why not Walsh codes.</b> They would remove the small interference between the codes of one transmitter inside a slot, where bursts do start on the same chip. But they need every burst chip-synchronous under one scrambling code, a spreading factor of 32 and new preambles, and the measured signal-to-interference between Gold codes from one transmitter is already 39.9, 29.4 and 25.3 dB with 1, 2 and 3 codes at once, above the 22.5 dB that uncoded 16-QAM needs. Across slots and stations, where timing is never perfect, Walsh codes would be worse.</p>
-    <p><b>Why not longer codes.</b> 63 or 127 chips would add 3 or 6 dB of processing gain and more codes, but halve or quarter the bit rate at the same chip rate. With only one transmitter on the air at a time, the extra suppression isn't needed, and five codes (broadcast plus four stations) of the 33 are enough.</p>
-    <p><b>How they are made.</b> Two m-sequences from a preferred pair of 5th-degree polynomials, <code>x⁵ + x² + 1</code> and <code>x⁵ + x⁴ + x³ + x² + 1</code>, are added modulo 2 at each of the 31 relative shifts; with the two sequences themselves that gives 33 codes. They are sorted so that the balanced codes (one more −1 than +1) come first, so the five in use have the smallest DC component. Each code also gets its own 48-bit preamble pattern, chosen so that its differential correlation has low sidelobes and low correlation with every other code's pattern.</p>
+    <p><b>Why Walsh codes in a slot.</b> With Gold codes the codes of one slot leak into each other. Codes 0 and 1 correlate at 7/31 even when aligned, so next to a slot header on code 0 the receiver of code 1 keeps only about 13 dB of signal-to-interference, whatever the SNR; between the other codes it was 25–40 dB. That was enough for uncoded 16-QAM on most links, but not for 64-QAM, which needs 27.5 dB uncoded. With Walsh codes, four bursts at once on codes 1–4 all arrive at Es/N0 41–45 dB, the receiver's own accuracy, and on the GNU Radio flowgraph three stations sending at the same instant were received at 43, 43 and 46 dB, against 12, 12 and 17 dB with Gold codes.</p>
+    <p><b>What they ask for.</b> Every burst of a slot starts on the slot's symbol grid (bursts last whole symbols, <code>tdma._blen</code>), and the receiver despreads within about 1 % of a chip, which is why the despreader fits a straight line through its timing estimates (1.6). An echo a fraction of a chip late leaks the other codes back in at roughly its own level, so in a large room the coded rungs may be needed next to other codes; the link layer steps down by itself. The spreading factor goes from 31 to 32: 3 % fewer symbols per second for 0.14 dB more processing gain. Between stations, where the timing is never exact to a chip, they are no better than Gold codes, but there only one station transmits at a time. Spread ALOHA refuses them (<code>--mac aloha</code> with <code>--codes walsh</code>), and every station of a network must use the same family.</p>
+    <p><b>Why not longer codes.</b> 64 or 128 chips would add 3 or 6 dB of processing gain and more codes, but halve or quarter the bit rate at the same chip rate. With only one transmitter on the air at a time, the extra suppression isn't needed, and five codes (broadcast plus four stations) of the 32 are enough.</p>
+    <p><b>How they are made.</b> The 32 rows of a Sylvester Hadamard matrix are multiplied chip by chip by one scrambling sequence. <code>tools/walsh_search.py</code> chose the sequence and the five rows used for codes 0–4: balanced (16 chips of each sign, no DC), and every periodic and odd correlation sidelobe and cross-correlation off the peak at most 12/32; the five Gold codes in use reach 13/31 and 15/31 in odd correlation. The Gold codes come from a preferred pair of 5th-degree polynomials, <code>x⁵ + x² + 1</code> and <code>x⁵ + x⁴ + x³ + x² + 1</code>, added modulo 2 at each of the 31 relative shifts: 33 codes with the two sequences themselves, the balanced ones first. Each code of either family gets its own 48-bit preamble pattern, chosen so that its differential correlation has low sidelobes and low correlation with every other code's pattern.</p>
   </div>
-  <pre class="code"><span class="cap">wavelink/codes.py · gold_codes()</span><code class="language-python">def gold_codes(n: int) -&gt; np.ndarray:
-    """All 2^n + 1 Gold codes of degree n as a (num_codes, N) array of +/-1."""
-    a, b = preferred_pair(n)            # n = 5: taps (5, 2) and (5, 4, 3, 2)
-    N = a.size                          # 31
-    codes = [a, b] + [a ^ np.roll(b, -k) for k in range(N)]
-    arr = np.array(codes, dtype=np.int8)
-    # put balanced codes first so the low indices used by real stations have the smallest DC
-    bal = np.abs(arr.astype(int).sum(axis=1) * 2 - N)
-    order = np.argsort(bal, kind="stable")
-    return (1 - 2 * arr[order]).astype(np.float32)</code></pre>
+  <pre class="code"><span class="cap">wavelink/codes.py · walsh_codes()</span><code class="language-python"># Walsh x scrambling, 32 chips: the scrambling sequence, and the Hadamard rows of codes 0..4
+# (tools/walsh_search.py).  Further codes (node ids above 4, numpy PHY only) take the other rows.
+WALSH_SCRAMBLE_32 = "++--++++++----+--+++-++++---+-+-"
+WALSH_ROWS_32 = (24, 20, 21, 16, 17)
+
+def walsh_codes(n: int) -&gt; np.ndarray:
+    """All 2^n Walsh x scrambling codes of degree n as a (2^n, 2^n) array of +/-1, the best first."""
+    N = 1 &lt;&lt; n
+    if n == 5:
+        s = np.array([1 if ch == "+" else -1 for ch in WALSH_SCRAMBLE_32], dtype=np.int8)
+        first = list(WALSH_ROWS_32)
+    else:                                                # (other lengths: an m-sequence plus one chip)
+        s = (1 - 2 * np.concatenate([preferred_pair(n)[0], [0]])).astype(np.int8)
+        first = []
+    c = hadamard(N) * s[None, :]
+    rest = sorted((k for k in range(N) if k not in first),
+                  key=lambda k: (abs(int(c[k].astype(int).sum())), even_odd_sidelobe(c[k]), k))
+    return c[first + rest].astype(np.float32)</code></pre>
 </section>
 
 <!-- =============================================================== 5 -->
 <section class="chap" id="evolution">
   <div class="chap-head"><span class="chap-num">5</span><h2>Why relaying and time slots were added</h2></div>
-  <p class="answer">The first version shared the air with spread ALOHA. Measurements showed three problems that no amount of tuning fixed: stations deaf while sending, the near-far problem, and stations that cannot hear each other. Time slots fixed the first two and made the third fixable; relaying fixed the third.</p>
+  <p class="answer">The first version shared the air with spread ALOHA. Measurements showed three problems that no amount of tuning fixed: stations deaf while sending, the near-far problem, and stations that cannot hear each other. Time slots fixed the first two and made the third fixable; relaying fixed the third. Orthogonal codes inside the slots then made every link faster.</p>
   <ol class="steps">
     <li><div><span class="layer">Version 1 · spread ALOHA</span>Every link on the air whenever it likes, separated by codes. With a station's own transmitter 25 dB above the others, four simultaneous transfers delivered only <b>53–58 kb/s together</b> with 755–900 retransmissions, despite ACK gaps and half-duplex deferral. A near pair drowned a far station unless transmit power control turned the near link down. A group message went as one copy per member. Stations out of each other's range could not talk.</div></li>
     <li><div><span class="layer">Version 2 · time slots</span>One transmitter at a time, so nobody misses a frame because they are sending, and there is no near-far problem left. ACKs moved into the slot headers (no ACK frames, no pauses). A group message became one broadcast that every member acknowledges. The receiver searches only where slots start, which cut its CPU by more than half. Four simultaneous transfers: <b>173–181 kb/s together</b>, about three times version 1.</div></li>
     <li><div><span class="layer">Version 3 · relaying</span>Slots made it possible: every header already carries a link table, so every station knows who hears whom, and a relay forwards in its own slot without disturbing anyone. A hidden pair went from unreachable to <b>45–51 kb/s</b> through a relay. The same headers let members repeat the lead's plan, so a station that cannot hear the lead still keeps time.</div></li>
-    <li><div><span class="layer">Hardening on GNU Radio</span>Running the real flowgraph with emulated ANTSDRs exposed nine bugs, most of them in timing, all fixed: plan changes now wait 1 s (not 0.5 s) because a relayed plan can be 0.2–0.6 s old; newcomers probe before joining; a station that underran probes until it has measured its timing again; slots grow together. After the fixes 11 of 12 GNU Radio edge-case scenarios pass; the twelfth is real time on a 2-core PC (<a href="#bugs">chapter 11</a>).</div></li>
+    <li><div><span class="layer">Hardening on GNU Radio</span>Running the real flowgraph with emulated ANTSDRs exposed nine bugs, most of them in timing, all fixed: plan changes now wait 1 s (not 0.5 s) because a relayed plan can be 0.2–0.6 s old; newcomers probe before joining; a station that underran probes until it has measured its timing again; slots grow together. With the final code every GNU Radio edge-case scenario passes, real time on a 2-core PC included (57 of 58 checks in the suite's short run; the one count that failed passed on a repeat).</div></li>
+    <li><div><span class="layer">Version 4 · Walsh codes and 64-QAM</span>In a slot every burst starts on the same chip, so Walsh codes under one scrambling sequence replaced the Gold codes there: the codes of a slot no longer leak into each other (Es/N0 41–45 dB with four at once, where code 1 had 10–13 dB next to the others), and a link can climb to 64-QAM. One link alone: <b>252 kb/s</b> (190 before); four simultaneous transfers: <b>236 kb/s together</b>. Spread ALOHA keeps the Gold codes.</div></li>
   </ol>
 </section>
 
@@ -1124,11 +1145,11 @@ def play(self, seat: int, cid: int, color: int | None = None, uno: bool = False)
   <div class="prose"><p>Beyond the brief's core and its three bonus items (encryption, priority, dashboard), these are built and tested:</p></div>
   <h4>On the radio</h4>
   <div class="cards">
-    <div class="card"><h4>5G NR LDPC with adaptive rate</h4><p>Rates ½ to ⅔ to ⅚ or uncoded, BPSK to 16-QAM, chosen per link and per frame from the receiver's SNR reports. Up to 4.8 times the goodput of an uncoded link at 14 dB.</p><span class="src">ldpc.py · nr_bg1.py · mac.py</span></div>
-    <div class="card"><h4>TD-CDMA with multi-code slots</h4><p>One slot per station; inside it, one code per destination at the same time. Slots sized on demand, joining, leaving, lead handover, duplicate-address warning.</p><span class="src">tdma.py</span></div>
+    <div class="card"><h4>5G NR LDPC with adaptive rate</h4><p>Rates ½ to ⅔ to ⅚ or uncoded, BPSK to 64-QAM, chosen per link and per frame from the receiver's SNR reports. 2.9 times the goodput of an uncoded link at 14 dB.</p><span class="src">ldpc.py · nr_bg1.py · mac.py</span></div>
+    <div class="card"><h4>TD-CDMA with multi-code slots</h4><p>One slot per station; inside it, one Walsh code per destination at the same time, orthogonal to each other. Slots sized on demand, joining, leaving, lead handover, duplicate-address warning.</p><span class="src">tdma.py</span></div>
     <div class="card"><h4>One-hop relaying</h4><p>Chosen automatically from the link tables, switchable live from the dashboard or <code>--relay</code>; relayed messages are marked "via Bob" at both ends, and the relay's beacon passes on the far station's name and picture.</p><span class="src">tdma.py · route()</span></div>
     <div class="card"><h4>Group messages as one broadcast</h4><p>Acknowledged by every member in its own header, with a tick count per member (<em>2/3</em>) and a fallback copy for members that miss it.</p><span class="src">tdma.py · mac.py</span></div>
-    <div class="card"><h4>Transmit power control</h4><p>Every frame at the power its receiver needs (target 25.5 dB), closed loop through ACKs and beacons, with an outer loop for impairments the SNR estimate doesn't show.</p><span class="src">mac.py</span></div>
+    <div class="card"><h4>Transmit power control</h4><p>Every frame at the power its receiver needs (target 30.5 dB with TD-CDMA, 25.5 dB with spread ALOHA), closed loop through ACKs and beacons, with an outer loop for impairments the SNR estimate doesn't show.</p><span class="src">mac.py</span></div>
     <div class="card"><h4>Encryption</h4><p>AES-256-GCM, scrypt-derived key, a fresh nonce per message and the addresses as associated data; a key id in the beacons warns about mismatched keys.</p><span class="src">crypto.py</span></div>
   </div>
   <h4>On the screen</h4>
@@ -1151,7 +1172,7 @@ def play(self, seat: int, cid: int, color: int | None = None, uno: bool = False)
 <!-- =============================================================== 8 -->
 <section class="chap" id="edge">
   <div class="chap-head"><span class="chap-num">8</span><h2>Edge cases and how they are handled</h2></div>
-  <div class="prose"><p>Every case below has an automated test. "Numpy" is the simulator suite (<code>tests/test_edge.py</code>: 93 of 93 checks in the latest run, after the relay and short-message fixes of this review; in the run before them 91 of 92, and the one miss, a single message in the clock-drift scenario, did not come back in four reruns); "GNU Radio" is the real flowgraph with emulated ANTSDRs (<code>tests/test_fake_antsdr.py</code>, 55 of 58 checks, the air at 0.4× real time). Both record every moment two stations transmit at once where a third hears both; inside a formed network that never happened.</p></div>
+  <div class="prose"><p>Every case below has an automated test. "Numpy" is the simulator suite (<code>tests/test_edge.py</code>: 93 of 93 checks with the final code, Walsh codes and 64-QAM, in the suite's shorter form; ranges include earlier full-length runs); "GNU Radio" is the real flowgraph with emulated ANTSDRs (<code>tests/test_fake_antsdr.py</code>: 57 of 58 checks with the final code in its shorter form, the air at 0.4× real time except in the real-time test; the one miss, a count in the timing-slip test, passed on a repeat). Both record every moment two stations transmit at once where a third hears both; inside a formed network that never happened.</p></div>
   <div class="filters" role="group" aria-label="Filter edge cases" id="ec-filter">
     <button type="button" data-v="all" aria-pressed="true">All</button>
     <button type="button" data-v="form" aria-pressed="false">Network formation</button>
@@ -1163,28 +1184,28 @@ def play(self, seat: int, cid: int, color: int | None = None, uno: bool = False)
   </div>
   <div class="cases" id="ec-list">
     <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>Stations switched on one by one, in any order</h4></div><p><span class="lbl">Handling</span>A starting station listens 1.2 s plus 0.25 s per address above 1. If it hears a lead it joins; otherwise it leads. The incumbent keeps leading when later stations arrive.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: 3, then 1, then 2 gave one network led by 3. GNU Radio: the same, <b>pass</b>.</p></article>
-    <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>All stations switched on at the same moment</h4></div><p><span class="lbl">Handling</span>The lowest address listens shortest, so station 1 starts leading first and the others hear its header and join.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: 4 stations, one network led by 1 after 2.3 s. GNU Radio: 3 radios, after 4.8 s of air, <b>pass</b>.</p></article>
-    <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>Two separate networks come into range</h4></div><p><span class="lbl">Handling</span>The network whose lead has the lower address wins; the other lead yields and its members join. A station that hears both networks joins them.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio: two lone stations merged under the lower address in 1.5 s, <b>pass</b>. See <a href="#bugs">chapter 11</a> for the brief overlap during a merge, and <a href="#playground">chapter 9</a> to watch a merge.</p></article>
-    <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>Two newcomers at the same moment</h4></div><p><span class="lbl">Handling</span>Join requests start at a random point in the first 4 ms of the join slot, in a random half of the cycles. If two still collide, their code phases usually separate them.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: both had a slot after 1.2 s, <b>pass</b>.</p></article>
+    <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>All stations switched on at the same moment</h4></div><p><span class="lbl">Handling</span>The lowest address listens shortest, so station 1 starts leading first and the others hear its header and join.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: 4 stations, one network led by 1 after 1.4–2.3 s. GNU Radio: 3 radios, after 2.7 s of air, <b>pass</b>.</p></article>
+    <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>Two separate networks come into range</h4></div><p><span class="lbl">Handling</span>The network whose lead has the lower address wins; the other lead yields and its members join. A station that hears both networks joins them.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio: two lone stations merged under the lower address in 1.4 s, <b>pass</b>. See <a href="#bugs">chapter 11</a> for the brief overlap during a merge, and <a href="#playground">chapter 9</a> to watch a merge.</p></article>
+    <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>Two newcomers at the same moment</h4></div><p><span class="lbl">Handling</span>Join requests start at a random point in the first 4 ms of the join slot, in a random half of the cycles. If two still collide, their code phases usually separate them.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: both had a slot after 0.2–1.2 s, <b>pass</b>.</p></article>
     <article class="case" data-cat="form"><div><span class="cat">Network formation</span><h4>Two radios set to the same address</h4></div><p><span class="lbl">Handling</span>Every header carries a random 16-bit nonce. Two nonces that keep alternating under one address are announced in the headers, and the stations concerned show "Another station is using address N". A nonce that changes once is a restart, not a duplicate.</p><p class="ev"><span class="lbl">Evidence</span>Numpy and GNU Radio: the warning appeared within seconds, <b>pass</b>; a lead restarted within 10 s is not flagged.</p></article>
-    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station joins and the lead leaves during a transfer</h4></div><p><span class="lbl">Handling</span>Plan changes go one at a time, each announced at least 1 s and 4 cycles ahead, and the transfer keeps its slot through both.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: delivered intact at 156 kb/s, no late burst, no overlap, <b>pass</b>.</p></article>
-    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>The lead's PC dies mid-transfer</h4></div><p><span class="lbl">Handling</span>After 2 missed lead headers the next lowest address takes over, if it still hears other stations and none of them heard the lead in the last 3 cycles. Cycle numbers and timing carry on. The old lead, back, joins as a member.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: takeover after 0.58 s, transfer at 177 kb/s. GNU Radio (<code>kill -9</code>): 0.71 s, transfer intact at 150 kb/s, only the successor took over, <b>pass</b>.</p></article>
-    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station off the air for a moment, or for longer</h4></div><p><span class="lbl">Handling</span>A station keeps its slot until its headers have been missing for 6 cycles and 1.5 s; then the lead frees the slot in the next plan. Back on the air, it asks in every join slot.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: 1 s kept, 2.5 s freed and back 0.12 s after return. GNU Radio: 1 s kept, 3.5 s dropped after 3.0 s and back 1.4 s after return, <b>pass</b>.</p></article>
+    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station joins and the lead leaves during a transfer</h4></div><p><span class="lbl">Handling</span>Plan changes go one at a time, each announced at least 1 s and 4 cycles ahead, and the transfer keeps its slot through both.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: delivered intact at 136–163 kb/s (171 kb/s with the final code), no late burst, no overlap, <b>pass</b>.</p></article>
+    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>The lead's PC dies mid-transfer</h4></div><p><span class="lbl">Handling</span>After 2 missed lead headers the next lowest address takes over, if it still hears other stations and none of them heard the lead in the last 3 cycles. Cycle numbers and timing carry on. The old lead, back, joins as a member.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: takeover after 0.3–1.0 s, transfer at 167–183 kb/s. GNU Radio (<code>kill -9</code>): 0.66 s, transfer intact at 93 kb/s, only the successor took over, <b>pass</b>.</p></article>
+    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station off the air for a moment, or for longer</h4></div><p><span class="lbl">Handling</span>A station keeps its slot until its headers have been missing for 6 cycles and 1.5 s; then the lead frees the slot in the next plan. Back on the air, it asks in every join slot.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: 1 s kept, 2.5 s freed and back 0.1–0.9 s after return. GNU Radio: 1 s kept, 3.5 s dropped after 3.0 s and back 1.5 s after return, <b>pass</b>.</p></article>
     <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station misses every plan-change announcement</h4></div><p><span class="lbl">Handling</span>The hold rule: past the cycles it knows the plan for, it holds its slot until it hears the plan in force, instead of transmitting by a stale plan.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: 93 headers dropped over 5 plan changes, never overlapped, everything delivered, <b>pass</b>.</p></article>
-    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station stops hearing the lead, the others still do</h4></div><p><span class="lbl">Handling</span>It marks its header <em>lead unheard</em>; members repeat the lead's plan for it; nobody takes over, because the others still hear the lead.</p><p class="ev"><span class="lbl">Evidence</span>Numpy, relaying on and off: its transfer went on at 165 kb/s, no takeover, <b>pass</b>.</p></article>
-    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>Sample clocks 25 ppm apart</h4></div><p><span class="lbl">Handling</span>Every lead header re-anchors the followers, which also measure their clock against the lead's to bridge missed headers. D is a property of one radio and doesn't drift.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: every message delivered (299 of 299 over 10 min), D moved 0 samples, each follower's drift within 0.1 ppm of the true −50 / −15. GNU Radio: 80 of 80, −50.0 / −15.0 ppm, <b>pass</b>.</p></article>
-    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>TX underruns and lost RX buffers</h4></div><p><span class="lbl">Handling</span>A slip moves D. The new value is believed once two measurements agree; meanwhile the member sends only quiet probes (at most 4 slots) and its receiver searches everywhere for 1.5 s.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio, 5 injected slips: every D moved by exactly what its streams slipped, both transfers intact. Numpy, 6 slips: delivered, <b>pass</b>.</p></article>
-    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>A station that cannot hear itself</h4></div><p><span class="lbl">Handling</span>Every header lists, for each station heard, how many samples off its header arrived. A station whose own headers don't come back moves D by 0.7 × the median report.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: the deaf station kept its timing from the reports and delivered at 82 kb/s, <b>pass</b>.</p></article>
+    <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station stops hearing the lead, the others still do</h4></div><p><span class="lbl">Handling</span>It marks its header <em>lead unheard</em>; members repeat the lead's plan for it; nobody takes over, because the others still hear the lead.</p><p class="ev"><span class="lbl">Evidence</span>Numpy, relaying on and off: its transfer went on at 152–165 kb/s, no takeover, <b>pass</b>.</p></article>
+    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>Sample clocks 25 ppm apart</h4></div><p><span class="lbl">Handling</span>Every lead header re-anchors the followers, which also measure their clock against the lead's to bridge missed headers. D is a property of one radio and doesn't drift.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: every message delivered (299 of 299 over 10 min), D moved 0 samples, each follower's drift within 0.1 ppm of the true −50 / −15. GNU Radio: 80 of 80 over 4 minutes, −50.0 / −15.0 ppm (final code, 1.5 minutes: 30 of 30, −49.7 / −15.0 ppm), <b>pass</b>.</p></article>
+    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>TX underruns and lost RX buffers</h4></div><p><span class="lbl">Handling</span>A slip moves D. The new value is believed once two measurements agree; meanwhile the member sends only quiet probes (at most 4 slots) and its receiver searches everywhere for 1.5 s.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio, 5 injected slips: every D moved by exactly what its streams slipped, both transfers intact (once a station counted two slips as one jump of D; the repeat passed). Numpy, 6 slips: delivered, <b>pass</b>.</p></article>
+    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>A station that cannot hear itself</h4></div><p><span class="lbl">Handling</span>Every header lists, for each station heard, how many samples off its header arrived. A station whose own headers don't come back moves D by 0.7 × the median report.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: the deaf station kept its timing from the reports and delivered at 82–141 kb/s, <b>pass</b>.</p></article>
     <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>A newcomer that doesn't know its own D yet</h4></div><p><span class="lbl">Handling</span>Its first guess on the flowgraph was 7–28 ms short, enough to land a join request on the lead's header. It sends quiet probes on its own code, 20 dB down, until it hears one and knows D.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio: after the fix no join request overlapped a slot in any test, <b>pass</b>.</p></article>
-    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>A PC that falls behind</h4></div><p><span class="lbl">Handling</span>The despreader queues up to 3 s; dropped chunks keep the sample count right and don't count as timing faults. Bursts are handed over earlier (120–450 ms) after a late one, and a burst that misses its chip is dropped, never sent into another slot.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio in real time on 2 cores: overloaded and the network didn't form, but no burst was late and none overlapped. The scenario itself <b class="n">fails</b> (<a href="#bugs">chapter 11</a>).</p></article>
+    <article class="case" data-cat="timing"><div><span class="cat">Timing</span><h4>A PC that falls behind</h4></div><p><span class="lbl">Handling</span>The despreader queues up to 3 s; dropped chunks keep the sample count right and don't count as timing faults. Bursts are handed over earlier (120–450 ms) after a late one, and a burst that misses its chip is dropped, never sent into another slot.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio in real time on 2 cores, two stations: a file at 124 kb/s (179 kb/s on a repeat), no TX underrun, no lost RX buffer, no burst late, every burst at the combiner at least 104 ms before its slot, <b>pass</b>. (An earlier version overloaded that PC and the network didn't form.)</p></article>
     <article class="case" data-cat="member"><div><span class="cat">Joining and leaving</span><h4>A station reached only through a relay</h4></div><p><span class="lbl">Handling</span>It shows as online "via Bob". Bob's beacon passes on its name and picture tag; the photo is fetched through Bob. Long names in multi-byte scripts are shortened so a beacon stays valid JSON within 200 bytes.</p><p class="ev"><span class="lbl">Evidence</span>Numpy, 1 and 3 out of range: names and picture arrive through 2; 32-character Japanese and Kannada names give beacons of 136–200 bytes, all valid; back in range, the station's own beacon wins, <b>pass</b>.</p></article>
-    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>Low SNR</h4></div><p><span class="lbl">Handling</span>The Golay header decodes down to ~1 dB and QPSK ½ is the floor. A takeover needs the others to confirm the lead is gone, so lost lead headers don't cause false takeovers.</p><p class="ev"><span class="lbl">Evidence</span>Numpy at 5 dB: the network forms, messages delivered (14 retransmissions), 0 takeovers. GNU Radio at 10 dB: a file at 53 kb/s, 0 takeovers, <b>pass</b>.</p></article>
-    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>Bursty interference, 3 dB below the signal</h4></div><p><span class="lbl">Handling</span>LDPC and ARQ absorb the hits; the rate follows the latest SNR reports while the power follows the path.</p><p class="ev"><span class="lbl">Evidence</span>Numpy, 25 % of the time: 122 and 136 kb/s, 0 retransmissions. GNU Radio, 20 %: 111 kb/s, <b>pass</b>.</p></article>
-    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>Near-far without power control</h4></div><p><span class="lbl">Handling</span>One transmitter on the air at a time, so a near station cannot drown a far one.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: the far station got 67 kb/s with 0 retransmissions (spread ALOHA: 43 kb/s, 16 retransmissions), <b>pass</b>.</p></article>
-    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>A hidden station</h4></div><p><span class="lbl">Handling</span>One-hop relaying through a station that hears both, plus plan repetition so the hidden station keeps time.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio: 40 KB from 1 to 3 through 2 at 43 kb/s, intact, and a message back, <b>pass</b>.</p></article>
+    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>Low SNR</h4></div><p><span class="lbl">Handling</span>The Golay header decodes down to ~1 dB and QPSK ½ is the floor. A takeover needs the others to confirm the lead is gone, so lost lead headers don't cause false takeovers.</p><p class="ev"><span class="lbl">Evidence</span>Numpy at 5 dB: the network forms, messages delivered (2–23 retransmissions), 0 takeovers. GNU Radio at 10 dB: 15 KB at 49 kb/s, 0 takeovers, <b>pass</b>.</p></article>
+    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>Bursty interference, 3 dB below the signal</h4></div><p><span class="lbl">Handling</span>LDPC and ARQ absorb the hits; the rate follows the latest SNR reports while the power follows the path.</p><p class="ev"><span class="lbl">Evidence</span>Numpy, 25 % of the time: 117–171 kb/s, 0–1 retransmissions. GNU Radio, 20 %: 30 KB at 78 kb/s, <b>pass</b>.</p></article>
+    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>Near-far without power control</h4></div><p><span class="lbl">Handling</span>One transmitter on the air at a time, so a near station cannot drown a far one.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: the far station got 69 kb/s with 0 retransmissions (spread ALOHA: 43–44 kb/s, 16 retransmissions), <b>pass</b>.</p></article>
+    <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>A hidden station</h4></div><p><span class="lbl">Handling</span>One-hop relaying through a station that hears both, plus plan repetition so the hidden station keeps time.</p><p class="ev"><span class="lbl">Evidence</span>GNU Radio: 20 KB from 1 to 3 through 2 at 24 kb/s (40 KB at 43 kb/s in an earlier, full-length run), intact, and a message back. Numpy: 200 KB through the relay at 107 kb/s, <b>pass</b>.</p></article>
     <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>Relaying switched off during a relayed transfer</h4></div><p><span class="lbl">Handling</span>The relay stops passing messages on, so the transfer waits; timing is still repeated, so the network stays one. Frames lost on the way are resent once the route is back.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: 0 % while off, completed after relaying came back on, one network throughout, <b>pass</b>.</p></article>
     <article class="case" data-cat="channel"><div><span class="cat">Channel and range</span><h4>A hidden station with relaying off everywhere</h4></div><p><span class="lbl">Handling</span>Members still repeat the plan (timing only), so the outer stations share one network and each reaches the middle station.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: Carol and Alice both sent to Bob at 103 and 98 kb/s, no overlap, <b>pass</b>.</p></article>
-    <article class="case" data-cat="traffic"><div><span class="cat">Traffic</span><h4>Every station sending at once</h4></div><p><span class="lbl">Handling</span>Equal slots for everyone with data; a growing slot waits for the others' wishes so all slots grow in one plan change.</p><p class="ev"><span class="lbl">Evidence</span>Numpy, 4 senders: 146–156 kb/s together; slowest over fastest 0.53–0.62 in the quick run, 0.71–0.74 in the full run, <b>pass</b>.</p></article>
+    <article class="case" data-cat="traffic"><div><span class="cat">Traffic</span><h4>Every station sending at once</h4></div><p><span class="lbl">Handling</span>Equal slots for everyone with data; a growing slot waits for the others' wishes so all slots grow in one plan change.</p><p class="ev"><span class="lbl">Evidence</span>Numpy, 4 senders: 236 kb/s together, 0 retransmissions; slowest over fastest 0.66–0.83, the rates differing only by the modulation each link runs, <b>pass</b>.</p></article>
     <article class="case" data-cat="traffic"><div><span class="cat">Traffic</span><h4>A group message with a member out of range, who then leaves</h4></div><p><span class="lbl">Handling</span>One broadcast plus a relayed copy for the far member; ticks from both. When the member is gone, the next group message is given up for it instead of held.</p><p class="ev"><span class="lbl">Evidence</span>Numpy: relayed copy delivered and filed in the group, the gone member given up, <b>pass</b>.</p></article>
     <article class="case" data-cat="traffic"><div><span class="cat">Traffic</span><h4>An urgent text during a large file</h4></div><p><span class="lbl">Handling</span>Each code in a slot serves control, urgent, normal and bulk messages in that order.</p><p class="ev"><span class="lbl">Evidence</span><code>tests/test_link.py</code> priority checks, <b>pass</b>.</p></article>
     <article class="case" data-cat="traffic"><div><span class="cat">Traffic</span><h4>A transfer cancelled from either end; a message overtaken on the air</h4></div><p><span class="lbl">Handling</span><code>ctl</code> cancel and stop messages drop the partial message on both sides. Messages are placed by send time, converted to this station's clock, and marked late if they arrive more than 4 s after sending.</p><p class="ev"><span class="lbl">Evidence</span><code>tests/test_features.py</code> and the browser checks in <code>tests/ui_features.py</code>, <b>pass</b>.</p></article>
@@ -1222,8 +1243,8 @@ def play(self, seat: int, cid: int, color: int | None = None, uno: bool = False)
         <div>
           <div id="np-map"></div>
           <div class="legend np-legend" style="margin-top: 8px">
-            <span><i style="background: var(--good)"></i>16-QAM uncoded (≥ 22.5 dB)</span>
-            <span><i style="background: var(--accent2)"></i>16-QAM with LDPC (9.5–22.5 dB)</span>
+            <span><i style="background: var(--good)"></i>64-QAM (≥ 16.5 dB)</span>
+            <span><i style="background: var(--accent2)"></i>16-QAM with LDPC (9.5–16.5 dB)</span>
             <span><i style="background: var(--warn)"></i>QPSK (5–9.5 dB)</span>
             <span><i style="background: var(--bad)"></i>3–5 dB: headers only now and then</span>
             <span><i style="background: var(--st1); height: 3px"></i>a file on its way (via a relay: a bend)</span>
@@ -1276,8 +1297,8 @@ def play(self, seat: int, cid: int, color: int | None = None, uno: bool = False)
       <tr><th>Two networks meet</th><td>The lower address leads: a lead that hears a lower lead's plan, directly or repeated, gives up its network and joins</td><td><code>_on_lead_header</code></td></tr>
       <tr><th>A member repeats the plan</th><td>While it hears a newcomer, a lone lead with a higher address, or a station that says it can't hear the lead, a member puts the lead's plan in its own header; it also passes on that station's join request</td><td><code>_relay_sync_needed</code></td></tr>
       <tr><th>A file goes via a relay</th><td>Direct below 5 dB (or not heard): through the station that hears both ends best, at 7 dB or more; back to direct after 5 s of a good direct link</td><td><code>route()</code>, <code>RELAY_DIRECT_DB</code>, <code>RELAY_MIN_DB</code></td></tr>
-      <tr><th>Modulation per link</th><td>The fastest entry of the ladder whose threshold the link clears: QPSK ½ at 5 dB … 16-QAM ⅚ at 14 dB, uncoded 16-QAM at 22.5 dB</td><td><code>MCS_TABLE</code>, <code>mac._level</code></td></tr>
-      <tr><th>Power in the card</th><td>One power per slot: what its weakest listener needs to reach 25.5 dB, at most 30 dB down; with more than two codes in the slot they share the power</td><td><code>_slot_bo</code>, <code>pc_target_db</code></td></tr>
+      <tr><th>Modulation per link</th><td>The fastest entry of the TD-CDMA ladder whose threshold the link clears: QPSK ½ at 5 dB … 16-QAM ⅚ at 14 dB, 64-QAM ⅔ at 16.5 dB … uncoded 64-QAM at 27.5 dB</td><td><code>MCS_TABLE</code>, <code>mac._level</code></td></tr>
+      <tr><th>Power in the card</th><td>One power per slot: what its weakest listener needs to reach 30.5 dB, at most 30 dB down; with more than two codes in the slot they share the power</td><td><code>_slot_bo</code>, <code>pc_target_db</code></td></tr>
     </tbody>
   </table></div>
   <div class="callout">
@@ -1331,14 +1352,15 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
   <div class="tbl"><table>
     <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
     <tbody>
-      <tr><th><code>--id</code>, <code>--name</code></th><td class="num">—</td><td>Address 1–4 (= the station's Gold code) and the display name; a name changed in the UI wins.</td></tr>
+      <tr><th><code>--id</code>, <code>--name</code></th><td class="num">—</td><td>Address 1–4 (= the station's code) and the display name; a name changed in the UI wins.</td></tr>
       <tr><th><code>--key</code></th><td class="num">none</td><td>AES-256-GCM with a key from scrypt; every station needs the same passphrase, and a mismatch is shown in the UI.</td></tr>
       <tr><th><code>--uri</code></th><td class="num">ip:192.168.1.10</td><td>The ANTSDR's libiio address; <code>fake:</code> for the fake radios.</td></tr>
       <tr><th><code>--tx-atten</code>, <code>--rx-gain</code>, <code>--freq</code></th><td class="num">10 dB, 40 dB, 2.5 GHz</td><td>The flowgraph's radio parameters; raise the gain for distance, lower it if the spectrum clips; every station on the same carrier.</td></tr>
       <tr><th><code>--mac</code></th><td class="num">tdcdma</td><td><code>aloha</code> runs the earlier spread ALOHA (every station the same).</td></tr>
+      <tr><th><code>--codes</code></th><td class="num">walsh</td><td>Spreading codes (the flowgraph parameter <code>code_family</code>): <code>walsh</code>, 32-chip Walsh codes × one scrambling sequence, orthogonal inside a time slot; <code>gold</code>, 31-chip Gold codes, the only choice with <code>--mac aloha</code>. Every station must use the same.</td></tr>
       <tr><th><code>--relay</code></th><td class="num">on</td><td>Pass on messages for stations that can't hear each other; also a switch on the dashboard.</td></tr>
-      <tr><th><code>--mod</code>, <code>--fec</code></th><td class="num">auto, auto</td><td>Restrict the modulation (<code>bpsk</code>, <code>qpsk</code>, <code>16qam</code>) or the code rate (<code>off</code>, <code>1/2</code> … <code>5/6</code>); together they pin one entry.</td></tr>
-      <tr><th><code>--power-control</code>, <code>--pc-target</code></th><td class="num">on, 25.5 dB</td><td>Transmit power control and the Es/N0 it aims at.</td></tr>
+      <tr><th><code>--mod</code>, <code>--fec</code></th><td class="num">auto, auto</td><td>Restrict the modulation (<code>bpsk</code>, <code>qpsk</code>, <code>16qam</code>, <code>64qam</code>) or the code rate (<code>off</code>, <code>1/2</code> … <code>5/6</code>); together they pin one entry. With spread ALOHA, <code>64qam</code> is the only way to use 64-QAM.</td></tr>
+      <tr><th><code>--power-control</code>, <code>--pc-target</code></th><td class="num">on, 30.5 dB</td><td>Transmit power control and the Es/N0 it aims at: the fastest rung plus 3 dB (25.5 dB with spread ALOHA).</td></tr>
       <tr><th><code>--tx-buffer</code></th><td class="num">65536</td><td>ANTSDR TX buffer in samples (16 ms); raise it if TX underruns climb.</td></tr>
       <tr><th><code>--ack-gap</code>, <code>--hd-defer</code></th><td class="num">0.15 s, 0.25 s</td><td>Spread ALOHA only: the pause after an ACK request, and the hold while a burst for us is arriving.</td></tr>
       <tr><th><code>--host</code>, <code>--port</code></th><td class="num">localhost, 8080</td><td><code>--host 0.0.0.0</code> lets other PCs open the UI (the microphone then needs localhost).</td></tr>
@@ -1352,7 +1374,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
     <tbody>
       <tr><th><code>grc/cdma_phy.grc</code></th><td>The station's PHY on an ANTSDR (chapter 1.2). Parameters: node ID, ANTSDR URI, carrier, RX gain, TX attenuation, TX buffer. Used by <code>run</code>.</td></tr>
       <tr><th><code>grc/cdma_phy_sim.grc</code></th><td>Three copies of that PHY (nodes 1–3) joined by a Channel Model with noise and carrier-offset variables. Used by <code>grc-sim</code>.</td></tr>
-      <tr><th><code>grc/cdma_phy_concept.grc</code></th><td>DS-CDMA from stock blocks only, with GUI plots: two users on Gold codes 1 and 2 summed with noise, then despread with the right and the wrong code. It shows processing gain live in the viva (F6); the app doesn't use it.</td></tr>
+      <tr><th><code>grc/cdma_phy_concept.grc</code></th><td>DS-CDMA from stock blocks only, with GUI plots: two users on (asynchronous) Gold codes 1 and 2 summed with noise, then despread with the right and the wrong code. It shows processing gain live in the viva (F6); the app doesn't use it.</td></tr>
     </tbody>
   </table></div>
   <div class="prose">
@@ -1363,12 +1385,12 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
   <div class="tbl"><table>
     <thead><tr><th>Suite</th><th>What it checks</th><th>Latest result</th></tr></thead>
     <tbody>
-      <tr><th><code>tests.test_edge</code></th><td>The 17 TD-CDMA edge-case scenarios of chapter 8 on the numpy air, with random receive counters and link delays, checking that no two stations ever overlap</td><td>This review, all 17 scenarios (short versions): 93 of 93 checks, including a new one: a fragment its sender repeats while the first copy still waits at a relay is passed on once.</td></tr>
-      <tr><th><code>tests.test_fake_antsdr</code></th><td>12 scenarios with every station the real app on <code>cdma_phy.grc</code> and emulated ANTSDRs (about 30 min at 0.4× real time)</td><td>55 of 58 checks; the failures are real time on 2 cores (scenario 10)</td></tr>
-      <tr><th><code>tests.test_grc_flowgraph</code>, <code>test_grc_goodput</code></th><td>Compile and run <code>cdma_phy_sim.grc</code>: every modulation and code rate, unicast and broadcast, three stations at once, a 6 dB channel; 100 KB through flowgraph and MAC, FEC on and off</td><td>pass with GNU Radio 3.10.9.2; on a busy 2-core PC the 6 dB step can lose a frame</td></tr>
+      <tr><th><code>tests.test_edge</code></th><td>The 17 TD-CDMA edge-case scenarios of chapter 8 on the numpy air, with random receive counters and link delays, checking that no two stations ever overlap</td><td>With the final code (Walsh codes, 64-QAM), all 17 scenarios in their short versions: 93 of 93 checks, including that a fragment its sender repeats while the first copy still waits at a relay is passed on once.</td></tr>
+      <tr><th><code>tests.test_fake_antsdr</code></th><td>12 scenarios with every station the real app on <code>cdma_phy.grc</code> and emulated ANTSDRs (about 30 min at 0.4× real time)</td><td>With the final code, in the short form: 57 of 58 checks, real time on 2 cores (scenario 10) included; the one miss, a count in scenario 6, passed on a repeat</td></tr>
+      <tr><th><code>tests.test_grc_flowgraph</code>, <code>test_grc_goodput</code></th><td>Compile and run <code>cdma_phy_sim.grc</code>: every modulation and code rate, 64-QAM included, unicast and broadcast, three stations at once, a 6 dB channel, with Walsh and with Gold codes; 100 KB through flowgraph and MAC, FEC on and off</td><td>pass with GNU Radio 3.10.9.2, both code families; on a busy 2-core PC the 6 dB step can lose a frame</td></tr>
       <tr><th><code>tests.test_grc_cores</code>, <code>test_tdma_phy</code></th><td>The flowgraph's Python cores with the stock blocks imitated in numpy, numpy-PHY ↔ GRC-PHY interoperability; bursts on exact samples, receive indices, D under drift, underruns</td><td>pass; the timing base 19 of 19 checks</td></tr>
-      <tr><th><code>tests.test_ldpc</code>, <code>test_modem</code>, <code>test_profiles</code>, <code>test_bigfile</code></th><td>LDPC (all 51 lifting sizes, rate matching, AWGN curves) and Golay; PHY impairments, false alarms, multi-user, collisions; every modulation and code rate; a 1 MB file at 14 dB</td><td>pass; a 1 MB file at 14 dB: 178 kb/s on 16-QAM ¾, no retransmission</td></tr>
-      <tr><th><code>tests.test_link</code>, <code>test_power</code></th><td>The MAC over the simulated air with spread ALOHA (concurrency, priority, a lossy link); power control's loop, the blocks carrying each burst's power, near-far with and without it</td><td>pass; power control 18 of 18 checks (the blocks and the loop)</td></tr>
+      <tr><th><code>tests.test_ldpc</code>, <code>test_modem</code>, <code>test_profiles</code>, <code>test_bigfile</code></th><td>LDPC (all 51 lifting sizes, rate matching, AWGN curves) and Golay; PHY impairments, false alarms, multi-user, collisions; every modulation and code rate; a 1 MB file at 14 dB</td><td>pass; a 1 MB file at 14 dB: 178 kb/s on 16-QAM ¾, 2.9 times uncoded, no retransmission; at 31 dB with <code>--mod 64qam</code> 345 kb/s</td></tr>
+      <tr><th><code>tests.test_link</code>, <code>test_power</code></th><td>The MAC over the simulated air with spread ALOHA (concurrency, priority, a lossy link); power control's loop, the blocks carrying each burst's power, near-far with and without it</td><td>pass; power control 22 of 22 checks (the blocks and the loop)</td></tr>
       <tr><th><code>tests.test_uno</code>, <code>test_games</code>, <code>test_features</code></th><td>Every UNO rule and 300 random games; a UNO round, a player leaving and a race over the air; profile pictures, cancelling from either end, clock offsets</td><td>pass; 300 random UNO games (108 cards every time); a 3-station UNO round and race</td></tr>
       <tr><th><code>tests.ui_games</code>, <code>ui_features</code></th><td>Playwright drives every station's page: UNO, a race and a rematch, chat and the dashboard during the race, a page reload mid-race; themes, wallpaper editor, media quality, cancel, late messages, sounds, camera, the + tray</td><td>pass; 65 of 65 chat checks; UNO, race and rematch on 3 pages, the reloaded page carried on at its distance</td></tr>
       <tr><th><code>tests.test_gr_backend</code>, <code>scenario_api</code></th><td>The numpy PHY's GNU Radio backend against a stand-in GNU Radio; a full app scenario through the web API</td><td>pass (the API scenario now waits until the stations have heard each other)</td></tr>
@@ -1380,13 +1402,13 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
     <thead><tr><th>What</th><th>Result</th><th>Where</th></tr></thead>
     <tbody>
       <tr><th>LDPC alone, BPSK, 1 KB frames</th><td>Rate ½: no frame error in 20 at Eb/N0 1.5 dB; ¾ at 2.5 dB; ⅚ at 3.5 dB. Uncoded needs about 10.5 dB.</td><td><code>test_ldpc</code></td></tr>
-      <tr><th>Full receiver, Es/N0 for ~100 % of 1 KB frames</th><td>QPSK ½ about 5 dB (the preamble detector's limit), ¾ 5.5, ⅚ 6; 16-QAM ½ 9, ⅔ 10, ¾ 11, ⅚ 12.5; uncoded 16-QAM 20–22 dB. The receiver's own accuracy limits it at about 44 dB.</td><td><code>test_profiles</code></td></tr>
+      <tr><th>Full receiver, Es/N0 for ~100 % of 1 KB frames</th><td>QPSK ½ about 5 dB (the preamble detector's limit), ¾ 5.5, ⅚ 6; 16-QAM ½ 9, ⅔ 10, ¾ 11, ⅚ 12.5; uncoded 16-QAM 20–22 dB; 64-QAM ½ 13–14, ⅔ 15–16, ¾ 17, ⅚ 18, uncoded 64-QAM 26–27 dB. The receiver's own accuracy limits it at about 44 dB.</td><td><code>test_profiles</code></td></tr>
       <tr><th>Robustness of the receiver</th><td>3 s of noise on two codes: no false detection. Two links at once, the interferer 10 dB stronger: both decoded. Two senders overlapping at one receiver: 20 of 20 bursts. CFO ±12 kHz and a 20 ppm clock: QPSK ½ 10 of 12 frames at 4 dB, 11 of 12 at 6 dB.</td><td><code>test_modem</code></td></tr>
-      <tr><th>One link, big files (spread ALOHA)</th><td>2 MB at 28 dB: 236 kb/s, uncoded 16-QAM, no retransmission. 1 MB at 14 dB: 176–178 kb/s with LDPC (16-QAM ¾) against 37 kb/s uncoded (BPSK), 4.8 times as fast. 10 MB at 28 dB: 235 kb/s, intact.</td><td><code>test_bigfile</code></td></tr>
-      <tr><th>The same with TD-CDMA</th><td>One 2 MB transfer: 190 kb/s, about 80 % of ALOHA (the receiver's slot, the join slot and the headers take their share). Four senders at once on radios that are deaf while they send: 173–181 kb/s together, against ALOHA's 53–58.</td><td><code>test_edge</code> 7</td></tr>
-      <tr><th>GNU Radio flowgraph, simulated channel</th><td>Every modulation and code rate through the stock soft decoders, the LDPC Decoder and the CRC-32 check; three stations at the same instant, 16-QAM ½ included, at 12 dB; 100 KB at 12 dB: 37.8 kb/s with adaptive LDPC against 15.6 kb/s uncoded (at 1 MS/s, a quarter of the radio rate).</td><td><code>test_grc_flowgraph</code>, <code>test_grc_goodput</code></td></tr>
-      <tr><th>GNU Radio flowgraph, fake ANTSDRs, TD-CDMA</th><td>A clean link: 134 kb/s with the air at 0.4× real time, 98 % of what the numpy simulator gives on the same test (137 kb/s).</td><td><code>test_fake_antsdr</code></td></tr>
-      <tr><th>CPU per station</th><td>About 1.1 cores of a 2.8 GHz Xeon per second of air when idle, 1.2 when sending and 2.1 when receiving at 153 kb/s; 1.6 of the 2.1 are Python under one interpreter lock.</td><td>GNU Radio, fake ANTSDRs</td></tr>
+      <tr><th>One link, big files (spread ALOHA)</th><td>2 MB at 28 dB: 236 kb/s, uncoded 16-QAM, no retransmission (final code, 1 MB at 31 dB: 237 kb/s; 345 kb/s with <code>--mod 64qam</code>). 1 MB at 14 dB: 178 kb/s with LDPC (16-QAM ¾) against 61 kb/s uncoded (BPSK), 2.9 times as fast. 10 MB at 28 dB: 235 kb/s, intact.</td><td><code>test_bigfile</code></td></tr>
+      <tr><th>The same with TD-CDMA</th><td>One 1 MB transfer at 31 dB: 252 kb/s at uncoded 64-QAM (261 kb/s once the slot has grown), 209 kb/s with four stations on the air; about three quarters of ALOHA at the same modulation (the receiver's slot, the join slot and the headers take their share). Four senders at once on radios that are deaf while they send: 236 kb/s together, against ALOHA's 58–65.</td><td><code>test_edge</code> 7</td></tr>
+      <tr><th>GNU Radio flowgraph, simulated channel</th><td>Every modulation and code rate, 64-QAM included, through the stock soft decoders, the LDPC Decoder and the CRC-32 check; three stations at the same instant: Es/N0 43, 43 and 46 dB with Walsh codes, 12, 12 and 17 dB with Gold codes; 100 KB at 12 dB: 37.8 kb/s with adaptive LDPC against 15.6 kb/s uncoded (Gold codes, spread ALOHA, at 1 MS/s, a quarter of the radio rate).</td><td><code>test_grc_flowgraph</code>, <code>test_grc_goodput</code></td></tr>
+      <tr><th>GNU Radio flowgraph, fake ANTSDRs, TD-CDMA</th><td>In real time, two stations on a 2-core VM: a file at 124 kb/s (179 kb/s on a repeat), no TX underrun, no lost RX buffer. Earlier, with the air at 0.4× real time, a clean link gave 134 kb/s, 98 % of what the numpy simulator gives on the same test.</td><td><code>test_fake_antsdr</code></td></tr>
+      <tr><th>CPU per station</th><td>Measured in real time on a 2.1 GHz Xeon: about 0.5 cores when idle, 0.5 when sending and 0.9 when receiving at 203 kb/s (the fake air adds 0.1), most of it Python under one interpreter lock. An earlier version needed 1.1, 1.2 and 2.1 cores of a 2.8 GHz Xeon per second of air.</td><td>GNU Radio, fake ANTSDRs</td></tr>
     </tbody>
   </table></div>
 
@@ -1397,7 +1419,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
     <li><div><span class="layer">Text, ACK, addressing</span>Alice → Bob: the ticks go 🕒 → ✓ → ✓✓ (the ACK rode in Bob's next header) and turn blue when Bob reads it. Carol's dashboard shows none of these frames: they are on code 2.</div></li>
     <li><div><span class="layer">CDMA inside a slot</span>Alice sends Bob a photo and Carol a voice note at once while Dave sends Alice a file: Alice's slot carries both transfers on codes 2 and 3, the busy slots grow to about 100 ms and shrink a second after.</div></li>
     <li><div><span class="layer">Errors, priority, encryption</span>Raise <code>--tx-atten</code> or move an antenna: CRC drops and retransmissions, the image still intact. Send an ⚡ urgent text behind a large image: it arrives first. Restart a station with another <code>--key</code>: the UI warns.</div></li>
-    <li><div><span class="layer">Adaptive coding, big files</span>A multi-MB file Alice → Bob at "16-QAM uncoded (258 kb/s)"; move Bob's antenna away step by step and watch the rate step down; restart with <code>--fec off</code> at 12–14 dB to see the coding gain.</div></li>
+    <li><div><span class="layer">Adaptive coding, big files</span>A multi-MB file Alice → Bob at "64-QAM uncoded" (375 kb/s on the air); move Bob's antenna away step by step and watch the rate step down; restart with <code>--fec off</code> at 12–14 dB to see the coding gain.</div></li>
     <li><div><span class="layer">Groups, relaying, leaving</span>A photo to Everyone counts 1/3, 2/3, ✓✓. Put Carol where Alice can't hear her: "via Bob". Close Dave's app (his slot is freed), then the lead's during a transfer (the next station takes over and the transfer goes on).</div></li>
     <li><div><span class="layer">Games</span>Four-player UNO (each screen shows only its own hand), then a race; take one station off the air for 10 s: UNO pauses with a countdown, the race shows a ghost, both carry on when it is back. V switches the chase camera.</div></li>
   </ol>
@@ -1425,7 +1447,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
     <thead><tr><th>Path</th><th>What it holds</th></tr></thead>
     <tbody>
       <tr><th><code>grc/</code></th><td>The three flowgraphs (10.3); <code>build/grc/</code> holds <code>grcc</code>'s output, rebuilt at every start.</td></tr>
-      <tr><th><code>wavelink/config.py</code>, <code>codes.py</code></th><td>PHY parameters and the address → code mapping; Gold codes, preamble patterns, RRC taps.</td></tr>
+      <tr><th><code>wavelink/config.py</code>, <code>codes.py</code></th><td>PHY parameters and the address → code mapping; Walsh × scrambling and Gold codes, preamble patterns, RRC taps.</td></tr>
       <tr><th><code>modem.py</code>, <code>ldpc.py</code>, <code>nr_bg1.py</code>, <code>golay.py</code></th><td>The numpy PHY (burst modulator and multi-code demodulator); 5G NR LDPC (lifting, encoder, rate matching, interleaver, layered min-sum decoder) and its base graph table; the Golay (24,12) header code.</td></tr>
       <tr><th><code>grc_phy.py</code>, <code>radio_*.py</code>, <code>fake_antsdr.py</code></th><td>Compiling and attaching the .grc and the cores of its Embedded Python blocks; the numpy-PHY GNU Radio graph, the channel simulator and the radio interface; the emulated ANTSDR blocks and air.</td></tr>
       <tr><th><code>mac.py</code>, <code>tdma.py</code></th><td>The link layer (fragments, ARQ, adaptive modulation and coding, priority, power control, spread ALOHA) and the time slots (lead, plan, joining, takeover, D, link tables, relaying).</td></tr>
@@ -1441,18 +1463,18 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
 <!-- =============================================================== 11 -->
 <section class="chap" id="bugs">
   <div class="chap-head"><span class="chap-num">11</span><h2>Known bugs and open issues</h2></div>
-  <div class="prose"><p>Bugs found during testing and already fixed are not listed. What is left is one open problem, the CPU load in real time, and limitations of the design that are known and bounded:</p></div>
+  <div class="prose"><p>Bugs found during testing and already fixed are not listed. What is left is what has not run on real radios yet, and limitations of the design that are known and bounded:</p></div>
   <div class="issues">
-    <div class="issue"><div><span class="tag bad">Open</span></div><div><h4>Real time overloads a 2-core PC</h4><p>Two stations and the emulated air on one 2-core VM in real time: 358 TX underruns, 124 lost RX buffers, the second station never got into the plan and a file failed. A receiving station needs about 2.1 cores, 1.6 of them Python under one interpreter lock.</p></div><p><span class="lbl">Workaround</span>One station per PC, 4 or more cores, little else running. The real fix is future improvement 1.</p></div>
+    <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>Little CPU headroom on a 2-core PC</h4><p>Two stations and the emulated air on one 2-core VM now keep up in real time: a file at 124–179 kb/s, no TX underrun, no lost RX buffer, no late burst. A station needs about 0.5 cores idle, 0.5 sending and 0.9 receiving at 203 kb/s, most of it Python under one interpreter lock; an earlier version needed 2.1 cores and overloaded that VM. Real time on the ANTSDRs is still to be shown.</p></div><p><span class="lbl">Workaround</span>One station per PC, 4 or more cores, little else running. Future improvement 1 would remove most of the load.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>Slots can overlap for a cycle or two while two networks merge</h4><p>When two networks meet, the slots of the one that yields can overlap the other's until its stations have joined. Inside a formed network slots never overlap.</p></div><p><span class="lbl">Workaround</span>Start stations within range of each other; the overlap lasts one or two cycles.</p></div>
-    <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>A message of a few kilobytes waits 1.4 s with three or four stations</h4><p>An idle slot (29.5 ms with three stations, 22 ms with four) is shorter than one full 1,023-byte frame even at the fastest rate (33.2 ms), so a message with a full fragment sends nothing until the sender's slot has grown, about 1.4 s later. With two stations (44 ms slots) a full frame fits at 16-QAM ⅚ or uncoded, and a message of one or two fragments takes the slowest rate that still fits the slot.</p></div><p><span class="lbl">Impact</span>A 2 KB text or a small photo arrives about 1.4 s later than it could (1.5 instead of 0.2 s). Future improvement 13.</p></div>
-    <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>A relayed transfer starts 2–5 s late</h4><p>The relay's slot grows only after the sender's: plan changes go one at a time, each announced at least 1 s ahead, and the lead waits up to 1 s for the wishes of a station it can't hear. Meanwhile the sender's ACK timer runs out and it repeats what is in flight; the relay passes each fragment on once and drops the copies.</p></div><p><span class="lbl">Impact</span>A relayed 30 KB file takes about 6.1 s in the simulator, against 2.1 s directly, and up to 18 s right after other transfers. Future improvement 14.</p></div>
+    <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>A message of a few kilobytes waits 1.4 s with four stations</h4><p>A four-station idle slot (22 ms) is shorter than one full 1,023-byte frame even at the fastest rate (23.4 ms at uncoded 64-QAM), so a message with a full fragment sends nothing until the sender's slot has grown, about 1.4 s later. With three stations (29.25 ms slots) a full frame fits at 64-QAM ⅚ or uncoded, so only slower links wait; with two (44 ms) it fits at every rate down to 16-QAM ⅚. A message of one or two fragments takes the slowest rate that still fits the slot.</p></div><p><span class="lbl">Impact</span>With four stations a 2 KB text or a small photo arrives about 1.4 s later than it could (1.5 instead of 0.1 s). Future improvement 12.</p></div>
+    <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>A relayed transfer starts 2–5 s late</h4><p>The relay's slot grows only after the sender's: plan changes go one at a time, each announced at least 1 s ahead, and the lead waits up to 1 s for the wishes of a station it can't hear. Meanwhile the sender's ACK timer runs out and it repeats what is in flight; the relay passes each fragment on once and drops the copies.</p></div><p><span class="lbl">Impact</span>A relayed 30 KB file takes about 6.1 s in the simulator, against 2.1 s directly, and up to 18 s right after other transfers. Future improvement 13.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>UNO: the last move can be lost at a host handover</h4><p>The next host carries on from the last table copy it received, so a move the old host accepted but never sent out is lost.</p></div><p><span class="lbl">Impact</span>The player repeats the move; rare, needs the host to drop off the air at that instant.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>UNO: hidden hands are in every station's memory</h4><p>The table copy that makes host handover possible stays in the station and never reaches the browser, but a player who reads the station's memory could see the other hands.</p></div><p><span class="lbl">Impact</span>Cheating needs debugging tools on your own PC.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>On the flowgraph, game messages wait behind file frames</h4><p>The code lanes are first-in first-out, so a UNO view can wait behind a window of file frames for up to 0.6 s. The host merges views that pile up, so no event is lost.</p></div><p><span class="lbl">Impact</span>Slower moves during a big transfer to that player.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>Message order after a clock jump</h4><p>The clock-offset estimate keeps the smallest delay of the last 5 minutes, so for a few minutes after a station's clock jumps its messages can be placed off by up to the jump.</p></div><p><span class="lbl">Workaround</span>Run NTP on the lab PCs.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>The CRC-drop counter is an estimate on the GNU Radio PHY</h4><p>The stock CRC32 block drops bad frames silently, so the dashboard counts despread frames minus delivered frames.</p></div><p><span class="lbl">Impact</span>Dashboard only.</p></div>
-    <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>Race updates slow down during file transfers</h4><p>One car state per cycle: 10 a second at 100 ms, 4.7 at 213 ms and 2.4 at 415 ms while every station sends. Dead reckoning hides most of it.</p></div><p><span class="lbl">Impact</span>Remote cars are less exact during transfers.</p></div>
+    <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>Race updates slow down during file transfers</h4><p>One car state per cycle: 10 a second at 100 ms, 4.1 at 242 ms and 2.1 at 472 ms while every station sends. Dead reckoning hides most of it.</p></div><p><span class="lbl">Impact</span>Remote cars are less exact during transfers.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>The three-station GNU Radio simulation is CPU-bound</h4><p><code>grc-sim</code> runs three PHYs in one Python process at 1 MS/s; on 2 cores its 6 dB test step loses a frame in some runs and its file goodput halves.</p></div><p><span class="lbl">Impact</span>Test environment only.</p></div>
     <div class="issue"><div><span class="tag warn">Limitation</span></div><div><h4>Detection limits the low end</h4><p>Coded QPSK ½ would decode at ~1.5 dB, but the 48-symbol preamble is only found reliably from ~4 dB.</p></div><p><span class="lbl">Impact</span>About 3 dB of range left unused.</p></div>
     <div class="issue"><div><span class="tag">Untested</span></div><div><h4>Not yet run on physical ANTSDRs</h4><p>The analog front end (AGC, IQ imbalance, DC offset, phase noise, multipath), the real self-leak level and the E200's Ethernet jitter are not modelled, and power control has only run in simulators.</p></div><p><span class="lbl">First lab session</span>Watch for "TX->RX offset jumped", "radio stream gap" and late bursts; tune <code>--rx-gain</code> and <code>--tx-atten</code>.</p></div>
@@ -1463,20 +1485,19 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
 <section class="chap" id="future">
   <div class="chap-head"><span class="chap-num">12</span><h2>Future improvements</h2></div>
   <div class="cards">
-    <div class="card"><h4>1 · C++ blocks for the hot paths</h4><p>Move the despreader's search and tracking and the Burst Combiner into out-of-tree C++ blocks. That removes most of the 1.6 cores of Python, makes real time possible on 2-core PCs, and would allow about 10 MS/s.</p></div>
+    <div class="card"><h4>1 · C++ blocks for the hot paths</h4><p>Move the despreader's search and tracking and the Burst Combiner into out-of-tree C++ blocks. That removes most of the Python load (about 0.9 cores while receiving), leaves headroom on 2-core PCs, and would allow about 10 MS/s.</p></div>
     <div class="card"><h4>2 · Incremental redundancy</h4><p>HARQ type II: on a failure send more parity of the same codeword (5G redundancy versions 1–3, already in the circular buffer) and combine it softly with what arrived, instead of resending the whole frame.</p></div>
     <div class="card"><h4>3 · A longer preamble</h4><p>96 symbols instead of 48 would find bursts about 3 dB lower, close to where coded QPSK ½ decodes, at the cost of airtime and detector CPU.</p></div>
-    <div class="card"><h4>4 · RAKE receiver</h4><p>Two or three fingers for large rooms where delay spreads approach a chip; it matters most for 16-QAM.</p></div>
-    <div class="card"><h4>5 · Adaptive spreading</h4><p>Switch between 31, 63 and 127 chips by measured SNR, trading rate for range beyond what adaptive modulation already does.</p></div>
-    <div class="card"><h4>6 · Orthogonal codes inside a slot</h4><p>Walsh codes under a scrambling code for the chip-aligned bursts of one slot, removing the 29.4 / 25.3 dB inter-code floor and opening the way to 64-QAM ⅚ (~19 dB).</p></div>
-    <div class="card"><h4>7 · Multi-hop relaying</h4><p>Routes over several relays. Today a message takes at most one hop, through a station that hears both ends; a station two hops away is out of reach.</p></div>
-    <div class="card"><h4>8 · Per-pair keys</h4><p>X25519 keys in the beacons instead of one shared passphrase, for forward secrecy and per-pair privacy.</p></div>
-    <div class="card"><h4>9 · More stations</h4><p>Add code lanes to the flowgraph (one copy of a lane per station); the Gold family has 33 codes.</p></div>
-    <div class="card"><h4>10 · Analog power control</h4><p>Set the ANTSDR's attenuator per slot, so lower power also lowers the transmitter's noise floor and LO leakage.</p></div>
-    <div class="card"><h4>11 · Cleaner network merges</h4><p>Let the yielding network stay silent until its stations have joined, so a merge never overlaps slots.</p></div>
-    <div class="card"><h4>12 · Games</h4><p>Hands encrypted per player, a replicated move log for host handover, spectators and computer players.</p></div>
-    <div class="card"><h4>13 · Fragments that fit an idle slot</h4><p>Cut a message of a few fragments into pieces that fit the sender's idle slot at its current rate (about 600 bytes with four stations), or make idle slots one full frame long while three or four stations are on the air, so that a message of a few kilobytes starts at once instead of 1.4 s later.</p></div>
-    <div class="card"><h4>14 · Grow the relay's slot with the sender's</h4><p>A sender knows when its message goes through a relay; its header could ask for the relay's airtime too, so both slots grow in one plan change, and its ACK timer could allow for the relay's queue. Relayed transfers would start 2–3 s sooner.</p></div>
+    <div class="card"><h4>4 · RAKE receiver</h4><p>Two or three fingers for large rooms where delay spreads approach a chip; it matters most for 16- and 64-QAM, where an echo also leaks the other codes of a slot back in.</p></div>
+    <div class="card"><h4>5 · Adaptive spreading</h4><p>Switch between 32, 64 and 128 chips by measured SNR, trading rate for range beyond what adaptive modulation already does.</p></div>
+    <div class="card"><h4>6 · Multi-hop relaying</h4><p>Routes over several relays. Today a message takes at most one hop, through a station that hears both ends; a station two hops away is out of reach.</p></div>
+    <div class="card"><h4>7 · Per-pair keys</h4><p>X25519 keys in the beacons instead of one shared passphrase, for forward secrecy and per-pair privacy.</p></div>
+    <div class="card"><h4>8 · More stations</h4><p>Add code lanes to the flowgraph (one copy of a lane per station); the Walsh family has 32 codes (the Gold family 33), and the numpy PHY already takes node ids up to 30.</p></div>
+    <div class="card"><h4>9 · Analog power control</h4><p>Set the ANTSDR's attenuator per slot, so lower power also lowers the transmitter's noise floor and LO leakage.</p></div>
+    <div class="card"><h4>10 · Cleaner network merges</h4><p>Let the yielding network stay silent until its stations have joined, so a merge never overlaps slots.</p></div>
+    <div class="card"><h4>11 · Games</h4><p>Hands encrypted per player, a replicated move log for host handover, spectators and computer players.</p></div>
+    <div class="card"><h4>12 · Fragments that fit an idle slot</h4><p>Cut a message of a few fragments into pieces that fit the sender's idle slot at its current rate (about 900 bytes with four stations at uncoded 64-QAM), or make idle slots one full frame long while four stations are on the air, so that a message of a few kilobytes starts at once instead of 1.4 s later.</p></div>
+    <div class="card"><h4>13 · Grow the relay's slot with the sender's</h4><p>A sender knows when its message goes through a relay; its header could ask for the relay's airtime too, so both slots grow in one plan change, and its ACK timer could allow for the relay's queue. Relayed transfers would start 2–3 s sooner.</p></div>
   </div>
 </section>
 
@@ -1488,7 +1509,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
     <li><code>wavelink/codes.py</code>, <code>config.py</code>, <code>modem.py</code>, <code>ldpc.py</code>, <code>golay.py</code>, <code>grc_phy.py</code></li>
     <li><code>wavelink/mac.py</code>, <code>tdma.py</code>, <code>node.py</code>, <code>crypto.py</code></li>
     <li><code>wavelink/games/hub.py</code>, <code>uno.py</code>, <code>race.py</code></li>
-    <li><code>tests/test_edge.py</code> (numpy simulator, 93/93) and <code>tests/test_fake_antsdr.py</code> (GNU Radio with emulated ANTSDRs, 55/58)</li>
+    <li><code>tests/test_edge.py</code> (numpy simulator, 93/93) and <code>tests/test_fake_antsdr.py</code> (GNU Radio with emulated ANTSDRs, 57/58)</li>
     <li>The project <code>README.md</code> and the <a href="https://claude.ai/artifact/1ZER4rAfaSV576unq95zAR">GNU Radio test report</a></li>
   </ul>
 </footer>
@@ -1506,6 +1527,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
 (() => {
 "use strict";
 const GOLD = ["0000011001011011110101000100111", "0000011011001111010010101110001", "0010000001001101011101111111000", "0100101001110110100100110011001", "1001111000000001010110101011011", "1100010010001111101000111000011", "0010101100011100101010001101011", "1011001101000110001001100010111", "1101001000101100000111011100101", "1010111010110100010001110100010", "0101011110000100111100100101100", "1010010111100101100110000110001", "1000100010100010111001001111101", "0001101110101001101101010010010", "0111000110010010010100011110011", "1011100000010111111110010000100", "0111101011000011100011101100000", "1111111101101011011000010101001", "1111010000111010101111100111010", "1100111111011110011111001010000", "0011011011101110110010011011110", "0110011100110001111011111010101", "1000001111110011001110111101110", "0101110011010101001011010111111", "0011110110111111000101101001101", "1110100111001000110111110001111", "1101100101111101110000101110110", "1110001010011001000000000011100", "1001010101010000100001011001000", "0000110100001010000010110110100", "0001000011111000011010100000001", "0110110001100000001100001000110", "0100000100100111010011000001010"];                       // the project's 33 Gold codes, '1' = +1 (codes.gold_codes(5))
+const WALSH = ["11001111001111011000100010001010", "11000000110011011000011101111010", "10010101100110001101001000101111", "11001111110000101000100001110101", "10011010100101111101110100100000", "10101001101001001110111000010011", "10100110101010111110000100011100", "10010101011001111101001011010000", "11110011000000011011010010110110", "10100110010101001110000111100011", "11001111110000100111011110001010", "10011010100101110010001011011111", "11111100111100010100010010111001", "10101001101001000001000111101100", "11000000001100100111100001111010", "10010101011001110010110100101111", "11110011000000010100101101001001", "10100110010101000001111000011100", "10100110101010110001111011100011", "11000000110011010111100010000101", "10010101100110000010110111010000", "11111100000011100100010001000110", "10101001010110110001000100010011", "10011010011010001101110111011111", "11111100000011101011101110111001", "10101001010110111110111011101100", "11111100111100011011101101000110", "11110011111111101011010001001001", "11000000001100101000011110000101", "11110011111111100100101110110110", "11001111001111010111011101110101", "10011010011010000010001000100000"];                       // the project's 32 Walsh x scrambling codes, '1' = +1 (codes.walsh_codes(5))
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const NS = "http://www.w3.org/2000/svg";
@@ -1588,26 +1610,26 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
     tx_crc: ["Stream CRC32", "stock", "tx_crc", ["check = False (append)", "packed = True"], "Appends a CRC-32 to every frame. The receiver's CRC32 block checks it and drops the frame if it fails."],
     tx_pdu: ["Tagged Stream to PDU", "stock", "tx_pdu", ["type = byte", "tag = packet_len"], "Back to a PDU (frame + CRC) for the message-driven LDPC Encoder."],
     ldpc_enc: ["LDPC Encoder", "epy", "ldpc_enc", ["max_payload = 1024"], "5G NR base graph 1: picks the smallest lifting size Z with 22·Z ≥ K, encodes systematically, rate-matches to the requested rate (½, ⅔, ¾, ⅚) by sending a prefix of the mother codeword, and applies the 5G bit interleaver. Uncoded frames pass through."],
-    framer: ["CDMA PHY Framer", "epy", "framer", ["gold_degree = 5", "preamble_bits = 48", "max_payload = 1024"], "Builds the burst as constellation <em>indices</em> into <code>sym_table</code>: the code-specific 48-symbol BPSK preamble, the 24-bit header as two Golay (24,12) codewords (48 BPSK symbols), and the coded bits Gray-mapped to BPSK (0–1), QPSK (2–5) or 16-QAM (6–21), padded to a multiple of 16 symbols."],
+    framer: ["CDMA PHY Framer", "epy", "framer", ["gold_degree = 5", "code_family = code_family (walsh)", "preamble_bits = 48", "max_payload = 1024"], "Builds the burst as constellation <em>indices</em> into <code>sym_table</code>: the code-specific 48-symbol BPSK preamble, the 24-bit header as two Golay (24,12) codewords (48 BPSK symbols), and the coded bits Gray-mapped to BPSK (0–1), QPSK (2–5), 16-QAM (6–21) or 64-QAM (22–85), padded to a multiple of 16 symbols."],
     lane_select: ["PDU Filter", "stock", "lane0_select … lane4_select", ["k = pmt.intern(\"code\")", "v = pmt.from_long(k)  (k = 0…4)"], "Each of the five lanes passes only the bursts whose <code>code</code> is its own: lane 0 is the broadcast code, lanes 1–4 the stations' codes. One burst goes down exactly one lane."],
     lane_stream: ["PDU to Tagged Stream", "stock", "lane0_stream …", ["type = byte", "tag = packet_len", "Min Output Buffer 32768"], "Symbol indices as a stream. It also turns the PDU's <code>pwr</code> and <code>at</code> into tags on the burst's first item; they travel with the burst to the Combiner."],
-    lane_map: ["Chunks to Symbols", "stock", "lane0_map …", ["symbol_table = sym_table", "in = byte, out = complex"], "Index → constellation point, from one table that holds BPSK, QPSK and 16-QAM, so one lane carries any modulation and the modulation can change per burst."],
-    lane_repeat: ["Repeat", "stock", "lane0_repeat …", ["interp = sf (31)", "type = complex"], "Holds every symbol for 31 chips."],
-    lane_code: ["Vector Source", "stock", "lane0_code …", ["vector = code_k", "repeat = True"], "The lane's Gold code as ±1 values (variables <code>code_0</code> … <code>code_4</code>), repeated forever."],
-    lane_spread: ["Multiply", "stock", "lane0_spread …", ["num_inputs = 2"], "Chip-by-chip product of the repeated symbols and the code: the spreading. Every symbol is now 31 chips that follow the code, multiplied by the symbol's value."],
-    lane_len: ["Tagged Stream Multiply Length", "stock", "lane0_len …", ["c = sf (31)", "lengthtagname = packet_len"], "Scales the <code>packet_len</code> tag by 31, so the Combiner knows the burst's length in chips."],
+    lane_map: ["Chunks to Symbols", "stock", "lane0_map …", ["symbol_table = sym_table", "in = byte, out = complex"], "Index → constellation point, from one table that holds BPSK, QPSK, 16-QAM and 64-QAM, so one lane carries any modulation and the modulation can change per burst."],
+    lane_repeat: ["Repeat", "stock", "lane0_repeat …", ["interp = sf (32; 31 with Gold codes)", "type = complex"], "Holds every symbol for sf chips: 32 with the Walsh codes."],
+    lane_code: ["Vector Source", "stock", "lane0_code …", ["vector = code_k", "repeat = True"], "The lane's code as ±1 values (variables <code>code_0</code> … <code>code_4</code>: rows of <code>walsh_table</code>, or of <code>gold_table</code> when <code>code_family</code> is <code>gold</code>), repeated forever."],
+    lane_spread: ["Multiply", "stock", "lane0_spread …", ["num_inputs = 2"], "Chip-by-chip product of the repeated symbols and the code: the spreading. Every symbol is now 32 chips that follow the code, multiplied by the symbol's value."],
+    lane_len: ["Tagged Stream Multiply Length", "stock", "lane0_len …", ["c = sf (32)", "lengthtagname = packet_len"], "Scales the <code>packet_len</code> tag by sf, so the Combiner knows the burst's length in chips."],
     combiner: ["CDMA Burst Combiner", "epy", "combiner", ["codes = (0, 1, 2, 3, 4)", "chip_rate = 2e6", "tx_buffer = 65536"], "Sums the five lanes chip by chip: bursts on different codes overlap (one transmitter serving several stations), bursts on one code follow each other. It scales each burst by its <code>pwr</code> tag, starts a burst with an <code>at</code> tag exactly on that chip, drops (and counts) a burst that arrives after its chip, and outputs zeros when idle so the radio never runs dry."],
     tx_rrc: ["Interpolating FIR Filter", "stock", "tx_rrc", ["interp = sps (2)", "taps = rrc_taps", "firdes.root_raised_cosine(sps, sps, 1, 0.35, 17)"], "Root-raised-cosine pulse shaping, α = 0.35 over 8 chips, at 2 samples per chip: the 2 Mchip/s stream becomes 4 MS/s and stays inside about 2.7 MHz."],
     tx_gain: ["Multiply Const", "stock", "tx_gain", ["const = tx_scale"], "Scales the signal so one full-power code has an RMS of 0.25 of DAC full scale, leaving headroom for several codes and the RRC peaks."],
     antsdr_tx: ["PlutoSDR Sink", "radio", "antsdr_tx (iio_pluto_sink)", ["uri = uri (ip:192.168.1.10)", "frequency = 2.5 GHz", "samplerate = bandwidth = 4 MHz", "buffer_size = tx_buffer (65536)", "attenuation1 = tx_atten (10 dB)"], "Sends the samples to the ANTSDR's TX1 over libiio. libiio keeps 4 kernel buffers plus the one being filled (≈ 82 ms at 64k samples); that delay is part of the TX → RX offset D, which TD-CDMA measures."],
     antsdr_rx: ["PlutoSDR Source", "radio", "antsdr_rx (iio_pluto_source)", ["buffer_size = 32768", "gain1 = manual, rx_gain (40 dB)", "quadrature, RF DC and BB DC tracking on"], "Receives RX1 at 4 MS/s. Samples not fetched within 4 buffers are lost (an overflow): the receive stream slips and D changes, which TD-CDMA notices and re-measures."],
     rx_mf: ["FFT Filter", "stock", "rx_mf", ["taps = rrc_taps", "decim = 1"], "The matched filter: the same RRC taps as the transmitter, which together give a raised-cosine pulse with no inter-chip interference."],
-    despreader: ["CDMA Despreader", "epy", "despreader", ["samp_rate = 4e6", "sps = 2", "gold_degree = 5", "preamble_bits = 48"], "The receiver. It queues samples for a worker thread that detects preambles on this node's code and code 0 (only where the slot plan says bursts can start), estimates carrier offset, despreads with fractional-delay timing and a DLL, decodes the Golay header and tracks the carrier. Out comes a PDU of payload symbols tagged with <code>mod</code>, <code>code</code>, rate, length, SNR, CFO and the receive sample index."],
-    rx_select: ["PDU Filter", "stock", "rx_bpsk_select · rx_qpsk_select · rx_qam16_select", ["k = pmt.intern(\"mod\")", "v = bpsk | qpsk | 16qam"], "Routes each frame's symbols to the branch for its modulation, read from its header."],
+    despreader: ["CDMA Despreader", "epy", "despreader", ["samp_rate = 4e6", "sps = 2", "gold_degree = 5", "code_family = code_family (walsh)", "preamble_bits = 48"], "The receiver. It queues samples for a worker thread that detects preambles on this node's code and code 0 (only where the slot plan says bursts can start), estimates carrier offset, despreads with fractional-delay timing from a DLL and a straight line fitted through it, decodes the Golay header and tracks the carrier. Out comes a PDU of payload symbols tagged with <code>mod</code>, <code>code</code>, rate, length, SNR, CFO and the receive sample index."],
+    rx_select: ["PDU Filter", "stock", "rx_bpsk_select · rx_qpsk_select · rx_qam16_select · rx_qam64_select", ["k = pmt.intern(\"mod\")", "v = bpsk | qpsk | 16qam | 64qam"], "Routes each frame's symbols to the branch for its modulation, read from its header."],
     rx_stream: ["PDU to Tagged Stream", "stock", "rx_bpsk_stream …", ["type = complex", "Min Output Buffer 32768"], "Symbols as a tagged stream for the stock soft decoder."],
-    rx_soft: ["Constellation Soft Decoder", "stock", "rx_bpsk_soft · rx_qpsk_soft · rx_qam16_soft", ["constellation = const_bpsk | const_qpsk | const_16qam", "npwr = -1"], "Soft bits (log-likelihood ratios) per symbol from the <code>variable_constellation</code> objects, whose point order is the same Gray mapping the Framer used."],
-    rx_len: ["Tagged Stream Multiply Length", "stock", "rx_bpsk_len …", ["c = 1 | 2 | 4 bits per symbol"], "Fixes <code>packet_len</code> after one symbol became 1, 2 or 4 soft bits."],
-    rx_pdu: ["Tagged Stream to PDU", "stock", "rx_bpsk_pdu …", ["type = float"], "Soft bits back to a PDU, with the frame's metadata, for the LDPC Decoder. All three branches feed the same decoder."],
+    rx_soft: ["Constellation Soft Decoder", "stock", "rx_bpsk_soft · rx_qpsk_soft · rx_qam16_soft · rx_qam64_soft", ["constellation = const_bpsk | const_qpsk | const_16qam | const_64qam", "npwr = -1"], "Soft bits (log-likelihood ratios) per symbol from the <code>variable_constellation</code> objects, whose point order is the same Gray mapping the Framer used."],
+    rx_len: ["Tagged Stream Multiply Length", "stock", "rx_bpsk_len …", ["c = 1 | 2 | 4 | 6 bits per symbol"], "Fixes <code>packet_len</code> after one symbol became 1, 2, 4 or 6 soft bits."],
+    rx_pdu: ["Tagged Stream to PDU", "stock", "rx_bpsk_pdu …", ["type = float"], "Soft bits back to a PDU, with the frame's metadata, for the LDPC Decoder. All four branches feed the same decoder."],
     ldpc_dec: ["LDPC Decoder", "epy", "ldpc_dec", ["max_iter = ldpc_max_iter (20)"], "Undoes the interleaver and the rate matching, then runs layered normalised min-sum (α = 0.75), each layer one vectorised numpy step over its Z check nodes, stopping as soon as all parity checks pass. Uncoded frames get hard decisions."],
     rx_bytes: ["PDU to Tagged Stream", "stock", "rx_bytes", ["type = byte"], "Decoded bytes as a tagged stream for the CRC check."],
     rx_crc: ["Stream CRC32", "stock", "rx_crc", ["check = True"], "Checks the CRC-32 and silently drops any frame that fails. Only correct frames reach the app."],
@@ -1615,7 +1637,7 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
     mac_rx: ["PHY → MAC (to app)", "epy", "mac_rx", ["node_id = node_id"], "Hands every good frame, with its SNR, CFO, LDPC iterations and receive sample index, to the link layer. Pressing F6 in GNU Radio Companion without the app prints the frames instead: a handy radio check."],
   };
   const BW = 140, BH = 48, STEP = 156, X0 = 14;
-  const SHORT = { mac_tx: "MAC → PHY", lane_select: "PDU Filter (code)", lane_repeat: "Repeat ×31", lane_len: "Mult. Length Tag", tx_rrc: "Interp. FIR (RRC)", rx_mf: "FFT Filter (RRC)", rx_select: "PDU Filter (mod)", rx_soft: "Const. Soft Decoder", rx_len: "Mult. Length Tag", mac_rx: "PHY → MAC" };
+  const SHORT = { mac_tx: "MAC → PHY", lane_select: "PDU Filter (code)", lane_repeat: "Repeat ×sf", lane_len: "Mult. Length Tag", tx_rrc: "Interp. FIR (RRC)", rx_mf: "FFT Filter (RRC)", rx_select: "PDU Filter (mod)", rx_soft: "Const. Soft Decoder", rx_len: "Mult. Length Tag", mac_rx: "PHY → MAC" };
   const rows = [
     [20, ["mac_tx", "tx_stream", "tx_crc", "tx_pdu", "ldpc_enc", "framer"]],
     [128, ["lane_select", "lane_stream", "lane_map", "lane_repeat", "lane_spread", "lane_len"]],
@@ -1653,7 +1675,7 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
   g.appendChild(T(pos.lane_len.x + BW + 16, 148, "× 5 code lanes:", { style: { fill: "var(--muted)", "font-size": "11.5px" } }));
   g.appendChild(T(pos.lane_len.x + BW + 16, 164, "code 0 = broadcast,", { style: { fill: "var(--muted)", "font-size": "11.5px" } }));
   g.appendChild(T(pos.lane_len.x + BW + 16, 180, "codes 1–4 = stations", { style: { fill: "var(--muted)", "font-size": "11.5px" } }));
-  g.appendChild(T(pos.rx_select.x, 362, "× 3 branches: BPSK · QPSK · 16-QAM", { style: { fill: "var(--muted)", "font-size": "11.5px" } }));
+  g.appendChild(T(pos.rx_select.x, 362, "× 4 branches: BPSK · QPSK · 16-QAM · 64-QAM", { style: { fill: "var(--muted)", "font-size": "11.5px" } }));
   g.appendChild(T(W - 14, 14, "TRANSMIT", { attrs: { "text-anchor": "end" }, style: { fill: "var(--muted)", "font-size": "11px", "letter-spacing": ".1em" } }));
   g.appendChild(T(W - 14, 354, "RECEIVE", { attrs: { "text-anchor": "end" }, style: { fill: "var(--muted)", "font-size": "11px", "letter-spacing": ".1em" } }));
   g.appendChild(el("line", { x1: 8, x2: W - 8, y1: 330, y2: 330, style: { stroke: "var(--line)", "stroke-width": "1" } }));
@@ -1695,7 +1717,7 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
   const parts = [
     ["Preamble", "48 BPSK symbols", "code-specific pattern", 48, "var(--st0)"],
     ["Header", "48 BPSK symbols", "2 × Golay(24,12): length · mod · rate · CRC-8", 48, "var(--accent2)"],
-    ["Payload", "LDPC codeword → BPSK / QPSK / 16-QAM", "1 KB frame at 16-QAM: 2,000 symbols ≈ 31 ms", 300, "var(--accent)"],
+    ["Payload", "LDPC codeword → BPSK / QPSK / 16- / 64-QAM", "1 KB frame at uncoded 64-QAM: 1,364 symbols ≈ 22 ms", 300, "var(--accent)"],
   ];
   let x = 10;
   const tot = parts.reduce((a, p) => a + p[3], 0), scale = (W - 20) / tot;
@@ -1707,7 +1729,7 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
     svg.appendChild(T(x + 2, 92, b, { style: { "font-size": "11px", fill: "var(--muted)" } }));
     x += ww;
   });
-  svg.appendChild(T(10, 122, "Preamble and header: 96 symbols = 1.5 ms at 64.5 ksymbol/s. Every symbol is 31 chips of the destination's Gold code.", { style: { "font-size": "11.5px", fill: "var(--ink2)" } }));
+  svg.appendChild(T(10, 122, "Preamble and header: 96 symbols = 1.5 ms at 62.5 ksymbol/s. Every symbol is 32 chips of the destination's code.", { style: { "font-size": "11.5px", fill: "var(--ink2)" } }));
   host.appendChild(svg);
 })();
 
@@ -1715,8 +1737,10 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
 (function spreading() {
   const cv1 = $("#sp-chips"), cv2 = $("#sp-out");
   if (!cv1) return;
-  const code = (i) => GOLD[i].split("").map((c) => (c === "1" ? 1 : -1));
-  const N = 31, K = 4;
+  const FAM = { walsh: { tab: WALSH, gain: "15.1 dB", why: "10·log10(32)" }, gold: { tab: GOLD, gain: "14.9 dB", why: "10·log10(31)" } };
+  const code = (i) => FAM[st.fam].tab[i].split("").map((c) => (c === "1" ? 1 : -1));
+  const K = 4;
+  let N = 32;
   let rng = 7;
   const rnd = () => ((rng = (rng * 1103515245 + 12345) % 2147483648) / 2147483648);
   const gauss = () => { let u = 0, v = 0; while (u === 0) u = rnd(); v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
@@ -1724,22 +1748,24 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
   function newData() {
     dA = Array.from({ length: K + 1 }, () => (rnd() < 0.5 ? -1 : 1));
     dC = Array.from({ length: K + 2 }, () => (rnd() < 0.5 ? -1 : 1));
-    noise = Array.from({ length: (K + 2) * N }, gauss);
+    noise = Array.from({ length: (K + 2) * 32 }, gauss);
   }
   newData();
-  const st = { rx: 2, p: 0, snr: 0, off: 0 };
+  const st = { rx: 2, p: 0, snr: 0, off: 0, fam: "walsh" };
   function compute() {
+    N = FAM[st.fam].tab[0].length;
+    const off = Math.min(st.off, N - 1);
     const cA = code(2), cC = code(4), A = Math.pow(10, st.p / 20), sig = Math.pow(10, -st.snr / 20);
     const L = (K + 1) * N, a = [], c = [], r = [];
     for (let n = 0; n < L; n++) {
       const sa = dA[Math.floor(n / N)] * cA[n % N];
-      const m = n + N - st.off;                       // Carol's chip stream, 'off' chips later than Alice's
+      const m = n + N - off;                          // Carol's chip stream, 'off' chips later than Alice's
       const sc = A * dC[Math.floor(m / N)] * cC[m % N];
       a.push(sa); c.push(sc); r.push(sa + sc + sig * noise[n]);
     }
     // the receiver despreads with the chosen code: Bob (and code 3) on Alice's timing,
     // Dave on Carol's (he found her preamble), so his symbol k is Carol's dC[k + 1]
-    const cR = code(st.rx), start = st.rx === 4 ? st.off : 0, y = [];
+    const cR = code(st.rx), start = st.rx === 4 ? off : 0, y = [];
     for (let k = 0; k < K; k++) {
       let s = 0;
       for (let j = 0; j < N; j++) s += r[start + k * N + j] * cR[j];
@@ -1793,7 +1819,7 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
     });
     const leak = st.rx === 4 ? null : R.y.map((v, k) => v - (st.rx === 2 ? dA[k] : 0));
     const nAfter = R.sig / Math.sqrt(N);
-    const items = [["Processing gain", "14.9 dB", "10·log10(31)"], ["Noise after despreading", nAfter.toFixed(3), `σ = ${R.sig.toFixed(2)} per chip`]];
+    const items = [["Processing gain", FAM[st.fam].gain, FAM[st.fam].why], ["Noise after despreading", nAfter.toFixed(3), `σ = ${R.sig.toFixed(2)} per chip`]];
     if (st.rx === 2) items.push(["Bob decodes Alice", `${correct} / ${K}`, "symbols right"], ["Carol's leak + noise", Math.sqrt(leak.reduce((a, v) => a + v * v, 0) / K).toFixed(2), "rms, against ±1 wanted"]);
     else if (st.rx === 4) items.push(["Dave decodes Carol", `${correct} / ${K}`, "aligned to her code phase"], ["Carol's level", `${R.A.toFixed(2)}`, "after despreading"]);
     else items.push(["Code 3 output", Math.sqrt(R.y.reduce((a, v) => a + v * v, 0) / K).toFixed(2), "rms: only leakage and noise"]);
@@ -1804,6 +1830,7 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
   bind("sp-noise", "snr", (v) => `${v} dB`);
   bind("sp-off", "off", (v) => `${v} chips`);
   seg("sp-code", (v) => { st.rx = +v; draw(); });
+  seg("sp-fam", (v) => { st.fam = v; const i = $("#sp-off"); i.max = String(FAM[v].tab[0].length - 1); if (+i.value > +i.max) { i.value = i.max; st.off = +i.max; $("#sp-off-o").textContent = `${i.max} chips`; } draw(); });
   $("#sp-new").addEventListener("click", () => { newData(); draw(); });
   window.addEventListener("resize", draw);
   onTheme(draw);
@@ -1814,10 +1841,11 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
 (function mcs() {
   const host = $("#mcs");
   if (!host) return;
-  const SR = 2e6 / 31 / 1000;                      // ksymbol/s
-  const coded = [["QPSK ½", 4.0, 1.0], ["QPSK ¾", 6.0, 1.5], ["QPSK ⅚", 7.0, 1.667], ["16-QAM ½", 9.5, 2.0], ["16-QAM ⅔", 11.0, 2.667], ["16-QAM ¾", 12.5, 3.0], ["16-QAM ⅚", 14.0, 3.333], ["16-QAM uncoded", 22.5, 4.0]];
-  const unc = [["BPSK uncoded", 13.0, 1.0], ["QPSK uncoded", 15.5, 2.0], ["16-QAM uncoded", 22.5, 4.0]];
-  const W = 760, H = 320, L = 56, R = 16, TOP = 16, BOT = 44, XM = 28, YM = 280;
+  const SR = 2e6 / 32 / 1000;                      // ksymbol/s (32-chip Walsh codes)
+  const coded = [["QPSK ½", 4.0, 1.0], ["QPSK ¾", 6.0, 1.5], ["QPSK ⅚", 7.0, 1.667], ["16-QAM ½", 9.5, 2.0], ["16-QAM ⅔", 11.0, 2.667], ["16-QAM ¾", 12.5, 3.0], ["16-QAM ⅚", 14.0, 3.333], ["64-QAM ⅔", 16.5, 4.0], ["64-QAM ¾", 17.5, 4.5], ["64-QAM ⅚", 19.0, 5.0], ["64-QAM uncoded", 27.5, 6.0]];
+  const aloha = coded.slice(0, 7).concat([["16-QAM uncoded", 22.5, 4.0]]);   // mac.AUTO_LADDER_ALOHA
+  const unc = [["BPSK uncoded", 13.0, 1.0], ["QPSK uncoded", 15.5, 2.0], ["16-QAM uncoded", 22.5, 4.0], ["64-QAM uncoded", 27.5, 6.0]];
+  const W = 760, H = 320, L = 56, R = 16, TOP = 16, BOT = 44, XM = 32, YM = 400;
   const sx = (v) => L + (v / XM) * (W - L - R), sy = (v) => H - BOT - (v / YM) * (H - TOP - BOT);
   const svg = svgRoot(W, H, "Rate against Es/N0 for each modulation and code rate", 560);
   // grid
@@ -1834,6 +1862,8 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
     svg.appendChild(el("path", { d, style: Object.assign({ fill: "none" }, style) }));
   };
   stair(unc, { stroke: "var(--st0)", "stroke-width": "2", "stroke-dasharray": "5 4" });
+  stair(aloha.slice(6), { stroke: "var(--st2)", "stroke-width": "2", "stroke-dasharray": "1.5 3.5", "stroke-linecap": "round" });
+  svg.appendChild(T(sx(22.7), sy(4 * SR) - 8, "spread ALOHA", { style: { fill: "var(--st2)", "font-size": "10.5px" } }));
   stair(coded, { stroke: "var(--accent)", "stroke-width": "2.6" });
   coded.forEach(([n, t, b], i) => {               // numbered markers on each step; names in the legend below
     const cx = sx(t) + 11, cy = sy(b * SR) - 12;
@@ -1849,14 +1879,14 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
   const lg = document.createElement("div");
   lg.className = "legend small";
   lg.style.marginTop = "8px";
-  lg.innerHTML = coded.map(([n, t, b], i) => `<span><b style="color:var(--accent)">${i + 1}</b> ${n} · ${i ? t : "4–5"} dB · ${(b * SR).toFixed(0)} kb/s</span>`).join("") + `<span><i style="background:var(--st0)"></i>dashed: uncoded only (<code>--fec off</code>)</span>`;
+  lg.innerHTML = coded.map(([n, t, b], i) => `<span><b style="color:var(--accent)">${i + 1}</b> ${n} · ${i ? t : "4–5"} dB · ${(b * SR).toFixed(0)} kb/s</span>`).join("") + `<span><i style="background:var(--st0)"></i>dashed: uncoded only (<code>--fec off</code>)</span><span><i style="background:var(--st2)"></i>dotted: spread ALOHA's top (no 64-QAM)</span>`;
   host.appendChild(lg);
   const pick = (tab, s) => { let r = null; tab.forEach((x) => { if (s >= x[1]) r = x; }); return r; };
   function upd() {
     const s = +$("#mcs-snr").value;
     $("#mcs-snr-o").textContent = `${s} dB`;
     vline.setAttribute("x1", sx(s)); vline.setAttribute("x2", sx(s));
-    const c = s >= 4 ? (pick(coded, s) || coded[0]) : null, u = pick(unc, s);
+    const c = s >= 4 ? (pick(coded, s) || coded[0]) : null, u = pick(unc, s), a = s >= 4 ? (pick(aloha, s) || aloha[0]) : null;
     const cr = c ? c[2] * SR : 0, ur = u ? u[2] * SR : 0;
     dot.setAttribute("cx", sx(s)); dot.setAttribute("cy", sy(cr));
     dot2.setAttribute("cx", sx(s)); dot2.setAttribute("cy", sy(ur));
@@ -1865,27 +1895,28 @@ const NAMES = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
       ["Bit rate", c ? `${cr.toFixed(1)} kb/s` : "0", c ? `${c[2]} info bits/symbol` : "below the detector"],
       ["Margin", c ? (c[0] === "QPSK ½" ? "floor rung" : `${(s - c[1]).toFixed(1)} dB`) : "–", c && c[0] === "QPSK ½" ? "works from ~4–5 dB" : "above the rung's threshold"],
       ["Uncoded only", u ? `${ur.toFixed(1)} kb/s` : "nothing", u ? u[0] : "BPSK needs 13 dB"],
+      ["Spread ALOHA", a ? `${(a[2] * SR).toFixed(1)} kb/s` : "0", a ? a[0] : "below the detector"],
     ]);
   }
   $("#mcs-snr").addEventListener("input", upd);
   upd();
 })();
 
-window.__WL = { el, svgRoot, T, arrowDefs, $, $$, seg, pressed, readout, cssv, onTheme, NAMES, reduceMotion, GOLD };
+window.__WL = { el, svgRoot, T, arrowDefs, $, $$, seg, pressed, readout, cssv, onTheme, NAMES, reduceMotion, GOLD, WALSH };
 })();
 
 </script>
 <script>
 (() => {
 "use strict";
-const { el, svgRoot, T, arrowDefs, $, $$, seg, pressed, readout, cssv, onTheme, NAMES, reduceMotion, GOLD } = window.__WL;
+const { el, svgRoot, T, arrowDefs, $, $$, seg, pressed, readout, cssv, onTheme, NAMES, reduceMotion, GOLD, WALSH } = window.__WL;
 const SC = (n) => `var(--st${n})`;
 
 /* ================================================================== TD-CDMA cycle */
 (function cycle() {
   const host = $("#cycle");
   if (!host) return;
-  const JOIN = 11.5, IDLE = 15, DATA = 101, MINC = 100;
+  const JOIN = 11.75, IDLE = 15, DATA = 97, MINC = 100, TICK = 0.25;
   const dest = (i, n) => ({ 1: 2, 2: n >= 3 ? 3 : 1, 3: 1, 4: 1 })[i];
   let N = 3, anim = null, sel = null, visible = true;
   if ("IntersectionObserver" in window) new IntersectionObserver((es) => es.forEach((e) => (visible = e.isIntersecting))).observe(host);
@@ -1893,7 +1924,7 @@ const SC = (n) => `var(--st${n})`;
     const st = [];
     for (let i = 1; i <= N; i++) st.push({ i, data: $(`#cy-d${i}`).checked, len: $(`#cy-d${i}`).checked ? DATA : IDLE });
     let sum = st.reduce((a, s) => a + s.len, 0) + JOIN;
-    if (sum < MINC) { const spare = (MINC - sum) / N; st.forEach((s) => (s.len += spare)); sum = MINC; }
+    if (sum < MINC) { const spare = Math.floor((MINC - sum) / TICK / N) * TICK; st.forEach((s) => (s.len += spare)); sum = st.reduce((a, s) => a + s.len, 0) + JOIN; }
     let t = 0;
     st.forEach((s) => { s.t0 = t; t += s.len; });
     return { st, join: { t0: t, len: JOIN }, T: sum };
@@ -1928,7 +1959,7 @@ const SC = (n) => `var(--st${n})`;
     });
     const laneOf = (c) => laneY + codes.indexOf(c) * laneH;
     P.st.forEach((s) => {
-      const hdr = 7.5;                                   // slot header on code 0 (QPSK ½, 4.6–9.6 ms)
+      const hdr = 7.5;                                   // slot header on code 0 (QPSK ½, 4.7–9.9 ms)
       svg.appendChild(el("rect", { x: x(s.t0 + 0.25), y: laneOf(0) + 3, width: Math.max(2, x(s.t0 + 0.25 + hdr) - x(s.t0 + 0.25)), height: laneH - 8, rx: 2, style: { fill: SC(s.i) } }));
       svg.appendChild(el("rect", { x: x(s.t0 + 0.25 + hdr), y: laneOf(0) + 3, width: Math.max(1.5, x(s.t0 + hdr + 1.3) - x(s.t0 + hdr)), height: laneH - 8, rx: 1, style: { fill: SC(s.i), opacity: ".45" } }));
       if (s.data) {
@@ -1972,10 +2003,10 @@ const SC = (n) => `var(--st${n})`;
       }
       const s = P.st.find((q) => `s${q.i}` === k);
       const d = dest(s.i, N);
-      const frames = Math.floor((s.len - 1) / 32.5);
+      const frames = Math.floor((s.len - 1) / 23.4);
       box.innerHTML = `<h4>${NAMES[s.i]}'s slot · ${s.len.toFixed(1).replace(".0", "")} ms${s.i === 1 ? " · the lead" : ""}</h4>
-        <p>Starts with ${NAMES[s.i]}'s slot header on code 0 at QPSK ½ (4.6–9.6 ms): ${s.i === 1 ? "the cycle number and the slot plan, " : ""}ACK records for frames ${NAMES[s.i]} received, its link table (how it hears everyone) and timing reports. Right after the header on code 0: the newest race state and, every 5 s, a beacon.</p>
-        <p>${s.data ? `On the same chip as the header, frames for ${NAMES[d]} start on code ${d}: about ${frames} frames of uncoded 16-QAM (32.5 ms each), back to back. Everything in the slot goes out at one power, so ${NAMES[d]} and everyone decoding the header hear it.` : `Nothing queued: the slot is ${s.len.toFixed(1).replace(".0", "")} ms so that a beacon or a short message fits without asking for more airtime.`}</p>`;
+        <p>Starts with ${NAMES[s.i]}'s slot header on code 0 at QPSK ½ (4.7–9.9 ms): ${s.i === 1 ? "the cycle number and the slot plan, " : ""}ACK records for frames ${NAMES[s.i]} received, its link table (how it hears everyone) and timing reports. Right after the header on code 0: the newest race state and, every 5 s, a beacon.</p>
+        <p>${s.data ? `On the same chip as the header, frames for ${NAMES[d]} start on code ${d}: about ${frames} frames of uncoded 64-QAM (23.4 ms each), back to back. Everything in the slot goes out at one power, so ${NAMES[d]} and everyone decoding the header hear it.` : `Nothing queued: the slot is ${s.len.toFixed(1).replace(".0", "")} ms so that a beacon or a short message fits without asking for more airtime.`}</p>`;
     };
     svg.addEventListener("click", (e) => { const b = e.target.closest(".fg-block"); if (b) detail(b.dataset.k); });
     svg.addEventListener("keydown", (e) => { const b = e.target.closest(".fg-block"); if (b && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); detail(b.dataset.k); } });
@@ -2080,11 +2111,11 @@ const SC = (n) => `var(--st${n})`;
   const host = $("#accchart");
   if (!host) return;
   const rows = [
-    ["4 senders, real radios", "own transmitter 25 dB above the others", [173, 181], [53, 58]],
-    ["4 senders, idealised radios", "a station receives while it sends", [160, 180], [294, 321]],
-    ["Far station next to a near pair", "power control off; far station's rate", [65, 68], [43, 44]],
-    ["One link alone", "2 MB between two stations", [190, 190], [236, 236]],
-    ["Hidden pair", "a file through a relay", [45, 51], null],
+    ["4 senders, real radios", "own transmitter 25 dB above the others", [236, 236], [58, 65]],
+    ["4 senders, idealised radios", "a station receives while it sends", [222, 226], [302, 323]],
+    ["Far station next to a near pair", "power control off; far station's rate", [69, 69], [43, 44]],
+    ["One link alone", "1 MB, 31 dB; ALOHA with --mod 64qam: 345", [252, 252], [237, 237]],
+    ["Hidden pair", "200 KB through a relay", [107, 107], null],
   ];
   const W = 760, L = 250, R = 46, rowH = 58, H = rows.length * rowH + 40, MAX = 340;
   const svg = svgRoot(W, H, "Throughput of TD-CDMA and spread ALOHA in five scenarios", 600);
@@ -2215,11 +2246,13 @@ const SC = (n) => `var(--st${n})`;
   draw();
 })();
 
-/* ================================================================== Gold code correlation */
+/* ================================================================== code correlation */
 (function goldx() {
   const host = $("#gcchart");
   if (!host) return;
   const gold = GOLD.map((s) => s.split("").map((c) => (c === "1" ? 1 : -1)));
+  const wl = WALSH.map((s) => s.split("").map((c) => (c === "1" ? 1 : -1)));
+  const who = (i) => ["  broadcast", "  Alice", "  Bob", "  Carol", "  Dave"][i] || "";
   const mseqTaps = [[5, 2], [5, 3], [5, 3, 2, 1], [5, 4, 2, 1], [5, 4, 3, 1], [5, 4, 3, 2]];
   const mseq = (taps, n = 5) => {          // the same Fibonacci LFSR as codes._mseq
     let st = Array(n).fill(1); const out = [];
@@ -2230,7 +2263,8 @@ const SC = (n) => `var(--st${n})`;
   let H = [[1]];
   while (H.length < 32) H = [...H.map((r) => [...r, ...r]), ...H.map((r) => [...r, ...r.map((v) => -v)])];
   const fam = {
-    gold: { codes: gold, label: (i) => `#${i}${["  broadcast", "  Alice", "  Bob", "  Carol", "  Dave"][i] || ""}`, a: 2, b: 3, bound: 9 },
+    wl: { codes: wl, label: (i) => `#${i}${who(i)}`, a: 2, b: 3, bound: 12, boundLabel: "codes 0–4: ±12/32 off the peak", use: 5 },
+    gold: { codes: gold, label: (i) => `#${i}${who(i)}`, a: 2, b: 3, bound: 9, boundLabel: "Gold bound ±9/31" },
     mseq: { codes: ms, label: (i) => `taps (${mseqTaps[i].join(", ")})`, a: 0, b: 1, bound: null },
     walsh: { codes: H, label: (i) => `W${i}`, a: 1, b: 2, bound: null },
   };
@@ -2238,10 +2272,11 @@ const SC = (n) => `var(--st${n})`;
   const worstPairs = {};
   for (const [k, f] of Object.entries(fam)) {
     let w = 0; const c = f.codes;
-    for (let i = (k === "walsh" ? 1 : 0); i < c.length; i++) for (let j = i + 1; j < c.length; j++) for (let s = 0; s < c[i].length; s++) w = Math.max(w, Math.abs(corr(c[i], c[j], s)));
+    const n = f.use || c.length;
+    for (let i = (k === "walsh" ? 1 : 0); i < n; i++) for (let j = i + 1; j < n; j++) for (let s = 0; s < c[i].length; s++) w = Math.max(w, Math.abs(corr(c[i], c[j], s)));
     worstPairs[k] = w;
   }
-  let F = "gold";
+  let F = "wl";
   function fill() {
     const f = fam[F];
     ["#gc-a", "#gc-b"].forEach((id, k) => { const s = $(id); s.innerHTML = f.codes.map((_, i) => `<option value="${i}">${f.label(i)}</option>`).join(""); s.value = String(k ? f.b : f.a); });
@@ -2254,7 +2289,7 @@ const SC = (n) => `var(--st${n})`;
     const sx = (k) => L + (k + 0.5) * ((W - L - R) / N), sy = (v) => TOP + (1 - v) / 2 * (Hh - TOP - BOT), bw = ((W - L - R) / N) * 0.62;
     [-1, -0.5, 0, 0.5, 1].forEach((v) => { svg.appendChild(el("line", { x1: L, x2: W - R, y1: sy(v), y2: sy(v), style: { stroke: v === 0 ? "var(--line2)" : "var(--line)" } })); svg.appendChild(T(L - 6, sy(v) + 4, v.toFixed(1), { attrs: { "text-anchor": "end" }, style: { fill: "var(--muted)", "font-size": "11px" } })); });
     if (f.bound) [1, -1].forEach((sg) => svg.appendChild(el("line", { x1: L, x2: W - R, y1: sy((sg * f.bound) / N), y2: sy((sg * f.bound) / N), style: { stroke: "var(--accent2)", "stroke-dasharray": "5 4" } })));
-    if (f.bound) svg.appendChild(T(W - R - 4, sy(f.bound / N) - 5, "Gold bound ±9/31", { attrs: { "text-anchor": "end" }, style: { fill: "var(--accent2)", "font-size": "11px" } }));
+    if (f.bound) svg.appendChild(T(W - R - 4, sy(f.bound / N) - 5, f.boundLabel, { attrs: { "text-anchor": "end" }, style: { fill: "var(--accent2)", "font-size": "11px" } }));
     vals.forEach((v, k) => {
       const main = kind === "a" && k === 0;
       const big = Math.abs(v) > 0.5 && !main;
@@ -2269,7 +2304,7 @@ const SC = (n) => `var(--st${n})`;
     readout($("#gc-read"), [
       [kind === "a" ? "Worst sidelobe" : "Worst over all shifts", `${Math.round(worst * N)}/${N}`, db(worst)],
       ["At shift 0", `${Math.round(vals[0] * N)}/${N}`, kind === "a" ? "the main peak" : "chip-aligned"],
-      ["Worst pair in the family", `${worstPairs[F]}/${N}`, `${f.codes.length} codes`],
+      ["Worst pair in the family", `${worstPairs[F]}/${N}`, f.use ? `codes 0–${f.use - 1} of ${f.codes.length}` : `${f.codes.length} codes`],
     ]);
   }
   seg("gc-fam", (v) => { F = v; fill(); draw(); });
@@ -2449,13 +2484,14 @@ if (!root) return;
 
 // ---------------------------------------------------------------- rules (tdma.py, mac.py)
 const C = {
-  IDLE: 15, DATA: 101, MAXSLOT: 250, MINCYC: 100, MAXCYC: 700, JOIN: 11.5, HDR: 8, GUARD: 0.5,
+  IDLE: 15, DATA: 97, MAXSLOT: 250, MINCYC: 100, MAXCYC: 700, JOIN: 11.75, HDR: 8, GUARD: 0.5,
   AHEAD_S: 1.0, AHEAD_N: 4, LEAD_MISS: 2, EVICT_N: 6, EVICT_S: 1.5, LISTEN: 1.2, LSTEP: 0.25, LOST: 3.0,
   GATHER: 0.3, SHRINK: 1.0, SHRINK_MIN: 5, GROW_PAD: 2, RELAY_MIN: 7, RELAY_DIRECT: 5, RELAY_BACK: 5,
-  PC_TARGET: 25.5, PC_MAX: 30, KSYM: 64.5, EFF: 0.85, HEAR: 4.5, RELAY_Q: 256e3,
+  PC_TARGET: 30.5, PC_MAX: 30, KSYM: 62.5, EFF: 0.85, HEAR: 4.5, RELAY_Q: 256e3,
 };
 const LADDER = [["QPSK ½", 5, 1], ["QPSK ¾", 6, 1.5], ["QPSK ⅚", 7, 1.667], ["16-QAM ½", 9.5, 2],
-  ["16-QAM ⅔", 11, 2.667], ["16-QAM ¾", 12.5, 3], ["16-QAM ⅚", 14, 3.333], ["16-QAM", 22.5, 4]];
+  ["16-QAM ⅔", 11, 2.667], ["16-QAM ¾", 12.5, 3], ["16-QAM ⅚", 14, 3.333], ["64-QAM ⅔", 16.5, 4],
+  ["64-QAM ¾", 17.5, 4.5], ["64-QAM ⅚", 19, 5], ["64-QAM", 27.5, 6]];        // mac.AUTO_LADDER (TD-CDMA)
 const NAME = { 1: "Alice", 2: "Bob", 3: "Carol", 4: "Dave" };
 const IDS = [1, 2, 3, 4];
 // ---------------------------------------------------------------- channel model (assumed)
@@ -2953,7 +2989,7 @@ const SC = {
     note: "Bob sends Carol a file while Alice leads. When Alice switches off, Bob (next in the plan) waits for 3 missed lead headers and takes over with the same cycle numbering; the transfer carries on. Alice, back, hears Bob's network while listening and joins it as a member." },
   walk: { label: "Walk out of range", formed: [1, 2, 3], wall: true, atten: 13, pos: { 1: [10, 8], 2: [21, 18], 3: [12, 9.5] },
     script: [[0.4, () => send(1, 3, 2e6)], [1.2, () => walk(3, [30, 9], 10)], [14, () => walk(3, [39.5, 0.5], 5)], [26, () => walk(3, [27, 12], 6)]],
-    note: "Carol walks behind the wall while Alice sends her a file. The link steps down 16-QAM → coded 16-QAM → QPSK; below 5 dB the file goes through Bob, who hears both. Out of everyone's range her slot is freed after 1.5 s and she starts a lone network; walking back, she hears Alice's plan and rejoins." },
+    note: "Carol walks behind the wall while Alice sends her a file. The link steps down from uncoded 64-QAM through the coded 64- and 16-QAM rungs to QPSK; below 5 dB the file goes through Bob, who hears both. Out of everyone's range her slot is freed after 1.5 s and she starts a lone network; walking back, she hears Alice's plan and rejoins." },
   hidden: { label: "Hidden station joins", formed: [1, 2], wall: true, pos: { 1: [10, 6], 2: [21.5, 18], 3: [33, 6], 4: [37, 19] },
     script: [[0.5, () => switchOn(3)], [7.5, () => send(1, 3, 200e3)]],
     note: "Carol can't hear Alice through the wall. She listens, hears nothing that carries a plan and starts a lone network. Bob hears her lone lead header and starts repeating Alice's plan in his own header; Carol hears it, gives up her network (the lower address leads) and joins through Bob, who passes her join request on. Alice's file then goes via Bob." },
@@ -3087,7 +3123,7 @@ function buildMap() {
   ro.observe(svg);
 }
 function linkStyle(v) {
-  if (v >= 22.5) return ["var(--good)", 3.2, "", "16-QAM"];
+  if (v >= 16.5) return ["var(--good)", 3.2, "", v >= 27.5 ? "64-QAM" : "64-QAM coded"];
   if (v >= 9.5) return ["var(--accent2)", 2.8, "", "16-QAM coded"];
   if (v >= 5) return ["var(--warn)", 2.4, "", "QPSK"];
   if (v >= 3) return ["var(--bad)", 1.6, "5 5", "headers only, if lucky"];
@@ -3577,7 +3613,7 @@ const FX = {
      "len": 1,
      "group": "mac",
      "value": "2 = Bob",
-     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's Gold code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
+     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
      "src": "mac.py · _on_phy_frame",
      "bits": null
     },
@@ -3691,7 +3727,7 @@ const FX = {
      "len": 1,
      "group": "mac",
      "value": "3 = Carol (the final destination)",
-     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's Gold code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
+     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
      "src": "mac.py · _on_phy_frame",
      "bits": null
     },
@@ -3771,7 +3807,7 @@ const FX = {
    "key": "slot",
    "title": "SLOT header (TD-CDMA)",
    "intro": "What Alice, the lead, sends first in each of her slots, on the broadcast code 0 at QPSK ½: everybody decodes it. A member's header is the same without the plan, unless it repeats the plan for a station that can't hear the lead.",
-   "hex": "054bff01a2b300f40c105c3e276701a2b3011c070001a2b3024204010000019c02019c003c0301d8003c000214002e040402310324050602fffd030005030d02010042000c00050008310160dd30f209",
+   "hex": "0523ff01a2b300f40c105c3e275f01a2b3011c070001a2b3022b040100000184020184003c0301c0003c0001fc002f040402310324050602fffd030005030d02010042000c000500083101605e71a071",
    "fields": [
     {
      "name": "type",
@@ -3788,7 +3824,7 @@ const FX = {
      "off": 1,
      "len": 1,
      "group": "mac",
-     "value": "0x4b = priority 3, ACK request 0, backoff 9 dB",
+     "value": "0x23 = priority 3, ACK request 0, backoff 4 dB",
      "purpose": "Three things in one byte: the priority, the spread-ALOHA ACK request, and this frame's own transmit power backoff.",
      "src": "mac.py · F_ACKREQ, BO_SHIFT",
      "bits": [
@@ -3815,7 +3851,7 @@ const FX = {
      "len": 1,
      "group": "mac",
      "value": "255 = everybody",
-     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's Gold code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
+     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
      "src": "mac.py · _on_phy_frame",
      "bits": null
     },
@@ -3915,7 +3951,7 @@ const FX = {
      "off": 13,
      "len": 1,
      "group": "fix",
-     "value": "103 ms",
+     "value": "95 ms",
      "purpose": "The airtime it wants in its slot from the next plan: 15 ms with nothing queued, about 100 ms with data. The lead grows and shrinks slots from these wishes.",
      "src": "tdma.py · want_ms",
      "bits": null
@@ -3975,8 +4011,8 @@ const FX = {
      "off": 24,
      "len": 2,
      "group": "plan",
-     "value": "578 ticks = 144.5 ms",
-     "purpose": "Cycle length in ticks of 0.25 ms: lead 103 + Bob 15 + Carol 15 + join 11.5 ms.",
+     "value": "555 ticks = 138.75 ms",
+     "purpose": "Cycle length in ticks of 0.25 ms: lead 97 + Bob 15 + Carol 15 + join 11.75 ms.",
      "src": "tdma.py · PLAN_HEAD",
      "bits": null
     },
@@ -3995,7 +4031,7 @@ const FX = {
      "off": 27,
      "len": 5,
      "group": "plan",
-     "value": "owner 1 (Alice), start 0, length 412 ticks (103 ms)",
+     "value": "owner 1 (Alice), start 0, length 388 ticks (97 ms)",
      "purpose": "Owner (0 = the join slot), start and length in ticks. In order: the lead first, then the members by address, then the join slot.",
      "src": "tdma.py · SLOT (\">BHH\")",
      "bits": null
@@ -4005,7 +4041,7 @@ const FX = {
      "off": 32,
      "len": 5,
      "group": "plan",
-     "value": "owner 2 (Bob), start 412, length 60 ticks (15 ms)",
+     "value": "owner 2 (Bob), start 388, length 60 ticks (15 ms)",
      "purpose": "Owner (0 = the join slot), start and length in ticks. In order: the lead first, then the members by address, then the join slot.",
      "src": "tdma.py · SLOT (\">BHH\")",
      "bits": null
@@ -4015,7 +4051,7 @@ const FX = {
      "off": 37,
      "len": 5,
      "group": "plan",
-     "value": "owner 3 (Carol), start 472, length 60 ticks (15 ms)",
+     "value": "owner 3 (Carol), start 448, length 60 ticks (15 ms)",
      "purpose": "Owner (0 = the join slot), start and length in ticks. In order: the lead first, then the members by address, then the join slot.",
      "src": "tdma.py · SLOT (\">BHH\")",
      "bits": null
@@ -4025,7 +4061,7 @@ const FX = {
      "off": 42,
      "len": 5,
      "group": "plan",
-     "value": "owner 0 (join slot), start 532, length 46 ticks (11.5 ms)",
+     "value": "owner 0 (join slot), start 508, length 47 ticks (11.75 ms)",
      "purpose": "Owner (0 = the join slot), start and length in ticks. In order: the lead first, then the members by address, then the join slot.",
      "src": "tdma.py · SLOT (\">BHH\")",
      "bits": null
@@ -4095,7 +4131,7 @@ const FX = {
      "off": 76,
      "len": 4,
      "group": "crc",
-     "value": "0x09f230dd",
+     "value": "0x71a0715e",
      "purpose": "As in DATA: a header that fails it is ignored as a whole.",
      "src": "flowgraph · Stream CRC32",
      "bits": null
@@ -4248,7 +4284,7 @@ const FX = {
      "len": 1,
      "group": "mac",
      "value": "255 = everybody",
-     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's Gold code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
+     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
      "src": "mac.py · _on_phy_frame",
      "bits": null
     },
@@ -4352,7 +4388,7 @@ const FX = {
      "len": 1,
      "group": "mac",
      "value": "255 = everybody",
-     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's Gold code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
+     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
      "src": "mac.py · _on_phy_frame",
      "bits": null
     },
@@ -4586,7 +4622,7 @@ const FX = {
      "len": 1,
      "group": "mac",
      "value": "1 = Alice",
-     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's Gold code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
+     "purpose": "The station the frame is for (255 = everybody). The PHY already spread it with the destination's code; the link layer checks this byte again and drops frames for others (a relay's FWD frames excepted).",
      "src": "mac.py · _on_phy_frame",
      "bits": null
     },
@@ -4675,123 +4711,171 @@ const FX = {
  ],
  "phy": {
   "length": 87,
-  "mod": "16qam",
+  "mod": "64qam",
   "rate": 3,
-  "mcs": "16qam-3/4",
-  "word": 2803,
-  "crc8": 85,
-  "header_bits": "000010101111001101010101",
-  "golay1": "000011111110010110000110",
-  "golay2": "001011101111000101100010",
+  "mcs": "64qam-3/4",
+  "word": 2787,
+  "crc8": 37,
+  "header_bits": "000010101110001100100101",
+  "golay1": "000011111111110101101101",
+  "golay2": "001010100101100000000011",
   "K": 696,
   "Z": 32,
-  "E": 928,
+  "E": 930,
   "punctured": 64,
   "sys_sent": 632,
-  "par_sent": 296,
+  "par_sent": 298,
   "fillers": 8,
-  "payload_syms": 232,
-  "pad": 8,
-  "total_syms": 336,
-  "chips": 10416,
-  "ms": 5.208,
-  "sym_rate": 64516.1,
+  "payload_syms": 155,
+  "pad": 5,
+  "total_syms": 256,
+  "chips": 8192,
+  "ms": 4.096,
+  "sym_rate": 62500.0,
   "table": [
    {
     "mcs": "qpsk-1/2",
     "bytes": 87,
     "payload_syms": 696,
     "total_syms": 800,
-    "ms": 12.4,
-    "info_kbps": 47.1
+    "ms": 12.8,
+    "info_kbps": 45.6
    },
    {
     "mcs": "qpsk-1/2",
     "bytes": 1023,
     "payload_syms": 8184,
     "total_syms": 8288,
-    "ms": 128.46,
-    "info_kbps": 62.8
+    "ms": 132.61,
+    "info_kbps": 60.9
    },
    {
     "mcs": "qpsk-3/4",
     "bytes": 87,
     "payload_syms": 464,
     "total_syms": 560,
-    "ms": 8.68,
-    "info_kbps": 67.3
+    "ms": 8.96,
+    "info_kbps": 65.2
    },
    {
     "mcs": "qpsk-3/4",
     "bytes": 1023,
     "payload_syms": 5456,
     "total_syms": 5552,
-    "ms": 86.06,
-    "info_kbps": 93.8
+    "ms": 88.83,
+    "info_kbps": 90.9
    },
    {
     "mcs": "16qam-1/2",
     "bytes": 87,
     "payload_syms": 348,
     "total_syms": 448,
-    "ms": 6.94,
-    "info_kbps": 84.1
+    "ms": 7.17,
+    "info_kbps": 81.5
    },
    {
     "mcs": "16qam-1/2",
     "bytes": 1023,
     "payload_syms": 4092,
     "total_syms": 4192,
-    "ms": 64.98,
-    "info_kbps": 124.2
+    "ms": 67.07,
+    "info_kbps": 120.3
    },
    {
     "mcs": "16qam-3/4",
     "bytes": 87,
     "payload_syms": 232,
     "total_syms": 336,
-    "ms": 5.21,
-    "info_kbps": 112.1
+    "ms": 5.38,
+    "info_kbps": 108.6
    },
    {
     "mcs": "16qam-3/4",
     "bytes": 1023,
     "payload_syms": 2728,
     "total_syms": 2832,
-    "ms": 43.9,
-    "info_kbps": 183.9
+    "ms": 45.31,
+    "info_kbps": 178.1
    },
    {
     "mcs": "16qam-5/6",
     "bytes": 87,
     "payload_syms": 209,
     "total_syms": 320,
-    "ms": 4.96,
-    "info_kbps": 117.7
+    "ms": 5.12,
+    "info_kbps": 114.1
    },
    {
     "mcs": "16qam-5/6",
     "bytes": 1023,
     "payload_syms": 2456,
     "total_syms": 2560,
-    "ms": 39.68,
-    "info_kbps": 203.4
+    "ms": 40.96,
+    "info_kbps": 197.1
    },
    {
     "mcs": "16qam",
     "bytes": 87,
     "payload_syms": 174,
     "total_syms": 272,
-    "ms": 4.22,
-    "info_kbps": 138.5
+    "ms": 4.35,
+    "info_kbps": 134.2
    },
    {
     "mcs": "16qam",
     "bytes": 1023,
     "payload_syms": 2046,
     "total_syms": 2144,
-    "ms": 33.23,
-    "info_kbps": 242.9
+    "ms": 34.3,
+    "info_kbps": 235.3
+   },
+   {
+    "mcs": "64qam-3/4",
+    "bytes": 87,
+    "payload_syms": 155,
+    "total_syms": 256,
+    "ms": 4.1,
+    "info_kbps": 142.6
+   },
+   {
+    "mcs": "64qam-3/4",
+    "bytes": 1023,
+    "payload_syms": 1819,
+    "total_syms": 1920,
+    "ms": 30.72,
+    "info_kbps": 262.8
+   },
+   {
+    "mcs": "64qam-5/6",
+    "bytes": 87,
+    "payload_syms": 140,
+    "total_syms": 240,
+    "ms": 3.84,
+    "info_kbps": 152.1
+   },
+   {
+    "mcs": "64qam-5/6",
+    "bytes": 1023,
+    "payload_syms": 1637,
+    "total_syms": 1744,
+    "ms": 27.9,
+    "info_kbps": 289.3
+   },
+   {
+    "mcs": "64qam",
+    "bytes": 87,
+    "payload_syms": 116,
+    "total_syms": 224,
+    "ms": 3.58,
+    "info_kbps": 162.9
+   },
+   {
+    "mcs": "64qam",
+    "bytes": 1023,
+    "payload_syms": 1364,
+    "total_syms": 1472,
+    "ms": 23.55,
+    "info_kbps": 342.7
    }
   ]
  }
@@ -4836,8 +4920,8 @@ function layout(sizes, W, minW) {
     { name: "Envelope", file: "node.py", segs: [["crypto", 1, "B", "env"], ["len", 2, "B", "env"], ["meta JSON", fl(env, "meta JSON").len, "B", "env", "kind, id, time, name"], ["body", 7, "B", "body"]], into: 3 },
     { name: "DATA frame", file: "mac.py + Stream CRC32", segs: [["MAC header", 6, "B", "mac", "type flags dst src msg_id"], ["frag", 4, "B", "frag", "idx, count"], ["payload = the envelope", env.hex.length / 2, "B", "payload"], ["CRC-32", 4, "B", "crc"]], into: 2 },
     { name: "LDPC codeword", file: "LDPC Encoder (5G NR BG1)", segs: [["punctured (the first 2Z information bits)", P.punctured, "bits", "sec", "not sent"], ["information bits sent", P.sys_sent, "bits", "payload"], ["fillers", P.fillers, "bits", "sec", "not sent"], ["parity bits sent", P.par_sent, "bits", "frag"]], into: [0, 1] },
-    { name: "Burst", file: "CDMA PHY Framer", segs: [["preamble", 48, "sym", "mac", "code-specific BPSK"], ["header", 48, "sym", "env", "2 × Golay(24,12)"], [`payload: ${P.E} bits as 16-QAM`, P.payload_syms, "sym", "payload"], ["pad", P.pad, "sym", "sec"]], into: 2 },
-    { name: "Chips", file: "Repeat × code_2, RRC", segs: [[`${fmtN(P.total_syms)} symbols × 31 chips of Bob's Gold code (code 2) · ${P.ms.toFixed(2)} ms`, P.chips, "chips", "link", `RRC-shaped, 2 samples per chip: ${fmtN(P.chips * 2)} samples at 4 MS/s`]], into: 0 },
+    { name: "Burst", file: "CDMA PHY Framer", segs: [["preamble", 48, "sym", "mac", "code-specific BPSK"], ["header", 48, "sym", "env", "2 × Golay(24,12)"], [`payload: ${P.E} bits as 64-QAM`, P.payload_syms, "sym", "payload"], ["pad", P.pad, "sym", "sec"]], into: 2 },
+    { name: "Chips", file: "Repeat × code_2, RRC", segs: [[`${fmtN(P.total_syms)} symbols × 32 chips of Bob's code (code 2) · ${P.ms.toFixed(2)} ms`, P.chips, "chips", "link", `RRC-shaped, 2 samples per chip: ${fmtN(P.chips * 2)} samples at 4 MS/s`]], into: 0 },
   ];
   const H = 24 + rows.length * (RH + GAP) - GAP + 16;
   const svg = svgRoot(W, H, "A text message from Alice to Bob, layer by layer: envelope, DATA frame, LDPC codeword, burst, chips", 680);
@@ -4904,7 +4988,7 @@ function layout(sizes, W, minW) {
   // b: the 24 header bits
   head(102, "Header", "24 bits");
   const hb = P.header_bits.split("");
-  const groups = [[0, 11, "length", `${P.length} bytes`, "--fx-mac"], [11, 2, "mod", "16-QAM", "--fx-frag"], [13, 3, "rate", "¾", "--fx-pay"], [16, 8, "CRC-8", `0x${P.crc8.toString(16)}`, "--fx-crc"]];
+  const groups = [[0, 11, "length", `${P.length} bytes`, "--fx-mac"], [11, 2, "mod", "64-QAM (0)", "--fx-frag"], [13, 3, "rate", "¾", "--fx-pay"], [16, 8, "CRC-8", `0x${P.crc8.toString(16)}`, "--fx-crc"]];
   groups.forEach(([s, n, a, b, c]) => {
     box(HX + s * CW, 88, n * CW - 2, 28, c);
     for (let i = s; i < s + n; i++) svg.appendChild(T(HX + i * CW + CW / 2 - 1, 107, hb[i], { attrs: { "text-anchor": "middle", class: "mono" }, style: { "font-size": "12.5px" } }));
@@ -4937,8 +5021,8 @@ function layout(sizes, W, minW) {
   });
   [`${P.length} bytes (the frame and its CRC-32) = ${P.K} information bits. Base graph 1 holds 22·Z bits; the smallest lifting size with 22·Z ≥ ${P.K} is Z = ${P.Z},`,
    `so ${P.fillers} known zeros fill it up and are never sent. As in 5G NR, the first 2·Z = ${P.punctured} information bits are punctured: the decoder rebuilds them.`,
-   `Rate ¾ sends E = ⌈${P.K} × 4 / 3⌉ = ${P.E} bits, ${P.sys_sent} information and ${P.par_sent} parity, interleaved so every 16-QAM symbol mixes strong and weak bits.`,
-   `Each symbol is then repeated over the 31 chips of Bob's Gold code: ${fmtN(P.chips)} chips at 2 Mchip/s, RRC-shaped (α = 0.35) at 2 samples per chip.`,
+   `Rate ¾ sends ⌈${P.K} × 4 / 3⌉ = ${Math.ceil(P.K * 4 / 3)} bits, E = ${P.E} in whole 64-QAM symbols: ${P.sys_sent} information and ${P.par_sent} parity, interleaved.`,
+   `Each symbol is then repeated over the 32 chips of Bob's code: ${fmtN(P.chips)} chips at 2 Mchip/s, RRC-shaped (α = 0.35) at 2 samples per chip.`,
   ].forEach((s, i) => note(HX, 350 + i * 17, s));
   svg.appendChild(T(8, 452, "The receiver works in the same order: it finds the preamble, decodes the header (now it knows the length, modulation and rate),", { style: { "font-size": "11.5px", fill: "var(--ink2)" } }));
   svg.appendChild(T(8, 470, "demaps the payload into soft bits, runs the LDPC decoder and checks the CRC-32. Nothing has to be agreed in advance.", { style: { "font-size": "11.5px", fill: "var(--ink2)" } }));
@@ -5041,11 +5125,11 @@ function layout(sizes, W, minW) {
   if (!host) return;
   const rows = {};
   for (const r of P.table) (rows[r.mcs] = rows[r.mcs] || {})[r.bytes] = r;
-  const name = { "qpsk-1/2": "QPSK ½", "qpsk-3/4": "QPSK ¾", "16qam-1/2": "16-QAM ½", "16qam-3/4": "16-QAM ¾", "16qam-5/6": "16-QAM ⅚", "16qam": "16-QAM uncoded" };
+  const name = { "qpsk-1/2": "QPSK ½", "qpsk-3/4": "QPSK ¾", "16qam-1/2": "16-QAM ½", "16qam-3/4": "16-QAM ¾", "16qam-5/6": "16-QAM ⅚", "16qam": "16-QAM uncoded", "64qam-3/4": "64-QAM ¾", "64qam-5/6": "64-QAM ⅚", "64qam": "64-QAM uncoded" };
   host.innerHTML = `<div class="tbl"><table><thead><tr><th>Modulation and code</th><th>“Hi Bob!” (${P.length} B)</th><th>A full fragment (1,023 B)</th><th>Information rate while sending</th></tr></thead><tbody>${
     Object.entries(rows).map(([m, r]) => {
       const s = r[P.length], f = r[1023];
-      return `<tr${m === "16qam-3/4" ? ' class="ours"' : ""}><th>${name[m]}</th><td class="num">${fmtN(s.total_syms)} symbols · ${s.ms.toFixed(1)} ms</td><td class="num">${fmtN(f.total_syms)} symbols · ${f.ms.toFixed(1)} ms</td><td class="num">${f.info_kbps} kb/s</td></tr>`;
+      return `<tr${m === "64qam-3/4" ? ' class="ours"' : ""}><th>${name[m]}</th><td class="num">${fmtN(s.total_syms)} symbols · ${s.ms.toFixed(1)} ms</td><td class="num">${fmtN(f.total_syms)} symbols · ${f.ms.toFixed(1)} ms</td><td class="num">${f.info_kbps} kb/s</td></tr>`;
     }).join("")}</tbody></table></div>`;
 })();
 })();
@@ -5059,7 +5143,7 @@ function layout(sizes, W, minW) {
    Plan.build) whose delivery times were checked against the simulator running the project's code. */
 (() => {
 "use strict";
-const SYM_MS = 31 / 2e6 * 1e3;                       // one symbol: 31 chips at 2 Mchip/s
+const SYM_MS = 32 / 2e6 * 1e3;                       // one symbol: 32 chips (Walsh codes) at 2 Mchip/s
 const LIFT = [...new Set([2, 3, 5, 7, 9, 11, 13, 15].flatMap((a) => [...Array(9)].map((_, j) => a * 2 ** j)))]
   .filter((z) => z <= 384).sort((a, b) => a - b);
 const LADDER = [
@@ -5070,8 +5154,11 @@ const LADDER = [
   { id: "16qam-2/3", name: "16-QAM ⅔", bps: 4, r: [2, 3], th: 11 },
   { id: "16qam-3/4", name: "16-QAM ¾", bps: 4, r: [3, 4], th: 12.5 },
   { id: "16qam-5/6", name: "16-QAM ⅚", bps: 4, r: [5, 6], th: 14 },
-  { id: "16qam", name: "16-QAM uncoded", bps: 4, r: null, th: 22.5 },
-];
+  { id: "64qam-2/3", name: "64-QAM ⅔", bps: 6, r: [2, 3], th: 16.5 },
+  { id: "64qam-3/4", name: "64-QAM ¾", bps: 6, r: [3, 4], th: 17.5 },
+  { id: "64qam-5/6", name: "64-QAM ⅚", bps: 6, r: [5, 6], th: 19 },
+  { id: "64qam", name: "64-QAM uncoded", bps: 6, r: null, th: 27.5 },
+];                                                     // mac.AUTO_LADDER (TD-CDMA)
 LADDER.forEach((m, i) => { m.i = i; });
 
 // ldpc.coded_bits / modem.payload_symbols for L bytes on the air (the frame and its CRC-32)
@@ -5113,8 +5200,8 @@ const memberHdr = (N, recs = 0, plan = false) => HDR_FIX + (plan ? secPlan(N) : 
 const hdrMs = (bytes) => burst(bytes, LADDER[0]).ms;
 
 // ---------------------------------------------------------------- the slot plan (ticks of 0.25 ms)
-const TICK = 0.25, IDLE_T = 60, JOIN_MS = 11.5, MIN_T = 400, MAXSLOT_MS = 250, DATA_MS = 100;
-const JOIN_T = 46, GUARD_MS = 0.5, PAD_MS = 2;
+const TICK = 0.25, IDLE_T = 60, JOIN_MS = 11.75, MIN_T = 400, MAXSLOT_MS = 250, DATA_MS = 100;
+const JOIN_T = 47, GUARD_MS = 0.5, PAD_MS = 2;
 function idlePlan(N) {
   const tot = IDLE_T * N + JOIN_T;
   const extra = tot < MIN_T ? Math.floor((MIN_T - tot) / N) : 0;
@@ -5401,7 +5488,7 @@ const zlen = (bytes, level) => (Z ? Z.deflate(bytes, { level }).length : null);
 /* ---------------------------------------------------------------- state and controls */
 const S = {
   kind: "photo", text: SAMPLES.para.text, photoQ: "standard", own: null, ownCache: {}, dur: 10, voiceQ: "standard",
-  fileSize: 1e6, fileKind: "pdf", ownFile: null, to: "bob", N: 2, mcs: 7, loss: 0, key: false,
+  fileSize: 1e6, fileKind: "pdf", ownFile: null, to: "bob", N: 2, mcs: 10, loss: 0, key: false,
 };
 const what = $("#pk-what");
 function seg(id, items, cur) {
@@ -5848,7 +5935,7 @@ async function update() {
   (async () => {
     const rows = [];
     for (const [label, kind, v] of cases) {
-      Object.assign(S, { kind, own: null, ownFile: null, to: "bob", mcs: 7, loss: 0, key: false });
+      Object.assign(S, { kind, own: null, ownFile: null, to: "bob", mcs: 10, loss: 0, key: false });
       if (kind === "text") S.text = v;
       if (kind === "photo") S.photoQ = v;
       if (kind === "voice") { S.voiceQ = v[0]; S.dur = v[1]; }

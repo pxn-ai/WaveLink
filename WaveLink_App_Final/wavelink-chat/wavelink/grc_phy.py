@@ -118,10 +118,11 @@ class LdpcDecoderCore:
 
 
 class FramerCore:
-    """Payload bits -> symbol indices: preamble | Golay-coded header | payload (BPSK/QPSK/16-QAM).
+    """Payload bits -> symbol indices: preamble | Golay-coded header | payload
+    (BPSK/QPSK/16-QAM/64-QAM).
 
     The stock Chunks-to-Symbols block maps the indices through the combined
-    constellation table [BPSK | QPSK | 16-QAM] (see modem.SYMBOL_TABLE)."""
+    constellation table [BPSK | QPSK | 16-QAM | 64-QAM] (see modem.SYMBOL_TABLE)."""
 
     def __init__(self, cfg: PhyConfig):
         self.mod = Modulator(cfg)
@@ -130,7 +131,7 @@ class FramerCore:
 
     def indices(self, bits: np.ndarray, length: int, code: int, mod: str, rate: int) -> np.ndarray:
         idx = self.mod.burst_indices(bits, length, code, mod, rate)
-        # Pad with idle symbols so every burst is a multiple of 16 symbols (= 16 x 31
+        # Pad with idle symbols so every burst is a multiple of 16 symbols (= 16 x sf
         # chips).  Stock blocks such as Multiply process in multiples of their SIMD
         # alignment and would otherwise hold the last few chips of a burst back until
         # the next burst arrives.  The receiver stops at the length in the header.

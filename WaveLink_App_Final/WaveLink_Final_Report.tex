@@ -1725,8 +1725,8 @@ and the link layer cuts it into fragments, each a DATA frame with 14 bytes of ov
 burst with 96 symbols of preamble and header. A short message fits into the sender's next slot: a text
 from Alice reaches Bob in about \SI{0.1}{s}. A large transfer asks for a data slot of whole frames close
 to \SI{100}{ms}, granted about \SI{1.4}{s} later (plan changes are announced \SI{1}{s} ahead); with two
-stations its first frames go out meanwhile in the sender's idle slot, which at \SI{44}{ms} has room for
-one 64-QAM frame beside the header. Then four frames of uncoded 64-QAM go out per cycle:
+or three stations its first frames go out meanwhile in the sender's idle slot, which at \SI{44}{ms} or
+\SI{29.25}{ms} has room for one 64-QAM frame beside the header. Then four frames of uncoded 64-QAM go out per cycle:
 \SI{261}{kb/s} with two stations and \SI{211}{kb/s} with four.
 
 \begin{figure}[htbp]
@@ -2358,9 +2358,11 @@ operation on the physical radios has still to be demonstrated.
         large room may suffer.
   \item \textbf{Detection limits the low end.} Coded QPSK $\tfrac12$ would decode at about \SI{1.5}{dB}, but
         the 48-symbol preamble is detected reliably only from about \SI{4}{dB}.
-  \item \textbf{Slot latency for mid-size messages.} With three or four stations an idle slot is shorter
-        than one full frame, so a message of a few kilobytes waits about \SI{1.4}{s} for its sender's slot to
-        grow; relayed transfers start 2--\SI{5}{s} late for the same reason.
+  \item \textbf{Slot latency for mid-size messages.} With four stations an idle slot (\SI{22}{ms}) is
+        shorter than one full frame even at uncoded 64-QAM (\SI{23.4}{ms}), so a message of a few
+        kilobytes waits about \SI{1.4}{s} for its sender's slot to grow; with three stations
+        (\SI{29.25}{ms}) only links slower than 64-QAM $\tfrac56$ wait. Relayed transfers start
+        2--\SI{5}{s} late for a similar reason: the relay's slot grows only after the sender's.
   \item \textbf{One hop, four stations, one key.} Relaying is limited to one hop, the flowgraph has five
         code lanes (four stations plus broadcast), and encryption uses one pre-shared key.
   \item \textbf{Throughput ceiling.} About \SI{261}{kb/s} per link under TD-CDMA with two stations
