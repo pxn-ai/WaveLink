@@ -480,7 +480,11 @@ last, Es/N0, a SACK bitmap of up to 512 fragments beyond the base). A fragment s
 still missing is known lost and goes again in the sender's next slot; a timeout (3 cycles + 2 hand-over times
 + 0.1 s, or 2.5 × the measured round trip + a cycle if that is longer) resends what is in flight. Losses that keep
 coming step the link's modulation down for 10 s, as with ALOHA (section 2.2). A big transfer streams in every slot,
-up to 496 fragments ahead of the first one not yet acknowledged.
+up to 496 fragments ahead of the first one not yet acknowledged. If the receiver leaves the network (no slot, not
+heard for 5 s), a message to it is *held*: nothing more is sent until the receiver is back in the network, and then
+it carries on from where it stopped, so a few seconds out of range, or a relay restarting, doesn't lose a file. If
+the receiver isn't back within 60 s, the message fails. (Game-center messages are not held: the game center sends a
+returning player its state again.)
 
 **Group messages** go out **once**, on the broadcast code, at the rate the weakest member can take. Every member
 acknowledges in its own header; the sender keeps a set per member and resends (as a broadcast) whatever any member

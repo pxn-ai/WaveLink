@@ -825,7 +825,9 @@ class Node:
         if len(z) < len(body) - 8:
             meta["z"] = 1
             body = z
-        return self.mac.send(dst, self._envelope(meta, body, dst), prio)
+        # (not held for a player who leaves: the game center has its own away/return handling and
+        # sends a fresh view when the player is back - an old one arriving late would be stale)
+        return self.mac.send(dst, self._envelope(meta, body, dst), prio, hold=False)
 
     def send_datagram(self, dst: int, payload: bytes, urgent: bool = True, at: float | None = None,
                       latest: float | None = None):

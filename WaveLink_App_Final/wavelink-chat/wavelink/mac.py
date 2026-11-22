@@ -113,6 +113,8 @@ REC_SPAN = 512                         # TD-CDMA: fragments beyond the base one 
                                        # (tdma.REC_MAX_BITMAP bytes); received ones further on are unknown
 NO_TRIGGER = 0xFFFF
 GROUP_RETRIES = 4                      # TD-CDMA group message: timeouts before a member is tried alone
+HOLD_S = 60.0                          # TD-CDMA: a message to a station that has left the network waits
+                                       # this long (radio time) for it to come back, then fails
 INBOX_MAX_AGE_S = 600.0                # a partly received message is forgotten after this long without a
                                        # fragment (the application gives up sooner, and tells the sender)
 ID_BLOCK = 256                         # message ids reserved in the id file at a time (set_id_store)
@@ -244,6 +246,8 @@ class OutMsg:
     sent_t: dict = field(default_factory=dict)       # fragment -> when its slot ended (radio clock)
     via: int | None = None                           # relay in use
     ev_member: int | None = None                     # the member an event is about
+    may_hold: bool = True                            # (unicast) wait for a receiver that has left the network
+    held_since: float | None = None                  # ... held since then (radio time): nothing is sent
 
     @property
     def progress(self) -> float:
@@ -252,6 +256,8 @@ class OutMsg:
         return len(self.acked) / len(self.frags)
 
     def has_work(self) -> bool:
+        if self.held_since is not None:              # (its receiver is out of reach: nothing to send now)
+            return False
         return bool(self.retx) or self.next_new < len(self.frags)
 
 
@@ -277,6 +283,7 @@ class LinkLayer:
         self.addr = addr
         self.ack_timeout = ack_timeout
         self.max_retries = max_retries
+        self.hold_s = HOLD_S                    # TD-CDMA: how long a message waits for a receiver that left
         # >0: wait up to this long for an incoming burst to finish before starting
         # to send to a station (on hardware our own TX deafens our RX)
         self.half_duplex_defer = half_duplex_defer
@@ -553,10 +560,13 @@ class LinkLayer:
     def max_message_bytes(self) -> int:
         return self.max_frag * MAX_FRAGS
 
-    def send(self, dst: int, data: bytes, prio: int = PRIO_NORMAL, on_event=None, members=None) -> OutMsg:
+    def send(self, dst: int, data: bytes, prio: int = PRIO_NORMAL, on_event=None, members=None,
+             hold: bool = True) -> OutMsg:
         """Queue a reliable message.  dst = BROADCAST_ADDR: a group message; with TD-CDMA it goes
         out once on the broadcast code and every one of `members` acknowledges it (default: every
-        station with a slot); with ALOHA it is sent once, unacknowledged."""
+        station with a slot); with ALOHA it is sent once, unacknowledged.  hold (TD-CDMA, one
+        receiver): if the receiver leaves the network meanwhile, wait up to hold_s for it to come
+        back and carry on from where it stopped; hold=False: give up on it soon instead."""
         if dst == self.addr:
             raise ValueError("cannot send to self")
         if len(data) > self.max_message_bytes():
@@ -564,6 +574,7 @@ class LinkLayer:
         frags = [data[i:i + self.max_frag] for i in range(0, max(len(data), 1), self.max_frag)] or [b""]
         with self.lock:
             m = OutMsg(self._alloc_id(), dst, data, prio, frags, self.radio.now(), on_event)
+            m.may_hold = bool(hold)
             if self.tdma is not None:
                 if dst == BROADCAST_ADDR:
                     mem = set(members) if members is not None else set(self.tdma.members_now())
@@ -1162,12 +1173,21 @@ class LinkLayer:
 
     def _td_timers(self, now: float):
         """Messages whose acknowledgements stopped: resend what is in flight; give up on a member
-        after max_retries timeouts, or soon if it has left the network."""
+        after max_retries timeouts.  A member that has left the network (no slot, and not heard for
+        5 s): a group message gives it up soon (the others go on); a message to that one station is
+        held - nothing is sent - until the station is back in the network, and then goes on from
+        where it stopped (the receiver keeps what it has, see Node.INCOMING_STALE_S), or fails after
+        hold_s: a few seconds out of range, or a relay restarting, must not lose a whole file."""
         tdma = self.tdma
         here = set(tdma.members_now()) if tdma else set()
         for lst in list(self.out.values()):
             for m in lst:
-                if m.state != MsgState.SENDING or not m.inflight or now < m.deadline:
+                if m.state != MsgState.SENDING:
+                    continue
+                if m.held_since is not None:
+                    self._td_held(m, now, here)
+                    continue
+                if not m.inflight or now < m.deadline:
                     continue
                 self.stats["timeouts"] += 1
                 lag = [a for a in m.members if m.mstate.get(a) == "sending"
@@ -1175,20 +1195,24 @@ class LinkLayer:
                 # (a group member that never answers is soon given up here: the app then sends it
                 # the message on its own, through a relay if there is one)
                 limit = GROUP_RETRIES if m.dst == BROADCAST_ADDR else self.max_retries
+                hold = False
                 for a in lag:
                     m.retries_by[a] = m.retries_by.get(a, 0) + 1
                     gone = a not in here and now - self.last_heard_r.get(a, -1e9) > 5.0
                     if gone and m.retries_by[a] >= 2:
-                        self._td_drop_member(m, a, "left")
+                        if m.dst != BROADCAST_ADDR and m.may_hold:
+                            hold = True
+                        else:
+                            self._td_drop_member(m, a, "left")
                     elif m.retries_by[a] > limit:
                         self._td_drop_member(m, a, "failed")
                 if m.state != MsgState.SENDING:
                     continue
                 # (through a relay, a timeout mostly means the frames are still queued there, waiting
                 # for its slot to grow: no sign of a bad first hop, so the rate stays; the losses the
-                # destination's records show still count)
+                # destination's records show still count.  A receiver that has gone: no sign either.)
                 for a in lag:
-                    if m.mstate.get(a) == "sending" and m.via is None:
+                    if m.mstate.get(a) == "sending" and m.via is None and not hold:
                         self._note_loss(a, len(m.inflight), max(len(m.inflight), 4))
                 for i in sorted(m.inflight, key=m.inflight.get):
                     if i not in m.acked and i not in m.retx_set:
@@ -1196,7 +1220,27 @@ class LinkLayer:
                         m.retx_set.add(i)
                 m.inflight.clear()
                 m.deadline = now + self._td_timeout(m)
+                if hold:
+                    m.held_since = now
+                    self.stats["msgs_held"] += 1
+                    self.log(f"mac{self.addr}: station {m.dst} out of reach - message {m.msg_id} waits for it "
+                             f"(up to {self.hold_s:.0f} s)")
                 self._emit(m, "retry")
+
+    def _td_held(self, m: OutMsg, now: float, here: set):
+        """A message held for a receiver that left the network: back in the network -> carry on from
+        where it stopped (what is still missing goes again); not back within hold_s -> give up."""
+        a = m.dst
+        if a in here:
+            m.held_since = None
+            m.retries_by[a] = 0
+            self.stats["msgs_resumed"] += 1
+            self.log(f"mac{self.addr}: station {a} is back - message {m.msg_id} goes on")
+        elif now - m.held_since > self.hold_s:
+            m.held_since = None
+            self.stats["msgs_hold_expired"] += 1
+            self.log(f"mac{self.addr}: station {a} not back after {self.hold_s:.0f} s - message {m.msg_id} failed")
+            self._td_drop_member(m, a, "left")
 
     # ================================================================ receiving
     def _on_phy_frame(self, f):
