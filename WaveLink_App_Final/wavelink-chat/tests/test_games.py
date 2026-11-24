@@ -409,8 +409,12 @@ def spectator_tests(nodes, air, ebn0=25.0, key=None, mac="tdcdma"):
                 else:
                     nd.hub.uno_action(rid_u, "draw")
                 moves_done += 1
-        assert wait(lambda: len(spec_pubs) >= 4 and len(pub_wires) >= 4, 15), \
-            f"insufficient uno_pub updates: wires={len(pub_wires)}, rx={len(spec_pubs)}"
+        assert wait(
+            lambda: len(spec_pubs) >= 4 and len(pub_wires) >= 4
+            and n0.hub.rt[rid_u]["ver"] >= 1 + moves_done
+            and not n1.mac.out.get(n0.addr),
+            15,
+        ), f"insufficient uno_pub updates: wires={len(pub_wires)}, rx={len(spec_pubs)}, ver={n0.hub.rt[rid_u]['ver']}, moves={moves_done}"
         for _, raw in pub_wires:
             parsed = json.loads(raw)
             _assert_no_private_uno(parsed)

@@ -141,6 +141,10 @@ const rWrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI
 
 const RACE = {
   rid: null, room: null, root: null, cv: null, ctx: null, T: null, me: null, cars: [], keys: new Set(),
+  touch: {
+    left: false, right: false, gas: false, brake: false, autoGas: false,
+    steerPid: null, gasPids: new Set(), brakePids: new Set(),
+  },
   raf: 0, last: 0, acc: 0, postT: 0, posting: false, outEv: [], eid: 0, missiles: [], mines: [], fx: [],
   rain: [], splash: [], tiles: new Map(), hudT: 0, msgs: [], results: null, syncT: 0, laps: 3, seatN: 2,
   biome: 0, B: BIOMES[0], BIOMES, spec: false, specCam: null, quiet: false,
@@ -1367,12 +1371,30 @@ RACE.mount = function (room, root) {
         <div class="item"><span class="slot"></span><span class="nm"></span></div>
         <div class="speed"><span class="v">0</span><small>km/h</small></div>
         <div class="count"></div><div class="r-msg"></div><div class="keys"></div>
+        <button type="button" class="rt-cam" id="rtCam" aria-label="Switch camera" title="Switch camera"></button>
+        <div class="race-touch" role="region" aria-label="Race touch controls">
+          <div class="rt-steer" id="rtSteer" role="group" aria-label="Steering">
+            <span class="rt-steer-z rt-steer-l" aria-hidden="true">◀</span>
+            <span class="rt-steer-z rt-steer-r" aria-hidden="true">▶</span>
+          </div>
+          <div class="rt-pedals">
+            <div class="rt-aux">
+              <button type="button" class="rt-auto" id="rtAuto" aria-pressed="false">Auto-Gas</button>
+              <button type="button" class="rt-item empty" id="rtItem" aria-label="No pickup held" disabled><span class="rt-slot"></span><span class="rt-inm">No pickup</span></button>
+            </div>
+            <div class="rt-main">
+              <button type="button" class="rt-pedal rt-brake" id="rtBrake" aria-label="Brake or reverse">Brake</button>
+              <button type="button" class="rt-pedal rt-gas" id="rtGas" aria-label="Gas">Gas</button>
+            </div>
+          </div>
+        </div>
       </div>
       ${GC.bar(`Slot Rush <span style="opacity:.72;font-weight:500">· ${esc(RACE.B.name)} · ${RACE.laps} laps</span>`,
         `<button class="gc-ghost" id="raceCam" title="Switch the camera (V)"></button><button class="gc-ghost" id="raceLeave">Leave race</button>`)}
       <div class="race-results" hidden></div></div>`;
   }
   RACE.root = root.querySelector(".race-room");
+  RACE.clearTouchInputs(true);
   GC.wire(RACE.root);
   RACE.root.querySelector("#raceLeave").onclick = () => GC.post(
     RACE.spec ? { a: "unwatch", r: room.r } : { a: "leave", r: room.r }
@@ -1397,6 +1419,7 @@ RACE.mount = function (room, root) {
     RACE.camLabel();
     RACE.hud = Object.fromEntries(["pos", "lap", "times", "board", "item", "speed", "count", "r-msg", "keys"].map((k) => [k.replace("r-", ""), RACE.root.querySelector(".hud ." + k)]));
     RACE.cam = { x: RACE.me.x, y: RACE.me.y, z: 1, a: RACE.me.h };
+    RACE.wireTouchControls();
   }
   RACE.countSaid = null;
   RACE.last = performance.now(); RACE.acc = 0;
@@ -1426,11 +1449,11 @@ RACE.wireSpecControls = function () {
 
   cv.addEventListener("pointerdown", (e) => {
     const sc = RACE.specCam;
-    if (!RACE.spec || !sc || e.button !== 0) return;
+    if (!RACE.spec || !sc || (e.pointerType !== "touch" && e.button !== 0)) return;
     sc.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
     if (sc.ptrs.size === 1) {
       sc.drag = { id: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
-      try { cv.setPointerCapture(e.pointerId); } catch (_) {}
     } else if (sc.ptrs.size === 2) {
       const [p0, p1] = [...sc.ptrs.values()];
       sc.pinchD = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
@@ -1498,6 +1521,157 @@ RACE.wireSpecControls = function () {
   cv.addEventListener("lostpointercapture", (e) => endPtr(e, false));
 };
 
+RACE.isTouch = () => Boolean(window.matchMedia && matchMedia("(hover: none) and (pointer: coarse)").matches);
+
+RACE.overlayBlocked = () => Boolean(
+  !RACE.root || !GC.open || RACE.spec || !RACE.me || RACE.me.finT !== null || RACE.results
+  || (typeof GCCHAT !== "undefined" && (GCCHAT.open || ($("#gcChat") && !$("#gcChat").hidden)))
+  || S.dashOpen || ($("#dash") && !$("#dash").hidden) || ($("#settings") && !$("#settings").hidden)
+  || document.querySelector(".sheet")
+  || ($("#lightbox") && !$("#lightbox").hidden)
+  || (RACE.root.querySelector(".race-results") && !RACE.root.querySelector(".race-results").hidden)
+);
+
+RACE.clearTouchInputs = function (resetAuto = false) {
+  const t = RACE.touch;
+  t.left = false; t.right = false; t.gas = false; t.brake = false;
+  t.steerPid = null;
+  t.gasPids.clear(); t.brakePids.clear();
+  if (resetAuto) t.autoGas = false;
+  const root = RACE.root;
+  if (!root) return;
+  root.querySelector(".rt-steer-l")?.classList.remove("active");
+  root.querySelector(".rt-steer-r")?.classList.remove("active");
+  root.querySelector("#rtGas")?.classList.remove("active");
+  root.querySelector("#rtBrake")?.classList.remove("active");
+  const ab = root.querySelector("#rtAuto");
+  if (ab && resetAuto) ab.setAttribute("aria-pressed", "false");
+};
+
+RACE.syncTouchOverlay = function () {
+  const root = RACE.root;
+  if (!root || RACE.spec) return;
+  const blocked = RACE.overlayBlocked();
+  const rt = root.querySelector(".race-touch");
+  if (rt) rt.hidden = blocked;
+  const cam = root.querySelector("#rtCam");
+  if (cam) cam.hidden = blocked;
+  if (blocked) RACE.clearTouchInputs(Boolean(!RACE.me || RACE.me.finT !== null || RACE.results));
+};
+
+RACE.syncTouchItem = function () {
+  const root = RACE.root;
+  if (!root || RACE.spec || !RACE.me) return;
+  const btn = root.querySelector("#rtItem");
+  if (!btn) return;
+  const it = RACE.me.item || "";
+  const key = `${it}:${RACE.me.finT !== null}`;
+  if (btn.dataset.key === key) return;
+  btn.dataset.key = key;
+  btn.classList.toggle("charged", Boolean(it));
+  btn.classList.toggle("empty", !it);
+  btn.disabled = !it || RACE.me.finT !== null;
+  btn.setAttribute("aria-label", it ? `Use pickup: ${R_ITEM_NAMES[it]}` : "No pickup held");
+  const nm = it ? ({ missile: "Seeker", mine: "Mine", emp: "Jammer", shield: "Shield", boost: "Overdrive" }[it] || R_ITEM_NAMES[it]) : "No pickup";
+  btn.innerHTML = `<span class="rt-slot">${it ? R_ICON[it] : ""}</span><span class="rt-inm">${esc(nm)}</span>`;
+};
+
+RACE.wireTouchControls = function () {
+  const root = RACE.root;
+  if (!root || RACE.spec) return;
+  const steerPad = root.querySelector("#rtSteer");
+  const zLeft = root.querySelector(".rt-steer-l");
+  const zRight = root.querySelector(".rt-steer-r");
+  const gasBtn = root.querySelector("#rtGas");
+  const brakeBtn = root.querySelector("#rtBrake");
+  const autoBtn = root.querySelector("#rtAuto");
+  const itemBtn = root.querySelector("#rtItem");
+  const camBtn = root.querySelector("#rtCam");
+  const t = RACE.touch;
+
+  const applySteer = (clientX) => {
+    const r = steerPad.getBoundingClientRect();
+    const left = (clientX - r.left) < r.width / 2;
+    t.left = left;
+    t.right = !left;
+    zLeft?.classList.toggle("active", left);
+    zRight?.classList.toggle("active", !left);
+  };
+  const releaseSteer = (pid) => {
+    if (t.steerPid !== pid) return;
+    t.steerPid = null;
+    t.left = false;
+    t.right = false;
+    zLeft?.classList.remove("active");
+    zRight?.classList.remove("active");
+  };
+  if (steerPad) {
+    steerPad.addEventListener("pointerdown", (e) => {
+      if (RACE.overlayBlocked()) return;
+      e.preventDefault();
+      try { steerPad.setPointerCapture(e.pointerId); } catch (_) {}
+      t.steerPid = e.pointerId;
+      applySteer(e.clientX);
+    });
+    steerPad.addEventListener("pointermove", (e) => {
+      if (t.steerPid !== e.pointerId || RACE.overlayBlocked()) return;
+      e.preventDefault();
+      applySteer(e.clientX);
+    });
+    const endSteer = (e) => releaseSteer(e.pointerId);
+    steerPad.addEventListener("pointerup", endSteer);
+    steerPad.addEventListener("pointercancel", endSteer);
+    steerPad.addEventListener("lostpointercapture", endSteer);
+  }
+
+  const wireHold = (btn, pids, prop) => {
+    if (!btn) return;
+    const sync = () => {
+      const on = pids.size > 0 && !RACE.overlayBlocked();
+      t[prop] = on;
+      btn.classList.toggle("active", on);
+    };
+    btn.addEventListener("pointerdown", (e) => {
+      if (RACE.overlayBlocked()) return;
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      pids.add(e.pointerId);
+      sync();
+    });
+    const up = (e) => { if (pids.delete(e.pointerId)) sync(); };
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    btn.addEventListener("lostpointercapture", up);
+  };
+  wireHold(gasBtn, t.gasPids, "gas");
+  wireHold(brakeBtn, t.brakePids, "brake");
+
+  if (autoBtn) {
+    autoBtn.addEventListener("pointerdown", (e) => {
+      if (RACE.overlayBlocked()) return;
+      e.preventDefault();
+      t.autoGas = !t.autoGas;
+      autoBtn.setAttribute("aria-pressed", String(t.autoGas));
+    });
+  }
+  if (itemBtn) {
+    itemBtn.addEventListener("pointerdown", (e) => {
+      if (RACE.overlayBlocked()) return;
+      e.preventDefault();
+      RACE.useItem();
+      RACE.syncTouchItem();
+    });
+  }
+  if (camBtn) {
+    camBtn.addEventListener("click", (e) => {
+      e.currentTarget.blur();
+      RACE.toggleCam();
+    });
+  }
+  RACE.syncTouchItem();
+  RACE.syncTouchOverlay();
+};
+
 // back after a page reload mid-race: carry on from the state this station last posted (the hub keeps
 // it), instead of a car back on the grid that has to drive its laps again
 RACE.resume = function (m) {
@@ -1517,6 +1691,7 @@ RACE.resume = function (m) {
 
 RACE.unmount = function () {
   cancelAnimationFrame(RACE.raf); clearInterval(RACE.syncT);
+  RACE.clearTouchInputs(true);
   SFX.engineStop();
   if (typeof MUSIC !== "undefined") MUSIC.setHint(null);
   RACE.rid = null; RACE.root = null; RACE.tiles = new Map(); RACE.spec = false; RACE.specCam = null;
@@ -1590,6 +1765,9 @@ RACE.camLabel = function () {
   RACE._camPref = pref("raceCam");
   const b = RACE.root?.querySelector("#raceCam");
   if (b) b.innerHTML = `Camera: ${R_CAM_NAMES[RACE._camPref] || "north up"} <kbd>V</kbd>`;
+  const rt = RACE.root?.querySelector("#rtCam");
+  const shortNm = { north: "North", chase: "Chase", bird: "Bird" }[RACE._camPref] || "North";
+  if (rt) rt.textContent = `Cam: ${shortNm}`;
 };
 // sounds only while the race is on screen
 RACE.sfx = (name, opt) => { if (GC.open) SFX.play(name, opt); };
@@ -1606,8 +1784,8 @@ document.addEventListener("keyup", (e) => {
   const m = { ArrowUp: "up", w: "up", ArrowDown: "down", s: "down", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" }[k];
   if (m) RACE.keys.delete(m);
 });
-window.addEventListener("blur", () => RACE.keys.clear());
-document.addEventListener("visibilitychange", () => RACE.keys.clear());
+window.addEventListener("blur", () => { RACE.keys.clear(); RACE.clearTouchInputs(false); });
+document.addEventListener("visibilitychange", () => { RACE.keys.clear(); RACE.clearTouchInputs(false); });
 
 // ====================================================================== time
 RACE.now = () => GC.now(RACE.rid);                         // host clock (s)
@@ -1617,8 +1795,11 @@ RACE.tg = () => RACE.now() - RACE.room.t0;                 // seconds since the 
 RACE.step = function (dt) {
   const T = RACE.T, c = RACE.me, tg = RACE.tg(), P = RACE.B.phys;
   const started = tg >= 0, done = c.finT !== null;
-  let up = RACE.keys.has("up"), down = RACE.keys.has("down");
-  let steer = (RACE.keys.has("right") ? 1 : 0) - (RACE.keys.has("left") ? 1 : 0);
+  const blocked = RACE.overlayBlocked();
+  const tBrake = !blocked && RACE.touch.brake;
+  const tGas = !blocked && (RACE.touch.gas || (RACE.touch.autoGas && !tBrake));
+  let up = RACE.keys.has("up") || tGas, down = RACE.keys.has("down") || tBrake;
+  let steer = ((RACE.keys.has("right") || (!blocked && RACE.touch.right)) ? 1 : 0) - ((RACE.keys.has("left") || (!blocked && RACE.touch.left)) ? 1 : 0);
   if (!started || done) { up = down = false; steer = done ? steer * 0.4 : 0; }
   if (c.spin > 0) { up = down = false; steer = 0; }
   if (c.stun > 0) { up = false; steer *= 0.25; }
@@ -1710,6 +1891,7 @@ RACE.step = function (dt) {
         c.item = RACE.rollItem();
         RACE.say(R_ITEM_NAMES[c.item], 1.2);
         RACE.sfx("pickup");
+        RACE.syncTouchItem();
       }
     }
   }
@@ -1756,6 +1938,7 @@ RACE.useItem = function () {
     RACE.fx.push({ k: "qam", x: c.x - ch * 26, y: c.y - sh * 26, h: c.h, t: 0 });
     RACE.say("64-QAM Overdrive", 1.0);
   }
+  RACE.syncTouchItem();
 };
 
 RACE.emit = function (k, f) {
@@ -2009,7 +2192,8 @@ RACE.frame = function (now) {
   RACE.placeRemotes(tg);
   RACE.moveMissiles(tg);
   if (now - RACE.postT >= 50) { RACE.postT = now; RACE.post(); }
-  if (!GC.open) { RACE.keys.clear(); SFX.engineStop(); return; }
+  if (!GC.open) { RACE.keys.clear(); RACE.syncTouchOverlay(); SFX.engineStop(); return; }
+  RACE.syncTouchOverlay();
   RACE.sounds(tg);
   const t0d = performance.now();
   RACE.draw(dtw, tg);
@@ -2057,7 +2241,8 @@ RACE.sounds = function (tg) {
   RACE.countSaid = n;
   if (pref("sound") && me.finT === null && tg > -4 && !RACE.results) {
     SFX.engineStart();
-    SFX.engineSet(rClamp(Math.hypot(me.vx, me.vy) / (R_CAR.vmax * RACE.B.phys.topSpeedMul * 1.2), 0, 1), RACE.keys.has("up") || me.boost > 0);
+    const gasOn = !RACE.overlayBlocked() && (RACE.touch.gas || (RACE.touch.autoGas && !RACE.touch.brake));
+    SFX.engineSet(rClamp(Math.hypot(me.vx, me.vy) / (R_CAR.vmax * RACE.B.phys.topSpeedMul * 1.2), 0, 1), RACE.keys.has("up") || gasOn || me.boost > 0);
   } else SFX.engineStop();
 };
 
@@ -2658,7 +2843,11 @@ RACE.drawSpecHud = function (tg) {
   if (tg < 0 && tg > -3) count = String(Math.ceil(-tg));
   else if (tg >= 0 && tg < 0.9) { count = "GO"; cls = "count go"; }
   h.count.className = cls; h.count.textContent = count;
-  h.keys.textContent = tg < -0.2 ? "Drag to pan, scroll to zoom, click a car or 1–4 to follow, V for Auto-Chase, F for Full Track" : "";
+  h.keys.textContent = tg < -0.2
+    ? (RACE.isTouch()
+      ? "Drag to pan, pinch to zoom, tap a car or leaderboard row to follow"
+      : "Drag to pan, scroll to zoom, click a car or 1–4 to follow, V for Auto-Chase, F for Full Track")
+    : "";
   if (tg < -3) h.msg.textContent = `Get ready · ${RACE.B.name}`;
   else {
     RACE.msgs = RACE.msgs.filter((m) => m.until > performance.now());
@@ -2680,6 +2869,7 @@ RACE.drawHud = function (tg) {
   const it = me.item;
   h.item.className = "item" + (it ? " full" : "");
   h.item.innerHTML = `<span class="slot">${it ? R_ICON[it] : ""}</span><span class="nm">${it ? `${R_ITEM_NAMES[it]}<kbd>Space</kbd><small>${R_ITEM_HELP[it]}</small>` : "No pickup<small>drive through a holo cache</small>"}</span>`;
+  RACE.syncTouchItem();
   const leader = order[0];
   h.board.innerHTML = order.map((c, k) => {
     let q;
@@ -2695,7 +2885,11 @@ RACE.drawHud = function (tg) {
   if (tg < 0 && tg > -3) count = String(Math.ceil(-tg));
   else if (tg >= 0 && tg < 0.9) { count = "GO"; cls = "count go"; }
   h.count.className = cls; h.count.textContent = count;
-  h.keys.textContent = tg < -0.2 ? "Arrows or W A S D to drive, Space to use a pickup, V to switch the camera" : "";
+  h.keys.textContent = tg < -0.2
+    ? (RACE.isTouch()
+      ? "Left thumb to steer, right thumb for Gas, Brake and Pickup"
+      : "Arrows or W A S D to drive, Space to use a pickup, V to switch the camera")
+    : "";
   if (tg < -3) h.msg.textContent = `Get ready · ${RACE.B.name}`;
   else {
     RACE.msgs = RACE.msgs.filter((m) => m.until > performance.now());
@@ -2710,6 +2904,7 @@ RACE.showResults = function (res) {
   const rows = res.map((r, k) => `<tr><td>${k + 1}.</td><td><span style="color:${R_SEAT[r.s % 4]}">■</span> ${esc(!RACE.spec && r.a === S.me.addr ? "You" : r.name)}</td>
     <td class="t">${r.ft !== null && r.ft !== undefined ? RACE.fmt(r.ft / 1000) : r.gone ? "left" : `DNF, ${Math.max(0, r.d / T.L).toFixed(1)} laps`}</td></tr>`).join("");
   box.hidden = false;
+  RACE.syncTouchOverlay();
   box.innerHTML = `<div class="box"><h3>Results</h3><table>${rows}</table><div class="acts">
     ${RACE.spec
       ? `<button class="gc-ghost" data-act="unwatch" data-r="${esc(RACE.rid)}">Leave</button>`

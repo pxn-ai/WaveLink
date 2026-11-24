@@ -643,6 +643,49 @@ function markRead() {
   readT = setTimeout(() => api("/api/read", { chat: S.cur }).catch(() => {}), 300);
 }
 
+// ------------------------------------------------------------------ mobile viewport lock & visualViewport sync
+const isTouchMobile = () => Boolean(window.matchMedia && matchMedia("(hover: none) and (pointer: coarse)").matches);
+function syncMobileViewport() {
+  const root = document.documentElement;
+  if (!isTouchMobile()) {
+    root.style.removeProperty("--app-height");
+    root.style.removeProperty("--app-offset-top");
+    return;
+  }
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : window.innerHeight;
+  const top = vv ? Math.max(0, vv.offsetTop) : 0;
+  const box = $("#msgs"), conv = $("#conv");
+  const keepBottom = Boolean(S.cur && box && conv && !conv.hidden && nearBottom(box));
+  const gcBox = $("#gccMsgs");
+  const keepGcBottom = Boolean(typeof GCCHAT !== "undefined" && GCCHAT.open && gcBox && gcBox.scrollHeight - gcBox.scrollTop - gcBox.clientHeight < 40);
+  root.style.setProperty("--app-height", `${Math.max(120, Math.round(h))}px`);
+  root.style.setProperty("--app-offset-top", `${Math.round(top)}px`);
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  if (keepBottom) box.scrollTop = box.scrollHeight;
+  if (keepGcBottom) gcBox.scrollTop = gcBox.scrollHeight;
+}
+function initMobileViewport() {
+  if (!window.matchMedia) return;
+  const mq = matchMedia("(hover: none) and (pointer: coarse)");
+  const onVv = () => { if (isTouchMobile()) syncMobileViewport(); };
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onVv);
+    window.visualViewport.addEventListener("scroll", onVv);
+  }
+  window.addEventListener("resize", onVv);
+  document.addEventListener("focusout", (e) => {
+    if (!isTouchMobile()) return;
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+      window.scrollTo(0, 0);
+      syncMobileViewport();
+      setTimeout(() => { window.scrollTo(0, 0); syncMobileViewport(); }, 60);
+    }
+  });
+  if (mq.addEventListener) mq.addEventListener("change", syncMobileViewport);
+  syncMobileViewport();
+}
+
 // ------------------------------------------------------------------ radio dashboard
 async function pollRadio() {
   try {
@@ -668,6 +711,7 @@ function showDash(open) {
   if (open) { SETTINGS.close(); renderDash(); }
   NAV.mark();
   if (typeof GC !== "undefined") GC.markRadio();
+  if (typeof RACE !== "undefined" && RACE.syncTouchOverlay) RACE.syncTouchOverlay();
 }
 function renderIncoming() {
   const el = $("#pending");
@@ -897,6 +941,7 @@ function wire() {
 }
 // start once every script has loaded (settings.js, media.js ... define what wire() uses)
 document.addEventListener("DOMContentLoaded", () => {
+  initMobileViewport();
   wire();
   connect();
   setInterval(pollRadio, 1000);

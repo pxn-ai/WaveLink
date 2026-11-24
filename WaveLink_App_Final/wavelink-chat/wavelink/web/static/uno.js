@@ -35,6 +35,7 @@ const UNO = {
   rid: null, room: null, view: null, pub: null, spec: false, sel: 0, armed: false, picker: null,
   log: [], seenEv: new Set(), pendingV: null, pendingAt: 0, prevHand: new Set(), prevTop: null, el: null, tick: 0,
 };
+UNO.isTouch = () => Boolean(window.matchMedia && matchMedia("(hover: none) and (pointer: coarse)").matches);
 
 UNO.cardName = function (id) {
   const [c, v] = UNO_CARDS[id];
@@ -271,16 +272,19 @@ UNO.render = function () {
     </div>`;
   UNO.prevTop = v.top;
   const legal = new Set(v.legal || []);
-  const ov = Math.min(-8, Math.max(-62, -((v.hand.length * 96 - Math.min(window.innerWidth - 80, 1100)) / Math.max(1, v.hand.length - 1))));
+  const touch = UNO.isTouch();
+  const prevScroll = el.querySelector(".uno-hand")?.scrollLeft || 0;
+  const desktopOv = -((v.hand.length * 96 - Math.min(window.innerWidth - 80, 1100)) / Math.max(1, v.hand.length - 1));
+  const ov = touch ? Math.min(-10, Math.max(-22, desktopOv)) : Math.min(-8, Math.max(-62, desktopOv));
   const hand = v.hand.map((id, i) => UNO.cardHtml(id, `${legal.has(id) ? "legal" : ""} ${i === UNO.sel ? "sel" : ""} ${UNO.prevHand.size && !UNO.prevHand.has(id) ? "fresh" : ""}`)).join("");
   UNO.prevHand = new Set(v.hand);
   const canCatch = v.vuln !== null && v.vuln !== undefined && v.vuln !== me && v.phase !== "over";
   let status;
   if (v.phase === "over") status = `<b>${esc(UNO.who(v.winner))}</b> ${v.winner === me ? "win" : "wins"} the round.`;
   else if (myTurn && v.phase === "color") status = "<b>Your turn.</b> The first card is a Wild: pick the colour.";
-  else if (myTurn && v.phase === "drawn") status = `<b>You drew ${esc(UNO.cardName(v.drawn))}.</b> Play it (Enter) or keep it (P).`;
+  else if (myTurn && v.phase === "drawn") status = `<b>You drew ${esc(UNO.cardName(v.drawn))}.</b> ${touch ? "Tap it or Play to play, or Keep." : "Play it (Enter) or keep it (P)."}`;
   else if (myTurn) status = legal.size ? `<b>Your turn.</b> Match ${UNO_COLOR_NAMES[v.color].toLowerCase()} or ${esc(UNO.cardName(v.top).split(" ").slice(UNO_CARDS[v.top][0] < 0 ? 0 : 1).join(" "))}, or draw.`
-    : "<b>Your turn.</b> Nothing matches: draw a card (D).";
+    : (touch ? "<b>Your turn.</b> Nothing matches: tap Draw." : "<b>Your turn.</b> Nothing matches: draw a card (D).");
   else status = `${esc(UNO.who(v.turn))}${v.phase === "color" ? " is picking the colour" : "'s turn"}.`;
   if (v.pause && v.phase !== "over") {           // a player lost the connection: everybody waits
     const left = Math.max(0, Math.round(v.pause.until - Date.now() / 1000));
@@ -300,6 +304,8 @@ UNO.render = function () {
       <button class="uno-btn call" data-k="u" aria-pressed="${UNO.armed}" ${v.hand.length === 2 && myTurn ? "" : "disabled"} title="Call UNO with your second-to-last card">UNO!<kbd>U</kbd></button>
       <button class="uno-btn catch" data-k="c" ${canCatch ? "" : "disabled"} title="Catch a player who did not call UNO">Catch<kbd>C</kbd></button>
     </div>${UNO.modalHtml(v)}`;
+  const handEl = el.querySelector(".uno-hand");
+  if (handEl && prevScroll) handEl.scrollLeft = prevScroll;
   el.querySelectorAll(".uno-btn[data-k]").forEach((b) => (b.onclick = () => UNO.key(b.dataset.k)));
   el.querySelectorAll(".uno-hand .card").forEach((c, i) => {
     c.onclick = () => { if (UNO.sel === i) UNO.key("Enter"); else { UNO.sel = i; UNO.render(); } };

@@ -36,7 +36,10 @@ GCCHAT.show = function (chat) {
   $("#gcChat").hidden = false;
   GCCHAT.render();
   GCCHAT.read();
-  if (typeof RACE !== "undefined") RACE.keys.clear();       // a key held down now would stay down
+  if (typeof RACE !== "undefined") {
+    RACE.keys.clear();       // a key held down now would stay down
+    if (RACE.syncTouchOverlay) RACE.syncTouchOverlay();
+  }
   $("#gccText").focus();
 };
 
@@ -45,6 +48,7 @@ GCCHAT.close = function () {
   GCCHAT.open = false;
   $("#gcChat").hidden = true;
   if (document.activeElement === $("#gccText")) $("#gccText").blur();   // the keys go back to the game
+  if (typeof RACE !== "undefined" && RACE.syncTouchOverlay) RACE.syncTouchOverlay();
   GCCHAT.refresh();
 };
 
