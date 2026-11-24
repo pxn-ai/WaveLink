@@ -204,7 +204,7 @@ GC.renderHome = function () {
   }));
   body.querySelectorAll(".biomes button").forEach((b) => (b.onclick = () => { GC.biome = +b.dataset.biome; GC.renderHome(); }));
   body.querySelectorAll(".laps button").forEach((b) => (b.onclick = () => { GC.laps = +b.dataset.laps; GC.renderHome(); }));
-  GC.backdrop(body.querySelector(".poster.p-race canvas.bg"));
+  GC.backdrop(body.querySelector(".poster.p-race canvas.bg"), GC.biome);
 };
 
 GC.invite = async function (g) {
@@ -215,8 +215,8 @@ GC.invite = async function (g) {
   GC.render();
 };
 
-// animated night street behind the race poster / lobby (drawn by race.js)
-GC.backdrop = function (cv) {
+// animated biome backdrop behind the race poster / lobby (drawn by race.js)
+GC.backdrop = function (cv, biomeOpt = 0) {
   cancelAnimationFrame(GC.anim);
   if (!cv || typeof RACE === "undefined") return;
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -227,7 +227,7 @@ GC.backdrop = function (cv) {
     if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
     const c = cv.getContext("2d");
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    RACE.backdrop(c, w, h, t / 1000);
+    RACE.backdrop(c, w, h, t / 1000, biomeOpt);
     if (!still) GC.anim = requestAnimationFrame(frame);
   };
   GC.anim = requestAnimationFrame(frame);
@@ -273,7 +273,7 @@ GC.renderLobby = function (r) {
   GC.wire($("#gcBody"));
   $("#gcBody").querySelectorAll(".lobby-biomes button").forEach((b) => (b.onclick = () =>
     GC.post({ a: "opts", r: r.r, o: { biome: +b.dataset.biome } }).catch((e) => toast(e.message))));
-  if (r.g === "race") GC.backdrop($("#gcBody .lobby-bg canvas"));
+  if (r.g === "race") GC.backdrop($("#gcBody .lobby-bg canvas"), activeBiome);
 };
 
 // ------------------------------------------------------------------ game clock (host's clock), for the race

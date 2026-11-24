@@ -330,8 +330,8 @@ RACE.buildBiomeProps = function (T, seed, biomeId) {
       for (let ln = 0; ln < lines; ln++) {
         const ox = horizFirst ? 0 : (ln - (lines - 1) / 2) * step;
         const oy = horizFirst ? (ln - (lines - 1) / 2) * step : 0;
-        T.vias.push([p0[0] + ox, p0[1] + oy, 6.5]);
-        T.vias.push([p3[0] + ox, p3[1] + oy, 6.5]);
+        if (RACE.distToTrack(T, p0[0] + ox, p0[1] + oy) > R_TW + R_RUN + 14) T.vias.push([p0[0] + ox, p0[1] + oy, 6.5]);
+        if (RACE.distToTrack(T, p3[0] + ox, p3[1] + oy) > R_TW + R_RUN + 14) T.vias.push([p3[0] + ox, p3[1] + oy, 6.5]);
       }
     }
     // Scattered stitched ground vias
@@ -482,8 +482,9 @@ RACE.buildBiomeProps = function (T, seed, biomeId) {
     T.coast = coast;
     for (let i = 0; i < M; i += Math.round(140 / R_STEP)) {
       const wave = 14 * Math.sin(i * 0.09) + 6 * Math.cos(i * 0.21);
-      const [fx, fy] = RACE.at(T, i, T.outSide * (R_TW + R_RUN + 52 + wave));
-      T.foam.push({ x: fx, y: fy, a: Math.atan2(T.ty[i], T.tx[i]), len: 42 + prng() * 44 });
+      const [fx, fy] = RACE.at(T, i, T.outSide * (R_TW + R_RUN + 54 + wave));
+      const nx = -T.ty[i] * T.outSide, ny = T.tx[i] * T.outSide;
+      T.foam.push({ x: fx, y: fy, a: Math.atan2(ny, nx), len: 42 + prng() * 44 });
     }
     // Wooden boardwalk piers extending into the ocean
     for (let i = 0; i < M; i += Math.round(780 / R_STEP)) {
@@ -724,13 +725,21 @@ RACE.tile = function (tx, ty) {
       }
     }
   } else if (bm === 4) {
-    // Ocean foam arcs + boardwalk piers + inner warm sand beach + palms + harbor container stacks
+    // Inner warm sand beach bounded by T.coast, then ocean foam arcs and boardwalk piers on top
+    g.beginPath();
+    T.coast.forEach((p, idx) => (idx ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    g.closePath();
+    g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 16; g.stroke();
+    g.strokeStyle = "#D4A373"; g.lineWidth = 8; g.stroke();
+    g.fillStyle = pal.bgSand; g.fill();
+    g.fillStyle = "rgba(255,245,220,0.12)";
+    for (let k = 0; k < 240; k++) g.fillRect(tx * S0 + rng() * S0, ty * S0 + rng() * S0, 2, 2);
     for (const fm of T.foam) {
       if (!inBox(fm.x - fm.len, fm.y - fm.len, fm.x + fm.len, fm.y + fm.len, 30)) continue;
       g.save(); g.translate(fm.x, fm.y); g.rotate(fm.a);
       g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 3.2; g.lineCap = "round";
-      g.beginPath(); g.arc(0, 0, fm.len, -0.45, 0.45); g.stroke();
-      g.lineWidth = 1.8; g.beginPath(); g.arc(0, 0, fm.len + 18, -0.35, 0.35); g.stroke();
+      g.beginPath(); g.arc(-fm.len * 0.85, 0, fm.len, -0.45, 0.45); g.stroke();
+      g.lineWidth = 1.8; g.beginPath(); g.arc(-fm.len * 0.85, 0, fm.len + 16, -0.35, 0.35); g.stroke();
       g.restore();
     }
     for (const pr of T.piers) {
@@ -746,15 +755,6 @@ RACE.tile = function (tx, ty) {
       }
       g.restore();
     }
-    // Warm sand side bounded by T.coast
-    g.beginPath();
-    T.coast.forEach((p, idx) => (idx ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
-    g.closePath();
-    g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 16; g.stroke();
-    g.strokeStyle = "#D4A373"; g.lineWidth = 8; g.stroke();
-    g.fillStyle = pal.bgSand; g.fill();
-    g.fillStyle = "rgba(255,245,220,0.12)";
-    for (let k = 0; k < 240; k++) g.fillRect(tx * S0 + rng() * S0, ty * S0 + rng() * S0, 2, 2);
     for (const st of T.stacks) {
       if (!inBox(st.x - st.r, st.y - st.r, st.x + st.r, st.y + st.r, 12)) continue;
       g.save(); g.translate(st.x, st.y); g.rotate(st.a);
@@ -2232,50 +2232,120 @@ RACE.showResults = function (res) {
     <td class="t">${r.ft !== null && r.ft !== undefined ? RACE.fmt(r.ft / 1000) : r.gone ? "left" : `DNF, ${Math.max(0, r.d / T.L).toFixed(1)} laps`}</td></tr>`).join("");
   box.hidden = false;
   box.innerHTML = `<div class="box"><h3>Results</h3><table>${rows}</table><div class="acts">
-    ${host ? `<button class="primary" data-act="start" data-r="${RACE.rid}">Rematch on a new track</button>` : `<span style="opacity:.75">${esc(GC.name(RACE.room, RACE.room.h))} can start a rematch.</span>`}
-    <button class="gc-ghost" data-act="leave" data-r="${RACE.rid}">${host ? "Close room" : "Leave"}</button></div></div>`;
+    ${host ? `<button class="primary" data-act="start" data-r="${esc(RACE.rid)}">Rematch on a new track</button>` : `<span style="opacity:.75">${esc(GC.name(RACE.room, RACE.room.h))} can start a rematch.</span>`}
+    <button class="gc-ghost" data-act="leave" data-r="${esc(RACE.rid)}">${host ? "Close room" : "Leave"}</button></div></div>`;
   GC.wire(box);
 };
 
 // ====================================================================== poster / lobby backdrop
-RACE.backdropStatic = function (w, h) {
+RACE.backdropStatic = function (w, h, bm = 0) {
   const c = document.createElement("canvas");
   c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h));
-  const g = c.getContext("2d"), hz = h * 0.42;
-  g.fillStyle = "#0B0F1A"; g.fillRect(0, 0, w, h);
+  const g = c.getContext("2d"), hz = h * 0.42, pal = BIOMES[bm] || BIOMES[0];
+  const skies = [
+    ["#07080d", "#1b1424"],
+    ["#031411", "#09372e"],
+    ["#5e2c1c", "#d9824c"],
+    ["#2c4866", "#bfd6ea"],
+    ["#2a183b", "#f07b5f"],
+  ];
+  const [skyTop, skyBot] = skies[bm] || skies[0];
+  g.fillStyle = bm === 4 ? pal.bgSea : pal.bg; g.fillRect(0, 0, w, h);
   const sky = g.createLinearGradient(0, 0, 0, hz);
-  sky.addColorStop(0, "#07080d"); sky.addColorStop(1, "#1b1424");
+  sky.addColorStop(0, skyTop); sky.addColorStop(1, skyBot);
   g.fillStyle = sky; g.fillRect(0, 0, w, hz);
-  const r = rMulberry(7);
-  for (let x = -20; x < w + 40;) {
-    const bw = 40 + r() * 90, bh = hz * (0.35 + r() * 0.6);
-    g.fillStyle = `hsl(${235 + r() * 30} 18% ${7 + r() * 5}%)`; g.fillRect(x, hz - bh, bw, bh);
-    for (let yy = hz - bh + 8; yy < hz - 6; yy += 9) for (let xx = x + 5; xx < x + bw - 6; xx += 8)
-      if (r() < 0.22) { g.fillStyle = r() < 0.75 ? "rgba(255,190,110,0.75)" : "rgba(120,220,255,0.7)"; g.fillRect(xx, yy, 3, 4); }
-    x += bw + 4 + r() * 10;
+  const r = rMulberry(7 + bm * 13);
+  if (bm === 0) {
+    for (let x = -20; x < w + 40;) {
+      const bw = 40 + r() * 90, bh = hz * (0.35 + r() * 0.6);
+      g.fillStyle = `hsl(${235 + r() * 30} 18% ${7 + r() * 5}%)`; g.fillRect(x, hz - bh, bw, bh);
+      for (let yy = hz - bh + 8; yy < hz - 6; yy += 9) for (let xx = x + 5; xx < x + bw - 6; xx += 8)
+        if (r() < 0.22) { g.fillStyle = r() < 0.75 ? "rgba(255,190,110,0.75)" : "rgba(120,220,255,0.7)"; g.fillRect(xx, yy, 3, 4); }
+      x += bw + 4 + r() * 10;
+    }
+  } else if (bm === 1) {
+    // PCB copper trace grid and distant IC silhouettes on the horizon
+    g.strokeStyle = "rgba(0,255,200,0.22)"; g.lineWidth = 1.5;
+    for (let k = 0; k < 18; k++) {
+      const x = r() * w, y1 = hz * (0.2 + 0.7 * r());
+      g.beginPath(); g.moveTo(x, hz); g.lineTo(x, y1); g.lineTo(x + 30, y1 - 30); g.stroke();
+      g.fillStyle = "#D4AF37"; g.beginPath(); g.arc(x + 30, y1 - 30, 3, 0, Math.PI * 2); g.fill();
+    }
+    for (let x = 20; x < w; x += 120 + r() * 80) {
+      const bw = 60 + r() * 45, bh = hz * (0.22 + r() * 0.28);
+      g.fillStyle = "#0b1318"; g.fillRect(x, hz - bh, bw, bh);
+      g.strokeStyle = "#D4AF37"; g.lineWidth = 1; g.strokeRect(x, hz - bh, bw, bh);
+    }
+  } else if (bm === 2) {
+    // Stepped desert mesas + ground-station dish silhouettes
+    g.fillStyle = "#8C3B2B";
+    for (let x = -40; x < w + 60;) {
+      const mw = 90 + r() * 120, mh = hz * (0.22 + r() * 0.38);
+      g.beginPath(); g.moveTo(x, hz); g.lineTo(x + mw * 0.2, hz - mh); g.lineTo(x + mw * 0.8, hz - mh); g.lineTo(x + mw, hz); g.fill();
+      x += mw * (0.75 + r() * 0.4);
+    }
+  } else if (bm === 3) {
+    // Alpine jagged snowy peaks
+    for (let layer = 0; layer < 2; layer++) {
+      g.fillStyle = layer ? "#2E3B4E" : "#5B7491";
+      g.beginPath(); g.moveTo(0, hz);
+      for (let x = 0; x <= w + 80; x += 65 + r() * 55) g.lineTo(x, hz - hz * (layer ? 0.28 + r() * 0.35 : 0.45 + r() * 0.45));
+      g.lineTo(w, hz); g.closePath(); g.fill();
+    }
+  } else {
+    // Sunset Coast setting sun + coastal ocean horizon + palm silhouettes
+    const sg = g.createRadialGradient(w * 0.5, hz * 0.78, 8, w * 0.5, hz * 0.78, h * 0.24);
+    sg.addColorStop(0, "rgba(255,209,102,0.95)"); sg.addColorStop(0.45, "rgba(247,37,133,0.45)"); sg.addColorStop(1, "rgba(247,37,133,0)");
+    g.fillStyle = sg; g.beginPath(); g.arc(w * 0.5, hz * 0.78, h * 0.24, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#14362D";
+    for (const px of [w * 0.14, w * 0.86]) {
+      g.fillRect(px - 3, hz - 52, 6, 52);
+      for (let f = 0; f < 5; f++) {
+        const a = -Math.PI + (f * Math.PI) / 4;
+        g.beginPath(); g.moveTo(px, hz - 52); g.quadraticCurveTo(px + Math.cos(a) * 22, hz - 66, px + Math.cos(a) * 34, hz - 44 + Math.sin(a) * 10);
+        g.quadraticCurveTo(px + Math.cos(a) * 16, hz - 50, px, hz - 52); g.fill();
+      }
+    }
   }
-  g.fillStyle = "#181F2E";
+  if (bm === 4) {
+    g.fillStyle = pal.bgSand; g.beginPath(); g.moveTo(0, hz); g.lineTo(w * 0.47, hz); g.lineTo(-w * 0.1, h); g.lineTo(0, h); g.fill();
+  }
+  g.fillStyle = pal.surface;
   g.beginPath(); g.moveTo(w * 0.47, hz); g.lineTo(w * 0.53, hz); g.lineTo(w * 1.1, h); g.lineTo(-w * 0.1, h); g.fill();
+  g.strokeStyle = pal.railL; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(w * 0.47, hz); g.lineTo(-w * 0.1, h); g.stroke();
+  g.strokeStyle = pal.railR;
+  g.beginPath(); g.moveTo(w * 0.53, hz); g.lineTo(w * 1.1, h); g.stroke();
   g.globalCompositeOperation = "lighter";
   for (let k = 0; k < 6; k++) {
     const f = k / 6, y = hz + (h - hz) * (f * f) + 6, spread = 0.03 + 0.55 * f * f;
     for (const side of [-1, 1]) {
       const x = w / 2 + side * w * spread, rad = 12 + 220 * f * f;
       const gr = g.createRadialGradient(x, y, 1, x, y, rad);
-      gr.addColorStop(0, "rgba(255,200,120,0.9)"); gr.addColorStop(0.2, "rgba(255,160,60,0.35)"); gr.addColorStop(1, "rgba(255,140,40,0)");
+      const glow = bm === 1 ? "0,255,200" : bm === 3 ? "125,211,252" : bm === 4 ? "255,209,102" : "255,179,71";
+      gr.addColorStop(0, `rgba(${glow},0.85)`); gr.addColorStop(0.22, `rgba(${glow},0.32)`); gr.addColorStop(1, `rgba(${glow},0)`);
       g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
     }
   }
   return c;
 };
 
-RACE.backdrop = function (g, w, h, t) {
-  const key = `${Math.round(w)}x${Math.round(h)}`;
-  if (!RACE.bd || RACE.bd.key !== key) RACE.bd = { key, img: RACE.backdropStatic(w, h) };
+RACE.backdrop = function (g, w, h, t, biomeOpt = 0) {
+  const bm = Number.isInteger(biomeOpt) && biomeOpt >= 0 && biomeOpt < BIOMES.length ? biomeOpt : 0;
+  const pal = BIOMES[bm];
+  const key = `${Math.round(w)}x${Math.round(h)}:${bm}`;
+  if (!RACE.bd || RACE.bd.key !== key) RACE.bd = { key, img: RACE.backdropStatic(w, h, bm) };
   g.drawImage(RACE.bd.img, 0, 0, w, h);
   const hz = h * 0.42;
   g.font = `700 ${Math.round(h * 0.035)}px 'Chakra Petch', system-ui`; g.textAlign = "center";
-  [[0.16, 0.2, "#FF2E88", "WALSH"], [0.8, 0.26, "#00E5FF", "SLOT RUSH"]].forEach(([sx, sy, col, txt], k) => {
+  const signSets = [
+    [[0.16, 0.2, "#FF2E88", "WALSH"], [0.8, 0.26, "#00E5FF", "SLOT RUSH"]],
+    [[0.18, 0.22, "#D4AF37", "AD9361"], [0.8, 0.24, "#00FFC8", "ZYNQ-7020"]],
+    [[0.18, 0.22, "#FF6B35", "AWGN"], [0.8, 0.24, "#F4D39E", "RF ARRAY"]],
+    [[0.18, 0.22, "#FF6D00", "CARRIER"], [0.8, 0.24, "#7DD3FC", "PEAK"]],
+    [[0.18, 0.22, "#FF7F50", "SUNSET"], [0.8, 0.24, "#48CAE4", "COAST"]],
+  ];
+  (signSets[bm] || signSets[0]).forEach(([sx, sy, col, txt], k) => {
     const on = Math.sin(t * 7.3 + k * 2.1) + Math.sin(t * 2.9 + k * 4.4) > -1.75;
     const spr = RACE.glowText(txt, Math.round(h * 0.035), col, null, false);
     g.save(); g.globalAlpha = on ? 1 : 0.3;
@@ -2292,16 +2362,29 @@ RACE.backdrop = function (g, w, h, t) {
     }
     g.restore();
   });
-  g.strokeStyle = "rgba(180,220,255,0.28)"; g.lineWidth = 1; g.beginPath();
-  const rr = rMulberry(3);
-  for (let k = 0; k < 160; k++) {
-    const sp = 0.6 + rr();
-    const x = (rr() * w + t * 40 * sp) % w, y = (rr() * h + t * 520 * sp) % h, len = 8 + 14 * sp;
-    g.moveTo(x, y); g.lineTo(x - len * 0.15, y - len);
+  const rr = rMulberry(3 + bm);
+  if (bm === 3) {
+    g.fillStyle = "rgba(255,255,255,0.75)"; g.beginPath();
+    for (let k = 0; k < 140; k++) {
+      const sp = 0.5 + rr();
+      const x = (rr() * w + Math.sin(t + k) * 18) % w, y = (rr() * h + t * 140 * sp) % h;
+      g.moveTo(x + 2, y); g.arc(x, y, 1.5 + sp, 0, Math.PI * 2);
+    }
+    g.fill();
+  } else {
+    g.strokeStyle = pal.particleCol; g.lineWidth = bm === 2 ? 1.4 : 1; g.beginPath();
+    for (let k = 0; k < 150; k++) {
+      const sp = 0.6 + rr();
+      const x = (rr() * w + t * (bm === 2 ? 260 : 40) * sp) % w;
+      const y = (rr() * h + t * (bm === 2 ? 35 : 420) * sp) % h;
+      const len = 8 + 14 * sp;
+      if (bm === 2) { g.moveTo(x, y); g.lineTo(x - len, y - len * 0.12); }
+      else { g.moveTo(x, y); g.lineTo(x - len * 0.15, y - len); }
+    }
+    g.stroke();
   }
-  g.stroke();
-  const fade = g.createLinearGradient(0, h * 0.45, 0, h);
-  fade.addColorStop(0, "rgba(11,15,26,0)"); fade.addColorStop(1, "rgba(11,15,26,0.85)");
+  const fade = g.createLinearGradient(0, h * 0.36, 0, h);
+  fade.addColorStop(0, "rgba(11,15,26,0.08)"); fade.addColorStop(1, "rgba(11,15,26,0.92)");
   g.fillStyle = fade; g.fillRect(0, 0, w, h);
 };
 
