@@ -1,13 +1,22 @@
 "use strict";
 /* Game center shell: the two posters, invitations and lobbies.  The games themselves live in
-   uno.js (UNO) and race.js (Gold Code GP); they register in GC.mods.  Uses app.js globals
+   uno.js (UNO) and race.js (Slot Rush); they register in GC.mods.  Uses app.js globals
    ($, S, api, toast, esc, hue, contactName). */
 
 const GC = {
-  snap: null, open: false, focus: null, mods: {}, laps: 3,
+  snap: null, open: false, focus: null, mods: {}, laps: 3, biome: 255,
   pick: { uno: new Set(), race: new Set() },
   clocks: {}, anim: 0, mounted: null,
 };
+const GC_BIOMES = [
+  [255, "Random", "Random"],
+  [0, "Neon Rain City (Classic)", "Neon Rain City"],
+  [1, "PCB Speedway", "PCB Speedway"],
+  [2, "AWGN Desert", "AWGN Desert"],
+  [3, "Carrier Peak", "Carrier Peak"],
+  [4, "Sunset Coast", "Sunset Coast"],
+];
+GC.biomeName = (b) => (GC_BIOMES.find((x) => x[0] === b) || GC_BIOMES[0])[2];
 const GC_STATUS = {
   invited: "invited", joined: "in", declined: "said no", left: "left", missed: "didn't answer", gone: "went off the air",
 };
@@ -153,7 +162,7 @@ GC.renderHome = function () {
   const dock = rooms.filter((r) => r.state !== "closed" || r.why).map((r) => {
     const host = GC.name(r, r.h), game = GC.snap.games[r.g];
     if (r.state === "invited") return `<div class="invite"><span class="who"><b>${esc(host)}</b> invites you to ${esc(game)}
-        <small>${r.seats.length} players${r.g === "race" ? `, ${esc(r.o.laps)} laps` : ""}</small></span>
+        <small>${r.seats.length} players${r.g === "race" ? `, ${esc(r.o.laps)} laps · ${esc(GC.biomeName(r.o.biome ?? 255))}` : ""}</small></span>
         <button class="yes" data-act="join" data-r="${esc(r.r)}">Join</button><button class="no" data-act="decline" data-r="${esc(r.r)}">Not now</button></div>`;
     if (r.state === "closed") return `<div class="invite"><span class="who">${esc(game)}: ${esc(r.why || "room closed")}</span>
         <button class="no" data-act="dismiss" data-r="${esc(r.r)}">OK</button></div>`;
@@ -175,9 +184,11 @@ GC.renderHome = function () {
       </section>
       <section class="poster p-race">
         <canvas class="bg" aria-hidden="true"></canvas>
-        <h2>Gold Code <em>GP</em></h2>
-        <p class="tag">A street race through a rain-soaked night city, with seeker missiles, plasma mines, EMP, shields and boost. Every car is on the air 15 times a second.</p>
+        <h2>Slot <em>Rush</em></h2>
+        <p class="tag">Top-down combat racing across 5 locations, with carrier seekers, ISI mines, RF jammers, Walsh shields and 64-QAM overdrive. Every car is on the air 15 times a second.</p>
         <div class="pick">${GC.pickHtml("race")}</div>
+        <div class="biomes" role="group" aria-label="Location">${GC_BIOMES.map(([id, lbl]) =>
+          `<button type="button" data-biome="${id}" aria-pressed="${GC.biome === id}">${esc(lbl)}</button>`).join("")}</div>
         <div class="row"><span class="laps" role="group" aria-label="Laps">${[2, 3, 5].map((l) =>
           `<button data-laps="${l}" aria-pressed="${GC.laps === l}">${l} laps</button>`).join("")}</span>
           <button class="go" data-act="invite" data-g="race" ${n("race") ? "" : "disabled"}>Invite ${n("race") ? n("race") + " to race" : ""}</button></div>
@@ -191,13 +202,14 @@ GC.renderHome = function () {
     else set.delete(+i.value);
     GC.renderHome();
   }));
+  body.querySelectorAll(".biomes button").forEach((b) => (b.onclick = () => { GC.biome = +b.dataset.biome; GC.renderHome(); }));
   body.querySelectorAll(".laps button").forEach((b) => (b.onclick = () => { GC.laps = +b.dataset.laps; GC.renderHome(); }));
   GC.backdrop(body.querySelector(".poster.p-race canvas.bg"));
 };
 
 GC.invite = async function (g) {
   const players = [...GC.pick[g]];
-  const j = await GC.post({ a: "create", game: g, players, o: g === "race" ? { laps: GC.laps } : {} });
+  const j = await GC.post({ a: "create", game: g, players, o: g === "race" ? { laps: GC.laps, biome: GC.biome } : {} });
   GC.pick[g].clear();
   GC.focus = j.r;
   GC.render();
@@ -248,12 +260,19 @@ GC.renderLobby = function (r) {
     acts = `<button class="gc-ghost" data-act="leave" data-r="${esc(r.r)}">Leave</button>`;
     note = `${GC.name(r, r.h)} starts the game.`;
   }
-  const sub = r.state === "closed" ? "Room closed" : r.g === "race" ? `${r.o.laps} laps, ${GC.name(r, r.h)} is hosting` : `${GC.name(r, r.h)} is hosting and deals`;
+  const activeBiome = r.biome !== null && r.biome !== undefined ? r.biome : (r.o?.biome ?? 255);
+  const loc = GC.biomeName(activeBiome);
+  const sub = r.state === "closed" ? "Room closed" : r.g === "race" ? `${r.o.laps} laps · ${loc}, ${GC.name(r, r.h)} is hosting` : `${GC.name(r, r.h)} is hosting and deals`;
+  const locPick = host && r.g === "race" && r.state === "lobby"
+    ? `<div class="biomes lobby-biomes" role="group" aria-label="Location">${GC_BIOMES.map(([id, lbl]) =>
+      `<button type="button" data-biome="${id}" aria-pressed="${(r.o?.biome ?? 255) === id}">${esc(lbl)}</button>`).join("")}</div>` : "";
   $("#gcBody").innerHTML = `<div class="lobby-bg ${r.g}">${r.g === "race" ? "<canvas></canvas>" : ""}</div>
     ${GC.bar(`<button class="gc-ghost" data-act="home">Game center</button>`)}
-    <div class="lobby ${r.g}"><h3>${esc(game)}</h3><p class="sub">${esc(sub)}</p><ul>${rows}</ul>
+    <div class="lobby ${r.g}"><h3>${esc(game)}</h3><p class="sub">${esc(sub)}</p>${locPick}<ul>${rows}</ul>
       <div class="acts">${acts}</div>${note ? `<p class="note">${esc(note)}</p>` : ""}</div>`;
   GC.wire($("#gcBody"));
+  $("#gcBody").querySelectorAll(".lobby-biomes button").forEach((b) => (b.onclick = () =>
+    GC.post({ a: "opts", r: r.r, o: { biome: +b.dataset.biome } }).catch((e) => toast(e.message))));
   if (r.g === "race") GC.backdrop($("#gcBody .lobby-bg canvas"));
 };
 

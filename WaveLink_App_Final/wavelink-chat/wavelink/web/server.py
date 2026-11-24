@@ -293,8 +293,10 @@ def game_action(hub, j: dict) -> dict:
     rid = j["r"]
     if a == "answer":
         hub.answer(rid, bool(j.get("ok")))
+    elif a == "opts":
+        hub.set_opts(rid, j.get("o") or {})
     elif a == "start":
-        hub.start_game(rid)
+        hub.start_game(rid, j.get("o"))
     elif a == "leave":
         hub.leave(rid)
     elif a == "dismiss":

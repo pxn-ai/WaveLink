@@ -62,10 +62,29 @@ from ..config import BROADCAST_ADDR, BROADCAST_CODE
 from .uno import Uno, UnoError
 from . import race as R
 
-GAMES = {"uno": "UNO", "race": "Gold Code GP"}
+GAMES = {"uno": "UNO", "race": "Slot Rush"}
 MAX_PLAYERS = 4
 UNO_TURN = 30.0                  # s per turn, then the host plays the timeout
 RACE_LAPS = (2, 3, 5)
+RACE_BIOMES = {
+    0: "Neon Rain City",
+    1: "PCB Speedway",
+    2: "AWGN Desert",
+    3: "Carrier Peak",
+    4: "Sunset Coast",
+}
+RACE_BIOME_OPTS = (0, 1, 2, 3, 4, 255)
+
+
+def _clean_biome(v, allow_random: bool = False) -> int | None:
+    valid = RACE_BIOME_OPTS if allow_random else tuple(RACE_BIOMES)
+    return v if type(v) is int and v in valid else None
+
+
+def _resolve_biome(seed: int, cfg_biome: int | None) -> int:
+    if type(cfg_biome) is int and cfg_biome in RACE_BIOMES:
+        return cfg_biome
+    return ((int(seed) * 2654435761) >> 16) % len(RACE_BIOMES)
 ROOM_ID = re.compile(r"[0-9a-f]{6}")      # os.urandom(3).hex(): room ids end up in the page
 RACE_COUNTDOWN = 6.0             # s from the start message to the green light
 FINISH_GRACE = 25.0              # s after the first finisher before results are final
@@ -236,11 +255,12 @@ class GameHub:
     def snapshot(self) -> dict:
         with self.lock:
             rooms = [self._room_public(r) for r in sorted(self.rooms.values(), key=lambda r: r["created"])]
-        return dict(me=self.addr, rooms=rooms, games=GAMES, laps=list(RACE_LAPS), turn_s=UNO_TURN)
+        return dict(me=self.addr, rooms=rooms, games=GAMES, laps=list(RACE_LAPS),
+                    biomes=RACE_BIOMES, turn_s=UNO_TURN)
 
     def _room_public(self, room: dict) -> dict:
         d = {k: room.get(k) for k in ("r", "g", "h", "seats", "st", "o", "state", "players", "seed",
-                                      "t0", "why", "results", "sync", "n")}
+                                      "biome", "t0", "why", "results", "sync", "n")}
         d["names"] = {str(a): self._name(a) for a in room["seats"]}
         d["online"] = {str(a): self._online(a) for a in room["seats"]}
         rn = self.rnow()                          # (away times are on the radio clock, like presence)
@@ -277,13 +297,28 @@ class GameHub:
             raise ValueError(f"{', '.join(self._name(a) for a in offline)} is not on the air")
         o = {}
         if game == "race":
-            laps = int((opts or {}).get("laps", 3))
-            o["laps"] = laps if laps in RACE_LAPS else 3
+            opts = opts or {}
+            if "laps" in opts and opts["laps"] is not None:
+                if type(opts["laps"]) is int and opts["laps"] in RACE_LAPS:
+                    o["laps"] = opts["laps"]
+                elif isinstance(opts["laps"], int) and not isinstance(opts["laps"], bool):
+                    raise ValueError("invalid laps")
+                else:
+                    o["laps"] = 3
+            else:
+                o["laps"] = 3
+            if "biome" in opts and opts["biome"] is not None:
+                b = _clean_biome(opts["biome"], allow_random=True)
+                if b is None:
+                    raise ValueError("invalid biome")
+            else:
+                b = 255
+            o["biome"] = b
         rid = os.urandom(3).hex()
         room = dict(r=rid, g=game, h=self.addr, seats=[self.addr] + inv,
                     st={self.addr: "joined", **{a: "invited" for a in inv}}, o=o, state="lobby",
-                    players=[], seed=None, t0=None, why="", results=None, sync={self.addr: True},
-                    created=time.time(), n=0)
+                    players=[], seed=None, biome=None, t0=None, why="", results=None,
+                    sync={self.addr: True}, created=time.time(), n=0)
         with self.lock:
             self.rooms[rid] = room
             self.rt[rid] = {}
@@ -306,13 +341,50 @@ class GameHub:
         self._send(room["h"], dict(t="ans", r=rid, ok=bool(ok)))
         self._publish()
 
-    def start_game(self, rid: str):
+    def set_opts(self, rid: str, opts: dict):
+        if not isinstance(opts, dict):
+            raise ValueError("invalid options")
+        with self.lock:
+            room = self._room(rid)
+            if room["h"] != self.addr:
+                raise ValueError("only the host can change options")
+            if room["state"] != "lobby":
+                raise ValueError("options can only change in the lobby")
+            if room["g"] == "race":
+                if "laps" in opts and opts["laps"] is not None:
+                    if type(opts["laps"]) is int and opts["laps"] in RACE_LAPS:
+                        room["o"]["laps"] = opts["laps"]
+                    else:
+                        raise ValueError("invalid laps")
+                if "biome" in opts and opts["biome"] is not None:
+                    b = _clean_biome(opts["biome"], allow_random=True)
+                    if b is None:
+                        raise ValueError("invalid biome")
+                    room["o"]["biome"] = b
+        self._send_lobby(room)
+        self._publish()
+
+    def start_game(self, rid: str, opts: dict | None = None):
         with self.lock:
             room = self._room(rid)
             if room["h"] != self.addr:
                 raise ValueError("only the host can start")
             if room["state"] not in ("lobby", "over"):
                 raise ValueError("already running")
+            if opts is not None:
+                if not isinstance(opts, dict):
+                    raise ValueError("invalid options")
+                if room["g"] == "race":
+                    if "laps" in opts and opts["laps"] is not None:
+                        if type(opts["laps"]) is int and opts["laps"] in RACE_LAPS:
+                            room["o"]["laps"] = opts["laps"]
+                        else:
+                            raise ValueError("invalid laps")
+                    if "biome" in opts and opts["biome"] is not None:
+                        b = _clean_biome(opts["biome"], allow_random=True)
+                        if b is None:
+                            raise ValueError("invalid biome")
+                        room["o"]["biome"] = b
             players = [a for a in room["seats"] if room["st"].get(a) == "joined" and self._online(a)]
             if len(players) < 2:
                 raise ValueError("nobody has joined yet")
@@ -324,12 +396,18 @@ class GameHub:
             dropped = [a for a in room["seats"] if room["st"].get(a) == "invited"]
             for a in dropped:
                 room["st"][a] = "missed"
-            room.update(state="playing", players=players, seed=random.randrange(1 << 31), results=None,
+            seed = random.randrange(1 << 31)
+            if room["g"] == "race":
+                room["o"].setdefault("biome", 255)
+                biome = _resolve_biome(seed, room["o"].get("biome"))
+            else:
+                biome = None
+            room.update(state="playing", players=players, seed=seed, biome=biome, results=None,
                         n=room.get("n", 0) + 1)
             room["t0"] = self.mono() + RACE_COUNTDOWN if room["g"] == "race" else None
             room["s0"] = self.rnow() if room["g"] == "race" else None
-            msg = dict(t="start", r=rid, g=room["g"], seed=room["seed"], p=players, t0=room["t0"],
-                       s0=room["s0"], o=room["o"], n=room["n"])
+            msg = dict(t="start", r=rid, g=room["g"], seed=room["seed"], biome=room["biome"],
+                       p=players, t0=room["t0"], s0=room["s0"], o=room["o"], n=room["n"])
         for a in dropped:
             self._send(a, dict(t="close", r=rid, why="The game started without you"))
         for a in players:
@@ -427,9 +505,21 @@ class GameHub:
         if "r" in o and not (isinstance(o["r"], str) and ROOM_ID.fullmatch(o["r"])):
             self.stats["gc_bad_room_id"] += 1
             return
-        if "o" in o:                                   # room options: only the race's laps
+        if "o" in o:                                   # room options: only the race's laps & biome
             x = o["o"] if isinstance(o["o"], dict) else {}
-            o["o"] = {"laps": x["laps"]} if x.get("laps") in RACE_LAPS else {}
+            clean_o = {}
+            if type(x.get("laps")) is int and x["laps"] in RACE_LAPS:
+                clean_o["laps"] = x["laps"]
+            b_opt = _clean_biome(x.get("biome"), allow_random=True)
+            if b_opt is not None:
+                clean_o["biome"] = b_opt
+            o["o"] = clean_o
+        if "biome" in o:
+            b_top = _clean_biome(o["biome"], allow_random=False)
+            if b_top is None:
+                o.pop("biome", None)
+            else:
+                o["biome"] = b_top
         t = o.get("t")
         fn = getattr(self, "_on_" + str(t), None)
         if fn is None:
@@ -467,8 +557,8 @@ class GameHub:
                 return
             self.rooms[rid] = dict(r=rid, g=o["g"], h=src, seats=seats,
                                    st={a: ("joined" if a == src else "invited") for a in seats},
-                                   o=o.get("o") or {}, state="invited", players=[], seed=None, t0=None,
-                                   why="", results=None, sync={}, created=time.time(), n=0)
+                                   o=o.get("o") or {}, state="invited", players=[], seed=None, biome=None,
+                                   t0=None, why="", results=None, sync={}, created=time.time(), n=0)
             self.rt[rid] = {}
         self._emit("toast", f"🎮 {self._name(src)} invites you to {GAMES[o['g']]}. Open the game center to join.")
         self._publish()
@@ -520,8 +610,12 @@ class GameHub:
             room = self.rooms.get(o["r"])
             if not room or room["h"] != src or self.addr not in o["p"]:
                 return
-            room.update(state="playing", players=[int(a) for a in o["p"]], seed=o["seed"], t0=o.get("t0"),
-                        s0=o.get("s0"), o=o.get("o") or room["o"], results=None, n=o.get("n", 1))
+            new_o = o.get("o") or room["o"]
+            biome = _clean_biome(o.get("biome"), allow_random=False)
+            if biome is None and room["g"] == "race" and o.get("seed") is not None:
+                biome = _resolve_biome(o["seed"], new_o.get("biome"))
+            room.update(state="playing", players=[int(a) for a in o["p"]], seed=o["seed"], biome=biome,
+                        t0=o.get("t0"), s0=o.get("s0"), o=new_o, results=None, n=o.get("n", 1))
             room["st"][self.addr] = "joined"
         self._begin(o["r"])
         self._publish()
@@ -710,8 +804,9 @@ class GameHub:
     def _rejoin_msg(self, room: dict) -> dict:
         return dict(t="rejoin", r=room["r"], g=room["g"], h=room["h"], hv=room.get("hv", 0), seats=room["seats"],
                     st={str(k): v for k, v in room["st"].items()}, o=room["o"], seed=room["seed"],
-                    p=room["players"], t0=room.get("t0"), s0=room.get("s0"), n=room.get("n", 1),
-                    clk=room.get("clk", 0.0), state=room["state"], results=room.get("results"))
+                    biome=room.get("biome"), p=room["players"], t0=room.get("t0"), s0=room.get("s0"),
+                    n=room.get("n", 1), clk=room.get("clk", 0.0), state=room["state"],
+                    results=room.get("results"))
 
     def _on_rejoin(self, src, o):
         rid = o["r"]
@@ -725,7 +820,8 @@ class GameHub:
                     return
                 room = self.rooms[rid] = dict(r=rid, g=o["g"], h=src, hv=hv, seats=[int(a) for a in o["seats"]],
                                               st={}, o=o.get("o") or {}, state="playing", players=[], seed=None,
-                                              t0=None, why="", results=None, sync={}, created=time.time(), n=0)
+                                              biome=None, t0=None, why="", results=None, sync={},
+                                              created=time.time(), n=0)
                 self.rt[rid] = {}
             elif src not in room.get("players", []):
                 return
@@ -737,9 +833,13 @@ class GameHub:
                 room = None
             if room is not None:
                 self._set_host(room, src, hv)
+                new_o = o.get("o") or room["o"]
+                biome = _clean_biome(o.get("biome"), allow_random=False)
+                if biome is None and room["g"] == "race" and o.get("seed") is not None:
+                    biome = _resolve_biome(o["seed"], new_o.get("biome"))
                 room.update(state=o.get("state") or "playing", players=[int(a) for a in o["p"]],
-                            seed=o.get("seed"), t0=o.get("t0"), s0=o.get("s0"), n=o.get("n", 1),
-                            results=o.get("results"))
+                            seed=o.get("seed"), biome=biome, t0=o.get("t0"), s0=o.get("s0"),
+                            o=new_o, n=o.get("n", 1), results=o.get("results"))
                 room["st"] = {int(k): v for k, v in (o.get("st") or {}).items()}
                 room["st"][self.addr] = "joined"
                 room.pop("host_away", None)

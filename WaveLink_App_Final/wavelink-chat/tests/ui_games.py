@@ -64,7 +64,7 @@ async def wait_for(pg, js, timeout=30.0, what=""):
     raise AssertionError(f"timed out waiting for {what or js}")
 
 
-async def make_room(pages, game, laps=2):
+async def make_room(pages, game, laps=2, biome=255):
     host, guests = pages[0], pages[1:]
     for pg in pages:
         if not await pg.evaluate("GC.open"):
@@ -73,6 +73,7 @@ async def make_room(pages, game, laps=2):
     for k in range(1, len(pages)):
         await host.click(f".poster.p-{game} .pick label:has-text('{NAMES[k]}')")
     if game == "race":
+        await host.click(f".poster.p-race .biomes button[data-biome='{biome}']")
         await host.click(f".poster.p-race .laps button[data-laps='{laps}']")
     await host.click(f".poster.p-{game} .go")
     for pg in guests:
@@ -176,16 +177,20 @@ async def play_uno(pages, n):
     return True
 
 
-async def play_race(pages, n, laps=2, rematch=True):
-    rid = await make_room(pages, "race", laps)
+async def play_race(pages, n, laps=2, rematch=True, biome=1):
+    rid = await make_room(pages, "race", laps, biome=biome)
     host = pages[0]
     await wait_for(host, "!!document.querySelector('.lobby .primary:not([disabled])')", 40, "race lobby synced")
+    title_ok = await host.evaluate("document.querySelector('.lobby.race h3')?.textContent.includes('Slot Rush')")
+    assert title_ok, "Lobby title is not Slot Rush"
     await shot(host, f"race-{n}p-lobby.png")
     for rnd in range(2 if rematch else 1):
         await host.click(".lobby .primary" if rnd == 0 else ".race-results .primary")
         for pg in pages:
             await wait_for(pg, f"RACE.root && RACE.rid === '{rid}' && RACE.round === {rnd + 1}", 20, "race view")
         await asyncio.sleep(1.0)
+        hud_ok = await host.evaluate("document.querySelector('.race-room .gc-title')?.textContent.includes('Slot Rush')")
+        assert hud_ok, "Race HUD header does not show Slot Rush"
         if rnd == 0:
             await shot(pages[-1], f"race-{n}p-grid.png")
         if rnd == 1:                                       # the rematch with the chase camera (V)

@@ -151,14 +151,48 @@ def part1():
     check("a failed transfer tells the receiver to drop what it has",
           any(c.get("k") == "ctl" and (c.get("x") or {}).get("a") == "cancel" and c["x"].get("m") == 4321 for c in ctl), ctl)
 
-    # game rooms from invitations
+    # game rooms from invitations + biome validation and reload persistence
     hub = bob.hub
     hub._handle(1, {"t": "inv", "r": '"><img src=x onerror=alert(1)>', "g": "uno", "h": 1, "p": [1, 2], "o": {}})
-    hub._handle(1, {"t": "inv", "r": "a1b2c3", "g": "race", "h": 1, "p": [1, 2], "o": {"laps": "<b>9</b>"}})
+    hub._handle(1, {"t": "inv", "r": "a1b2c3", "g": "race", "h": 1, "p": [1, 2],
+                    "o": {"laps": "<b>9</b>", "biome": "<b>1</b>"}})
     rooms = dict(hub.rooms)
     check("an invitation with a malformed room id is ignored", list(rooms) == ["a1b2c3"], list(rooms))
     laps = (rooms.get("a1b2c3") or {}).get("o", {}).get("laps")
-    check("... and room options are checked", laps in (None, 2, 3, 5), repr(laps))
+    bad_biome_opt = (rooms.get("a1b2c3") or {}).get("o", {}).get("biome")
+    check("... and room options are checked", laps in (None, 2, 3, 5) and bad_biome_opt is None,
+          repr((laps, bad_biome_opt)))
+    # strict biome validation in create() and _handle()
+    bob.contacts[1] = {"addr": 1, "name": "Alice", "online": True, "last_seen": time.time()}
+    bob.mac.last_heard[1] = time.time()
+    bad_biomes = (True, False, -1, 5, 254, "2", 1.5, "<script>")
+    rejected = []
+    for bad_b in bad_biomes:
+        try:
+            hub.create("race", [1], {"laps": 3, "biome": bad_b})
+            rejected.append(False)
+        except ValueError:
+            rejected.append(True)
+    check("invalid biome values are rejected in hub.create()", all(rejected), rejected)
+    rid_fixed = hub.create("race", [1], {"laps": 2, "biome": 3})
+    rid_rand = hub.create("race", [1], {"laps": 2, "biome": 255})
+    hub.rooms[rid_fixed]["st"][1] = "joined"
+    hub.rooms[rid_fixed]["sync"][1] = True
+    hub.rooms[rid_rand]["st"][1] = "joined"
+    hub.rooms[rid_rand]["sync"][1] = True
+    hub.start_game(rid_fixed)
+    hub.start_game(rid_rand)
+    snap_rooms = {r["r"]: r for r in hub.snapshot()["rooms"]}
+    b_fixed = snap_rooms[rid_fixed]["biome"]
+    b_rand = snap_rooms[rid_rand]["biome"]
+    check("start_game resolves random biome (255) to 0..4 and keeps fixed biome",
+          b_fixed == 3 and isinstance(b_rand, int) and 0 <= b_rand <= 4, (b_fixed, b_rand))
+    rejoin = hub._rejoin_msg(hub.rooms[rid_fixed])
+    hub.rooms[rid_fixed]["biome"] = None
+    hub._on_rejoin(1, dict(rejoin, hv=1))
+    check("biome survives rejoin and rematch",
+          hub.rooms[rid_fixed]["biome"] == 3 and hub.rooms[rid_rand]["o"]["biome"] == 255,
+          (hub.rooms[rid_fixed]["biome"], hub.rooms[rid_rand]["o"]))
 
 
 # ============================================================================ 2. link layer

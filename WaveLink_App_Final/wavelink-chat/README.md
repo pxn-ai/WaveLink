@@ -25,7 +25,7 @@ compiles it with `grcc`, runs it, and attaches its link layer and web UI to the 
  │ files · emoji · themes · radio│
  │ dashboard (constellation,     │
  │ spectrum, counters)           │
- │ game center: UNO, Gold Code GP│
+ │ game center: UNO, Slot Rush   │
  └──────────────┬────────────────┘
  ┌──────────────┴────────────────┐
  │ Application    node.py        │  message envelope, AES-256-GCM, group fan-out, read receipts,
@@ -709,7 +709,7 @@ timestamp, group, filename and mime type.
 The gamepad button at the top of the chat list opens the game center. It has two games, each for 2, 3 or 4
 stations, played with the keyboard:
 
-| | UNO | Gold Code GP |
+| | UNO | Slot Rush |
 |---|---|---|
 | Game | The card game, standard rules (no house rules) | A top-down street race through a rain-soaked night city, 2, 3 or 5 laps, with combat pickups |
 | Who decides | The host's station: it shuffles, deals, keeps every hand and checks every move | Each station drives its own car. A hit is decided by the station of the car that was hit |
@@ -764,7 +764,7 @@ know yet are recognised as older and it steps down.
   card you drew, <kbd>U</kbd> call UNO, <kbd>C</kbd> catch, <kbd>1</kbd>–<kbd>4</kbd> or <kbd>R</kbd><kbd>Y</kbd>
   <kbd>G</kbd><kbd>B</kbd> pick a colour, <kbd>N</kbd> deal the next round (host).
 
-**Gold Code GP.**
+**Slot Rush.**
 - The circuit is generated from the room's seed (a closed spline through 9–12 random points, rejected and redrawn
   if a corner is too tight or two parts of the track come too close), so every station builds the same track and
   city without sending them. A new track every race.
@@ -867,7 +867,7 @@ your own name or picture):
 | Chat wallpaper | seven patterns drawn in CSS from the palette (plain, Gold-code chips, QAM constellation, waves, rain, dusk, velvet) or your own photo, cropped, turned and adjusted in the wallpaper editor, with a fit (crop to fit, fit inside, stretch to fit, normal) and a dimmer | this station only (`data/node<N>/wallpaper.*`, and the original as `wallsrc.*`) |
 | Sounds | sound effects on or off, volume; background music (four built-in loops or your own MP3) with its own volume | profile.json; an uploaded MP3 stays on this station (`data/node<N>/music.*`) |
 | Photos and audio | choose the quality each time, or always send at a default | profile.json |
-| Gold Code GP | north-up or chase camera | profile.json |
+| Slot Rush | north-up or chase camera | profile.json |
 | Buttons | Game center, Radio and Settings next to your name, or in a bar with their names at the bottom of the chat list | profile.json |
 
 Each station keeps its own settings, so two people at two stations can have different looks.

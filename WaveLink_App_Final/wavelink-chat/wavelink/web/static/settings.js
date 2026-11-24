@@ -152,6 +152,7 @@ SETTINGS.build = function () {
   $("#musicGrid").innerHTML = MUSIC.TRACKS.map(([id, nm, sub]) => `<button data-v="${id}"><span>${nm}</span><small>${sub}</small></button>`).join("");
   $("#musicGrid").querySelectorAll("button").forEach((b) => (b.onclick = () => {
     if (b.dataset.v === "custom" && !S.profile?.music_url) { $("#musicFile").click(); return; }
+    if (typeof MUSIC !== "undefined") MUSIC.hint = null;
     setPref("music", b.dataset.v); SETTINGS.refresh();
   }));
   $("#musicVol").oninput = (e) => { S.prefs.musicVol = +e.target.value; MUSIC.sync(); };

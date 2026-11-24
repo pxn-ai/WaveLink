@@ -10,16 +10,22 @@
 const MUSIC = {
   TRACKS: [["off", "Off", "silence"], ["drift", "Drift", "ambient pads"], ["carrier", "Carrier", "pulsing arpeggios"],
     ["night", "Night drive", "synthwave"], ["rain", "Rain lab", "rain and bells"], ["custom", "Your music", "upload…"]],
-  cur: "off", node: null, el: null, elUrl: null, gain: null, buffers: {}, pending: null, duck: 1, playing: new Set(),
+  cur: "off", hint: null, node: null, el: null, elUrl: null, gain: null, buffers: {}, pending: null, duck: 1, playing: new Set(),
   SR: 44100,
 };
 
 const M_HZ = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
 // ------------------------------------------------------------------ what should be playing
+MUSIC.setHint = function (id) {
+  MUSIC.hint = id || null;
+  MUSIC.sync();
+};
 MUSIC.want = function () {
   const id = pref("music");
+  if (id === "off") return "off";
   if (id === "custom") return S.profile?.music_url ? "custom" : "off";
+  if (MUSIC.hint && MUSIC.SONGS[MUSIC.hint]) return MUSIC.hint;
   return MUSIC.TRACKS.some((t) => t[0] === id) ? id : "off";
 };
 MUSIC.level = () => Math.max(0, Math.min(1, pref("musicVol"))) * 0.9 * MUSIC.duck;

@@ -1,4 +1,4 @@
-"""Gold Code GP: the race's datagram format.
+"""Slot Rush: the race's datagram format.
 
 Every station drives its own car (physics runs in the browser at 120 steps/s) and, in
 its own time slot, broadcasts the car's newest state as one unacknowledged datagram on
