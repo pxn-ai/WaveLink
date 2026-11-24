@@ -115,6 +115,10 @@ NO_TRIGGER = 0xFFFF
 GROUP_RETRIES = 4                      # TD-CDMA group message: timeouts before a member is tried alone
 HOLD_S = 60.0                          # TD-CDMA: a message to a station that has left the network waits
                                        # this long (radio time) for it to come back, then fails
+TD_MAX_STEPDOWN = 2                    # TD-CDMA: repeated losses step a link at most this many rungs below
+                                       # the rate its receiver's reports allow
+REJOIN_S = 10.0                        # TD-CDMA: after our own radio was down, timeouts count again only
+                                       # this long after it is back (time to find the network again)
 INBOX_MAX_AGE_S = 600.0                # a partly received message is forgotten after this long without a
                                        # fragment (the application gives up sooner, and tells the sender)
 ID_BLOCK = 256                         # message ids reserved in the id file at a time (set_id_store)
@@ -298,6 +302,10 @@ class LinkLayer:
         # (11: room for the relay header, so any fragment can be passed on by a relay)
         self.max_frag = radio.cfg.max_phy_payload - 11 - CRC_LEN
         self.lock = threading.RLock()
+        if hasattr(radio, "sync_lock"):         # (a radio that restarts its flowgraph swaps it in under our lock)
+            radio.sync_lock = self.lock
+        self._radio_down = False                # our radio's watchdog reported it down (see _td_timers)
+        self._radio_back = -1e9                 # radio time it was last back
         self.out: dict[int, list[OutMsg]] = collections.defaultdict(list)   # dst -> msgs
         self.inbox: dict[tuple, InMsg] = {}
         self.done_in: collections.OrderedDict = collections.OrderedDict()   # (src,id)->count
@@ -413,15 +421,23 @@ class LinkLayer:
 
     def _note_loss(self, dst: int, lost: int, total: int):
         if total >= 4 and lost / total > 0.2:
-            # one lossy window may just be a collision; step down only if losses repeat
             now = self.radio.now()
+            if self.tdma is not None and self.tdma.timing_trouble(now):
+                # (lost while our own radio stream slipped - a TX underrun, lost receive samples, the TX -> RX
+                # offset in doubt or being measured again: lost to the slip, not to the channel; the rate stays)
+                self.stats["losses_excused"] += 1
+                return
+            # one lossy window may just be a collision; step down only if losses repeat
             prev = self._last_loss.get(dst, -1e9)
             self._last_loss[dst] = now
             if now - prev > 3.0:
                 return
             pen, until = self.mod_penalty.get(dst, (0, 0.0))
-            pen = min(pen + 1, len(self.ladder) - 1) if self.radio.now() < until else 1
-            self.mod_penalty[dst] = (pen, self.radio.now() + 10.0)
+            # (time slots: no collisions, and the receiver's reports already follow its SNR, interference
+            # included - repeated losses take a link at most TD_MAX_STEPDOWN rungs below what they allow)
+            cap = len(self.ladder) - 1 if self.tdma is None else min(TD_MAX_STEPDOWN, len(self.ladder) - 1)
+            pen = min(pen + 1, cap) if now < until else 1
+            self.mod_penalty[dst] = (pen, now + 10.0)
             self.stats["mod_stepdowns"] += 1
             # outer loop: a link that keeps losing frames while backed off gets more margin, unless
             # its receiver reports interference (then the lower rate is the answer, not more power)
@@ -1177,9 +1193,18 @@ class LinkLayer:
         5 s): a group message gives it up soon (the others go on); a message to that one station is
         held - nothing is sent - until the station is back in the network, and then goes on from
         where it stopped (the receiver keeps what it has, see Node.INCOMING_STALE_S), or fails after
-        hold_s: a few seconds out of range, or a relay restarting, must not lose a whole file."""
+        hold_s: a few seconds out of range, or a relay restarting, must not lose a whole file.
+        While our own radio is down (its watchdog is starting it again), and for REJOIN_S after it is
+        back (we find the network again), no timeout counts against any member: nothing could have been
+        acknowledged.  What is in flight goes again."""
         tdma = self.tdma
         here = set(tdma.members_now()) if tdma else set()
+        radio_ok = getattr(self.radio, "link_ok", True)
+        if not radio_ok:
+            self._radio_down = True
+        elif self._radio_down:
+            self._radio_down, self._radio_back = False, now
+        radio_ok = radio_ok and now - self._radio_back >= REJOIN_S
         for lst in list(self.out.values()):
             for m in lst:
                 if m.state != MsgState.SENDING:
@@ -1188,6 +1213,14 @@ class LinkLayer:
                     self._td_held(m, now, here)
                     continue
                 if not m.inflight or now < m.deadline:
+                    continue
+                if not radio_ok:
+                    for i in sorted(m.inflight, key=m.inflight.get):
+                        if i not in m.acked and i not in m.retx_set:
+                            m.retx.append(i)
+                            m.retx_set.add(i)
+                    m.inflight.clear()
+                    m.deadline = now + self._td_timeout(m)
                     continue
                 self.stats["timeouts"] += 1
                 lag = [a for a in m.members if m.mstate.get(a) == "sending"
@@ -1229,8 +1262,13 @@ class LinkLayer:
 
     def _td_held(self, m: OutMsg, now: float, here: set):
         """A message held for a receiver that left the network: back in the network -> carry on from
-        where it stopped (what is still missing goes again); not back within hold_s -> give up."""
+        where it stopped (what is still missing goes again); not back within hold_s -> give up.  While our
+        own radio is down (its watchdog is starting it again) the wait starts over: the receiver can't be
+        back for us before our radio is."""
         a = m.dst
+        if not getattr(self.radio, "link_ok", True):
+            m.held_since = now
+            return
         if a in here:
             m.held_since = None
             m.retries_by[a] = 0

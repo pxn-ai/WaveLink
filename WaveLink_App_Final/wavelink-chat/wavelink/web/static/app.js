@@ -161,7 +161,8 @@ async function load() {
   S.contacts = new Map(st.contacts.map((c) => [c.addr, c]));
   S.msgs = new Map(); S.order = [];
   for (const m of st.messages) { S.msgs.set(m.uid, m); S.order.push(m.uid); }
-  renderMe(); renderChats();
+  S.radioLink = st.radio_link || { state: "ok" };
+  renderMe(); renderChats(); renderRadioLink(S.radioLink);
   if (S.cur) renderConv(true);
 }
 function connect() {
@@ -187,6 +188,7 @@ function connect() {
       if (typeof SETTINGS !== "undefined") SETTINGS.refresh();
     }
     else if (ev === "incoming") pollRadio();
+    else if (ev === "radio_link") { S.radioLink = data; renderRadioLink(data); renderChats(); }
     else if (typeof GC !== "undefined") GC.onEvent(ev, data);       // game center (games.js)
   };
   es.onerror = () => { $("#sideFoot").textContent = "Reconnecting to station…"; };
@@ -266,7 +268,10 @@ function renderChats() {
     ul.appendChild(li);
   }
   const on = [...S.contacts.values()].filter((c) => c.online).length;
-  $("#sideFoot").textContent = `${on} of ${S.contacts.size} known stations online`;
+  const radioDown = S.radioLink && S.radioLink.state !== "ok";
+  $("#sideFoot").textContent = radioDown ? "Radio not responding: check the ANTSDR's cable and power"
+    : `${on} of ${S.contacts.size} known stations online`;
+  $("#sideFoot").classList.toggle("bad", !!radioDown);
   renderOnAir();
   if (typeof GCCHAT !== "undefined") GCCHAT.refresh();
 }
@@ -312,6 +317,27 @@ function updateBusy() {
   }
   h.classList.toggle("busy", busy);
 }
+// the radio watchdog: a banner while the station's radio doesn't respond or is being started again
+function renderRadioLink(st) {
+  const el = $("#radioBanner"), main = $("#main");
+  clearInterval(renderRadioLink._t);
+  if (!el) return;
+  if (!st || st.state === "ok") { el.hidden = true; main.style.paddingTop = ""; return; }
+  const t0 = Date.now() - 1000 * (st.down_for || 0);
+  const draw = () => {
+    const s = Math.max(0, Math.round((Date.now() - t0) / 1000));
+    const dur = s < 90 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+    el.innerHTML = st.state === "reconnecting"
+      ? `<b>Radio disconnected</b> for ${dur}: starting it again (attempt ${st.attempts || 1}). Check the ANTSDR's cable and power. Messages wait and carry on when it's back.`
+      : `<b>Radio not responding</b> for ${dur}: no samples from the ANTSDR. Check its cable and power. Messages wait and carry on when it's back.`;
+    main.style.paddingTop = el.offsetHeight + "px";
+  };
+  el.classList.toggle("reconnecting", st.state === "reconnecting");
+  el.hidden = false;
+  draw();
+  renderRadioLink._t = setInterval(draw, 1000);
+}
+
 // the empty screen says who is on the air
 function renderOnAir() {
   const el = $("#onAir");

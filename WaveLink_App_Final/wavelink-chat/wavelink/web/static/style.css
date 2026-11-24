@@ -883,3 +883,11 @@ table.kv td.pcdown { color: var(--accent); font-weight: 600; }
 .gack .st.bad { color: var(--bad); }
 .via { font-size: 11px; color: var(--muted); }
 .meta .gcount { font: 600 10.5px var(--mono); color: var(--muted); margin-right: 2px; }
+
+/* radio watchdog: the station's radio doesn't respond / is being started again */
+.radio-banner { position: absolute; top: 0; left: 0; right: 0; z-index: 40; padding: 9px 16px; font-size: 13.5px;
+  line-height: 1.4; color: #fff; background: var(--bad); box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .5); }
+.radio-banner.reconnecting { background: color-mix(in srgb, var(--bad) 70%, var(--warn)); }
+.radio-banner b { font-weight: 700; }
+.radio-banner[hidden] { display: none; }
+.sidefoot.bad { color: var(--bad); font-weight: 600; }

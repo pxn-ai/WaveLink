@@ -129,6 +129,10 @@ class Node:
         self.hub = GameHub(self, log=log)
         self._load_history()
         self._running = False
+        # the radio watchdog (GNU Radio PHY): the radio stopped responding / is being started again / is back
+        self.radio_link: dict = dict(getattr(radio, "link", None) or {"state": "ok"})
+        if hasattr(radio, "on_link_state"):
+            radio.on_link_state = self._on_radio_link
 
     # ================================================================ lifecycle
     def start(self):
@@ -162,6 +166,29 @@ class Node:
                 self._purge_stale_incoming()
             except Exception as e:
                 self.log("incoming transfers check failed", e)
+
+    def _on_radio_link(self, st: dict):
+        """The radio watchdog's news (its own thread): the log, a banner in the UI, a toast when it's back."""
+        prev = self.radio_link.get("state")
+        self.radio_link = st
+        s, detail, n = st.get("state"), st.get("detail", ""), int(st.get("attempts") or 0)
+        if s == "down":
+            self.log(f"node{self.addr}: radio not responding ({detail}) - check the ANTSDR's cable and power")
+        elif s == "reconnecting":
+            failed = "failed" in detail                # (one line for the first attempt, then every 10th)
+            if (n == 1 and not failed) or (failed and (n == 1 or n % 10 == 0)):
+                self.log(f"node{self.addr}: radio: {detail}")
+        elif prev != "ok":
+            self.log(f"node{self.addr}: radio {detail or 'back'}")
+            self.publish("toast", f"Radio {detail or 'back'}")
+        self.publish("radio_link", self._radio_link_view())
+
+    def _radio_link_view(self) -> dict:
+        """The radio's state for the UI, with how long it has been down (the browser's clock may differ)."""
+        st = dict(self.radio_link)
+        if st.get("state", "ok") != "ok":
+            st["down_for"] = round(max(0.0, time.time() - float(st.get("down_since") or time.time())), 1)
+        return st
 
     INCOMING_STALE_S = 180.0      # a partly received message with no new fragment this long is given up
 
@@ -1067,7 +1094,8 @@ class Node:
                         messages=[self.messages[u] for u in self.order[-2000:]],
                         unread=dict(self.unread),
                         phy=self.radio.cfg.summary(),
-                        max_bytes=self.mac.max_message_bytes())
+                        max_bytes=self.mac.max_message_bytes(),
+                        radio_link=self._radio_link_view())
 
     def set_power_control(self, on: bool | None = None, target: float | None = None) -> dict:
         """Transmit power control on/off (the dashboard's switch) and its target Es/N0."""

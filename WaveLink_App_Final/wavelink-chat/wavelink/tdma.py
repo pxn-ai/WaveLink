@@ -104,6 +104,8 @@ RELAY_FRESH_S = 6.0
 LINK_FRESH_S = 3.0               # the LINK table lists stations heard this recently (s of radio time)
 FULL_SEARCH_EVERY = 8            # slot-aware search: every 8th cycle the receiver searches everywhere
 RECAL_S = 1.5                    # after a possible timing slip: search everywhere, hear ourselves again
+TROUBLE_S = 3.0                  # frames lost this soon after a timing slip of our own radio stream are the
+                                 # slip's, not the channel's (the link layer keeps the link's rate)
 PROBE_BACKOFF_DB = 20            # a newcomer's first transmission: a probe on its own code, this much down
 PROBE_TRIES = 8                  # ... at most this many times, then it joins on a guess
 DOUBT_PROBES = 4                 # a member in doubt about D (after a slip) probes at most this many slots
@@ -358,6 +360,7 @@ class Tdma:
             setf(self._detect_filter)
         self._faults = self._fault_count()
         self.recal_until = 0.0               # until then: no search windows, own slot searched too
+        self.trouble_t = -1e9                # last timing slip of our radio stream (see timing_trouble)
         self._own_miss = 0                   # own headers not heard back in a row
         self._fb_next = 0.0
         self.d_source = None                 # "self" (own headers heard back) or "peers" (their reports)
@@ -418,6 +421,7 @@ class Tdma:
         f = self._fault_count()
         if f != self._faults:                      # TX underrun / lost RX buffer: D may have moved
             self._faults = f
+            self.trouble_t = now
             self._recalibrate(now, "radio stream gap")
             if self.role == MEMBER and self.D is not None:
                 # our bursts may now reach the air late, into the next slot: until we have heard
@@ -1138,6 +1142,7 @@ class Tdma:
                             self.tfb_about_me[src] = (e, now)
                             # (only matters when we can't hear ourselves: then it is all we know)
                             if abs(e) > 2 * self.gh and self._own_miss > 2:
+                                self.trouble_t = now
                                 self._recalibrate(now, f"station {src} hears us {e} samples off")
                 elif tag == SEC_JREQ:
                     for i in range(0, len(data) - JREQ.size + 1, JREQ.size):
@@ -1349,6 +1354,13 @@ class Tdma:
         fn = getattr(self.radio, "timing_faults", None)
         return int(fn()) if fn else 0
 
+    def timing_trouble(self, now: float) -> bool:
+        """Our own radio stream slipped lately (a TX underrun, receive samples lost, a TX -> RX offset that
+        measured differently, a station hearing us off our slot): frames lost now are most likely the slip's,
+        not the channel's.  (Not merely our own headers going unheard for a while: a station that can't hear
+        itself would be in trouble all the time.)"""
+        return self._tx_doubt or now - self.trouble_t < TROUBLE_S
+
     def _recalibrate(self, now: float, why: str):
         if now >= self.recal_until:
             self.stats["recalibrations"] += 1
@@ -1446,6 +1458,7 @@ class Tdma:
         # a jump (TX underrun, lost RX buffer): believe it when two measurements agree; meanwhile a member
         # sends only quiet probes (with D in doubt its bursts could land in the next or previous slot)
         self._d_odd.append(d)
+        self.trouble_t = self.now()
         if self.role == MEMBER and not self._tx_doubt:
             self._tx_doubt, self._doubt_probes = True, 0
         if len(self._d_odd) >= 2 and abs(self._d_odd[-1] - self._d_odd[-2]) <= 4:

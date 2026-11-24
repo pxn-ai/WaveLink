@@ -19,6 +19,7 @@ built the flowgraph.  Everything else in the flowgraph is stock GNU Radio blocks
 from __future__ import annotations
 
 import collections
+import contextlib
 import importlib.util
 import os
 import shutil
@@ -249,6 +250,7 @@ class DespreaderCore:
         self.q: collections.deque = collections.deque()
         self.q_samples = 0                                  # samples waiting in q
         self.q_max = int(3.0 * cfg.samp_rate)               # up to 3 s of backlog
+        self.pushed = 0                                     # samples the radio has delivered (watchdog)
         self.counters = collections.Counter()
         self.last_frame = None
         self._spec = np.zeros(0, dtype=np.complex64)
@@ -257,6 +259,7 @@ class DespreaderCore:
         self._run = False
 
     def push(self, x: np.ndarray):
+        self.pushed += len(x)
         if self.q_samples < self.q_max:
             self.q.append(np.array(x, dtype=np.complex64, copy=True))
             self.q_samples += len(x)
@@ -422,24 +425,41 @@ class GrcFlowgraph:
                 self.tb.wait()
 
 
+STALL_S = 1.0              # no samples from (or to) the radio for this long: it is not responding
+REOPEN_S = 6.0             # still none after this long: build and start the flowgraph again (libiio gives up on
+                           # a network link after 5 s, and a radio block that has given up never runs again)
+RETRY_S = 3.0              # a radio that can't be reached yet: try again after this long
+
+
+class _Bind:
+    """The interface blocks of the flowgraph in use, and where its sample counts begin in the station's own
+    sample counts, which carry on across a restarted flowgraph (whose counts start at 0 again)."""
+    __slots__ = ("fg", "reg", "tx_off", "rx_off")
+
+    def __init__(self, fg, reg, tx_off: int = 0, rx_off: int = 0):
+        self.fg, self.reg, self.tx_off, self.rx_off = fg, reg, int(tx_off), int(rx_off)
+
+
 class GrcPhyRadio:
-    """Radio interface for the link layer, backed by the .grc flowgraph."""
+    """Radio interface for the link layer, backed by the .grc flowgraph.
+
+    Radio watchdog: when the samples stop (the ANTSDR's cable or power, a hung driver), the station says so
+    after STALL_S (link state 'down', on_link_state); a stream that resumes by itself was only a timing
+    slip.  When nothing has come for REOPEN_S the flowgraph is built and started again, every RETRY_S until
+    the radio answers ('reconnecting').  The app carries on meanwhile - chats, queued and held messages,
+    the time-slot state: sample counts continue across the restart, and the time-slot layer measures the
+    TX -> RX offset again as after any timing slip."""
 
     name = "grc"
     provides_crc = True                    # the flowgraph's stock CRC32 blocks append/check
 
     def __init__(self, fg: GrcFlowgraph, node_id: int, cfg: PhyConfig, tx_buffer: int = 65536,
                  simulated: bool = False):
-        self.fg = fg
         self.addr = int(node_id)
         self.cfg = cfg
         self.simulated = simulated             # grc/cdma_phy_sim.grc: no radio, see tx_rx_guess()
         reg = REGISTRY.get(self.addr, {})
-        missing = {"mac_tx", "mac_rx", "combiner", "despreader"} - set(reg)
-        if missing:
-            raise RuntimeError(f"flowgraph has no {sorted(missing)} block for node {self.addr}; "
-                               f"check the node_id parameters of the CDMA blocks in the .grc")
-        self.reg = reg
+        self._check_reg(reg)
         self.on_frame = lambda f: None
         self.on_reject = lambda reason, code: None
         self.last_frame = None
@@ -452,15 +472,54 @@ class GrcPhyRadio:
         self._lead_s = 0.15
         self._lead_checked = time.monotonic()
         self._late_seen = 0
-        reg["mac_rx"].handler = self._rx_pdu
         # fake ANTSDRs (--uri fake:): timers run on the air's sample clock, which may be slower than
         # real time when the PC can't run all its stations at full speed (see fake_antsdr.py)
         self._clock = time.monotonic
         fake = sys.modules.get("wavelink.fake_antsdr")
-        if fake is not None and fake.installed():
-            self._clock = fake.radio_time
-            reg["combiner"].clock = fake.radio_time
-            reg["combiner"]._t0 = None
+        self._fake = fake if fake is not None and fake.installed() else None
+        if self._fake is not None:
+            self._clock = self._fake.radio_time
+        # radio watchdog (see the class docstring)
+        self.reopen = None                     # () -> a new GrcFlowgraph (set by the app; None: only watch)
+        self.sync_lock = None                  # the link layer's lock: a new flowgraph is swapped in under it
+        self.on_link_state = None              # callable(dict): the radio stopped / is reconnecting / is back
+        self.link = dict(state="ok", detail="", since=time.time(), down_s=0.0, attempts=0, reconnects=0)
+        self._down_t = time.time()
+        self._swaps = 0                        # flowgraphs swapped in (each one a timing fault)
+        self._detect_fn = None
+        self._under_base = self._late_base = self._frames_base = 0
+        self._watching = False
+        self._b = _Bind(fg, reg)
+        self._bind_blocks(self._b)
+
+    def _check_reg(self, reg: dict):
+        missing = {"mac_tx", "mac_rx", "combiner", "despreader"} - set(reg)
+        if missing:
+            raise RuntimeError(f"flowgraph has no {sorted(missing)} block for node {self.addr}; "
+                               f"check the node_id parameters of the CDMA blocks in the .grc")
+
+    @property
+    def reg(self) -> dict:
+        """The interface blocks of the flowgraph in use (by role)."""
+        return self._b.reg
+
+    @reg.setter
+    def reg(self, value: dict):                # (tests build a radio around bare blocks)
+        b = self.__dict__.get("_b")
+        self._b = _Bind(b.fg if b is not None else None, value)
+
+    @property
+    def fg(self) -> GrcFlowgraph:
+        return self._b.fg
+
+    def _bind_blocks(self, b: _Bind):
+        """Hook the app into a flowgraph's interface blocks."""
+        b.reg["mac_rx"].handler = self._rx_pdu
+        if self._fake is not None:
+            b.reg["combiner"].clock = self._fake.radio_time
+            b.reg["combiner"]._t0 = None
+        if self._detect_fn is not None:
+            self._apply_detect_filter(b)
 
     # ---------------------------------------------------------------- link-layer API
     def now(self) -> float:
@@ -525,7 +584,8 @@ class GrcPhyRadio:
 
     def tx_count(self) -> int:
         """Transmit samples produced so far (the combiner works in chips: sps samples each)."""
-        return self.reg["combiner"].mixer.sample_count * self.cfg.sps
+        b = self._b
+        return b.reg["combiner"].mixer.sample_count * self.cfg.sps + b.tx_off
 
     def tx_lead(self) -> int:
         self._adapt_lead()
@@ -547,8 +607,9 @@ class GrcPhyRadio:
         self._late_seen = late
 
     def rx_count(self) -> int:
-        d = self.reg["despreader"].demod
-        return d.buf_start + d.buf.size
+        b = self._b
+        d = b.reg["despreader"].demod
+        return d.buf_start + d.buf.size + b.rx_off
 
     def tx_rx_guess(self) -> int:
         """The TX -> RX offset D before the station has heard itself: the transmit samples the chain holds
@@ -576,36 +637,51 @@ class GrcPhyRadio:
     def send_at(self, code_idx: int, payload: bytes, mod: str, start: int, gain_db: float = 0.0) -> int | None:
         """Hand a burst to the flowgraph to start at transmit sample `start` (rounded down to a chip).
         Returns the sample after its end.  Whether it made it in time shows in late_bursts()."""
-        chip = int(start) // self.cfg.sps
+        b = self._b
+        chip = (int(start) - b.tx_off) // self.cfg.sps
         kw = {"at": chip}
         if gain_db and self.supports_tx_gain:
             kw["gain_db"] = float(gain_db)
-        self.reg["mac_tx"].submit(payload, int(code_idx), mod, **kw)
+        b.reg["mac_tx"].submit(payload, int(code_idx), mod, **kw)
         self.counters["tx_bursts"] += 1
         self.counters["tx_bytes"] += len(payload)
-        return (chip + self._burst_chips(len(payload), mod)) * self.cfg.sps
+        return (chip + self._burst_chips(len(payload), mod)) * self.cfg.sps + b.tx_off
 
     def late_bursts(self) -> int:
-        return self.reg["combiner"].mixer.late
+        return self._late_base + self._b.reg["combiner"].mixer.late
 
     def blank_rx(self, start: int, end: int):
-        self.reg["despreader"].demod.blank(start, end)
+        b = self._b
+        b.reg["despreader"].demod.blank(int(start) - b.rx_off, int(end) - b.rx_off)
 
     @property
     def tx_quantum(self) -> int:
         return self.cfg.sps                # the combiner places bursts on whole chips
 
     def set_detect_filter(self, fn):
-        self.reg["despreader"].demod.detect_filter = fn
+        self._detect_fn = fn
+        self._apply_detect_filter(self._b)
+
+    def _apply_detect_filter(self, b: _Bind):
+        fn, off = self._detect_fn, b.rx_off
+        b.reg["despreader"].demod.detect_filter = fn if fn is None or not off else (lambda code, t: fn(code, t + off))
 
     def set_search_windows(self, windows, until: int = 0):
-        self.reg["despreader"].demod.set_windows(windows, until)
+        b = self._b
+        off = b.rx_off
+        if off:
+            if windows:
+                windows = [(w[0] - off, w[1] - off) + tuple(w[2:]) for w in windows]
+            if until:
+                until = int(until) - off
+        b.reg["despreader"].demod.set_windows(windows, until)
 
     def timing_faults(self) -> int:
-        """TX underruns: each may have moved the TX -> RX offset.  (Samples the despreader drops when the
-        PC falls behind don't count: it skips them and keeps its sample count right, so the offset stays.
-        Counting them made a slow PC recalibrate, search everywhere, fall further behind and drop more.)"""
-        return self.reg["combiner"].underruns
+        """TX underruns: each may have moved the TX -> RX offset; so has a flowgraph started again.  (Samples
+        the despreader drops when the PC falls behind don't count: it skips them and keeps its sample count
+        right, so the offset stays.  Counting them made a slow PC recalibrate, search everywhere, fall further
+        behind and drop more.)"""
+        return self._under_base + self._swaps + self._b.reg["combiner"].underruns
 
     def tx_backlog(self, code_idx: int) -> float:
         return max(0.0, self.busy_until[code_idx] - self.now())
@@ -628,24 +704,152 @@ class GrcPhyRadio:
                 print("PHY -> MAC error:", repr(e), file=sys.stderr)
 
     def _rx_pdu_frame(self, meta: dict, data: bytes):
-        d = self.reg["despreader"]
+        b = self._b
+        d = b.reg["despreader"]
         es = float(meta.get("esn0_db", meta.get("snr_db", 0.0)))
+        si = meta.get("sample_index")
         f = GrcFrame(payload=data, code_idx=int(meta.get("code", -1)), snr_db=float(meta.get("snr_db", 0.0)),
                      esn0_db=es, chip_snr_db=es - 10 * np.log10(self.cfg.sf),
                      cfo_hz=float(meta.get("cfo_hz", 0.0)), metric=float(meta.get("metric", 0.0)),
                      mod=str(meta.get("mod", "bpsk")), mcs=str(meta.get("mcs", meta.get("mod", ""))),
                      fec_iters=int(meta.get("fec_iters", 0)),
                      constellation=(d.last_frame.constellation if d.last_frame is not None else None),
-                     sample_index=(int(meta["sample_index"]) if meta.get("sample_index") is not None else None))
+                     sample_index=(int(si) + b.rx_off if si is not None else None))
         self.counters["rx_frames"] += 1
         self.on_frame(f)
 
     # ---------------------------------------------------------------- lifecycle
     def start(self):
         self.fg.start()
+        if not self.simulated and not self._watching:
+            self._watching = True
+            threading.Thread(target=self._watch, name=f"radio{self.addr}-watch", daemon=True).start()
 
     def stop(self):
+        self._watching = False
         self.fg.stop()
+
+    # ---------------------------------------------------------------- radio watchdog
+    @property
+    def link_ok(self) -> bool:
+        """The radio is streaming (False while it doesn't respond or is being started again)."""
+        return self.link["state"] == "ok"
+
+    def _set_link(self, state: str, detail: str = "", **kw):
+        st = self.link
+        if state != st["state"]:
+            st["since"] = time.time()
+        st.update(state=state, detail=detail, **kw)
+        if state != "ok":
+            st["down_since"] = self._down_t        # (wall clock: when its samples stopped)
+        fn = self.on_link_state
+        if fn is None:
+            print(f"radio {self.addr}: {state}{' - ' + detail if detail else ''}", file=sys.stderr)
+            return
+        try:
+            fn(dict(st))
+        except Exception as e:                 # (the app's handler must not stop the watchdog)
+            print("radio link handler error:", repr(e), file=sys.stderr)
+
+    @staticmethod
+    def _seen(b: _Bind) -> tuple:
+        """Samples the radio has delivered so far, and chips the transmit chain has handed it."""
+        return b.reg["despreader"].pushed, b.reg["combiner"].made
+
+    def _watch(self):
+        b = self._b
+        last = self._seen(b)
+        t_rx = t_tx = None                     # radio time each count last moved (None: not streaming yet)
+        while self._watching:
+            time.sleep(0.2)
+            if not self._watching:
+                return
+            now = self.now()
+            rx, tx = self._seen(b)
+            if rx != last[0]:
+                t_rx = now
+            if tx != last[1]:
+                t_tx = now
+            last = (rx, tx)
+            if t_rx is None or t_tx is None:
+                continue                       # (starting up: watched once both streams have run)
+            quiet = now - min(t_rx, t_tx)
+            state = self.link["state"]
+            if quiet < STALL_S:
+                if state != "ok":
+                    down = time.time() - self._down_t
+                    self._set_link("ok", f"back after {down:.0f} s", down_s=round(down, 1), attempts=0)
+                continue
+            if state == "ok":
+                self._down_t = time.time() - quiet
+                what = "no samples from the radio" if now - t_rx >= STALL_S else "the radio takes no samples"
+                self._set_link("down", what)
+            if quiet >= REOPEN_S and self.reopen is not None:
+                anchor = (self.tx_count(), t_tx, self.rx_count(), t_rx)
+                if not self._reconnect(anchor):
+                    return
+                b = self._b
+                last = self._seen(b)
+                t_rx = t_tx = self.now()       # (one that doesn't stream either is started again in turn)
+
+    @staticmethod
+    def _stop_quietly(fg):
+        try:
+            fg.stop()                          # (may wait for a radio block stuck in the driver)
+        except Exception:
+            pass
+
+    def _reconnect(self, anchor) -> bool:
+        """Build and start the flowgraph again until the radio answers.  False: the station is stopping."""
+        tx_a, t_tx, rx_a, t_rx = anchor
+        old = self._b
+        old.reg["mac_rx"].handler = None       # (anything the old one still decodes is dropped)
+        try:
+            old.reg["despreader"].stop()
+        except Exception:
+            pass
+        if old.fg is not None:
+            th = threading.Thread(target=self._stop_quietly, args=(old.fg,), name=f"radio{self.addr}-stop",
+                                  daemon=True)
+            th.start()
+            th.join(8.0)                       # (its radio blocks let go of the radio first, if they will)
+        self._under_base += old.reg["combiner"].underruns
+        self._late_base += old.reg["combiner"].mixer.late
+        self._frames_base += old.reg["despreader"].counters["frames"]
+        # (a flowgraph started again that never streamed: the attempts carry on from there)
+        n = int(self.link.get("attempts") or 0) if self.link["state"] == "reconnecting" else 0
+        while self._watching:
+            n += 1
+            self._set_link("reconnecting", f"starting the radio again (attempt {n})", attempts=n)
+            fg = None
+            try:
+                fg = self.reopen()
+                reg = REGISTRY.get(self.addr, {})
+                self._check_reg(reg)
+                fs, sps, t0 = self.cfg.samp_rate, self.cfg.sps, self.now()
+                b = _Bind(fg, reg, int(tx_a + (t0 - t_tx) * fs) // sps * sps, int(rx_a + (t0 - t_rx) * fs))
+                lk = self.sync_lock
+                with (lk if lk is not None else contextlib.nullcontext()):
+                    self._b = b
+                    self._swaps += 1
+                    self._late_seen = 0
+                    self.busy_until.clear()
+                    self._bind_blocks(b)
+                fg.start()
+                if not self._watching:         # (the station stopped meanwhile: stop() saw the old one)
+                    self._stop_quietly(fg)
+                    return False
+            except Exception as e:
+                if fg is not None:             # (a flowgraph half started lets go of the radio)
+                    threading.Thread(target=self._stop_quietly, args=(fg,), daemon=True).start()
+                self._set_link("reconnecting", f"attempt {n} failed: {str(e) or type(e).__name__}", attempts=n)
+                t_end = time.monotonic() + RETRY_S
+                while self._watching and time.monotonic() < t_end:
+                    time.sleep(0.1)
+                continue
+            self.link["reconnects"] += 1
+            return True
+        return False
 
     # ---------------------------------------------------------------- dashboard
     def spectrum(self, nfft: int = 256) -> dict:
@@ -660,25 +864,28 @@ class GrcPhyRadio:
         return dict(freqs=(f / 1e3).round(1).tolist(), psd=P.round(1).tolist())
 
     def status(self) -> dict:
-        d = self.reg["despreader"]
-        c = self.reg["combiner"]
+        b = self._b
+        d = b.reg["despreader"]
+        c = b.reg["combiner"]
         out = dict(d.demod.stats)
         out.update(d.counters)
         out.update(self.counters)
-        out["tx_underruns"] = c.underruns
+        out["tx_underruns"] = self._under_base + c.underruns
         out["tx_active_codes"] = c.mixer.active_codes()
-        out["tx_late"] = c.mixer.late
+        out["tx_late"] = self.late_bursts()
         out["tx_timed"] = c.timed
         m = c.lead_margin_s()
         out["tx_lead_ms"] = round(self._lead_s * 1e3)
         if m is not None:
             out["tx_margin_ms"] = round(m * 1e3, 1)
-        dec = self.reg.get("ldpc_decoder")
+        dec = b.reg.get("ldpc_decoder")
         if dec is not None:
             out.update(dec.stats)
             out["fec_busy_s"] = round(dec.busy_s, 2)
         # frames the despreader found but the stock CRC32 check dropped (approx.)
-        out["crc_drops"] = max(0, d.counters["frames"] - self.counters["rx_frames"])
+        out["crc_drops"] = max(0, self._frames_base + d.counters["frames"] - self.counters["rx_frames"])
+        out["radio_link"] = dict(self.link)
+        out["radio_reconnects"] = self.link["reconnects"]
         fake = sys.modules.get("wavelink.fake_antsdr")
         if fake is not None and fake.installed():
             out["fake_sdr"] = fake.station_status()
@@ -704,9 +911,11 @@ def gr_log_warnings_only():
         pass                                           # (an older GNU Radio: its own default)
 
 
-def open_flowgraph(grc_file: str, params: dict, log=print) -> GrcFlowgraph:
+def open_flowgraph(grc_file: str, params: dict, log=print, recompile: bool = True) -> GrcFlowgraph:
     """Compile + instantiate a .grc; its CDMA blocks register themselves in REGISTRY.  (Locked: two
-    stations started at once on one PC would otherwise rewrite build/grc while the other imports it.)"""
+    stations started at once on one PC would otherwise rewrite build/grc while the other imports it.)
+    recompile=False: use the flowgraph compiled before, if there is one (the radio watchdog starting
+    the radio again)."""
     import fcntl
     REGISTRY.clear()
     gr_log_warnings_only()                             # (before the blocks and their loggers exist)
@@ -714,7 +923,9 @@ def open_flowgraph(grc_file: str, params: dict, log=print) -> GrcFlowgraph:
     with open(os.path.join(BUILD_DIR, ".lock"), "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
         try:
-            py = compile_grc(grc_file, log=log)
+            py = os.path.join(BUILD_DIR, grc_id(os.path.abspath(grc_file)) + ".py")
+            if recompile or not os.path.exists(py):
+                py = compile_grc(grc_file, log=log)
             tb = load_top_block(py, **params)
         finally:
             fcntl.flock(lk, fcntl.LOCK_UN)

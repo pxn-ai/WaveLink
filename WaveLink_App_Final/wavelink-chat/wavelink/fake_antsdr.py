@@ -31,6 +31,14 @@ time two stations transmit at once and some third station hears both (TD-CDMA sl
 A slot is where one station's radio plugs in; by default the station's address (`fake:` = air
 "wavelink", slot = --id).  `fake:lab/5` plugs into slot 5 of air "lab" (e.g. a second station
 with the same address).
+
+A pulled cable (FakeAir.set_unplugged, control command {"cmd": "unplug", "slot": N, "on": true}):
+no samples either way, as when the ANTSDR's Ethernet link is gone.  The radio blocks wait, as
+libiio's buffer refill and push do, and give up after IIO_TIMEOUT_S (libiio's network timeout):
+they end (work() returns -1) and never run again.  Radio blocks made while the cable is out fail
+("Unable to create context"); made after it is back they start fresh streams, as a new libiio
+context does.  A cable back within IIO_TIMEOUT_S: the streams go on, with a gap (TX underrun, lost
+receive samples).
 """
 from __future__ import annotations
 
@@ -73,7 +81,10 @@ SLOTS = 6
 # header fields
 (H_MAGIC, H_VER, H_RING, H_TXW, H_TXR, H_RXW, H_RXR, H_GEN, H_ACK, H_BEAT, H_AIRBEAT, H_TXATT,
  H_RXGAIN, H_FREQ, H_RATE, H_TXB, H_RXB, H_RXON, H_UNDER, H_UNDER_S, H_OVER, H_OVER_S, H_PID,
- H_AIRCLK, H_CLIP_TX, H_AIRWALL, H_SPEED, H_BLOCK) = range(28)
+ H_AIRCLK, H_CLIP_TX, H_AIRWALL, H_SPEED, H_BLOCK, H_UNPLUG) = range(29)
+
+IIO_TIMEOUT_S = 5.0                  # libiio's network timeout: a buffer refill / push waiting this long fails
+CONNECT_FAIL_S = 1.0                 # a context to a radio that can't be reached fails after about this long
 
 
 def shm_path(air: str, slot: int) -> str:
@@ -163,20 +174,58 @@ class _StationLink:
         self.shm = _Shm(path)
         self.air, self.slot = air, slot
         self.fs = 0
+        self._warned = False
+        self.air_lost = 0                              # buffers dropped / zeros made up while the air was gone
+        self.epoch = 0                                 # flowgraph generation using this radio (see block())
+        self.made = collections.Counter()              # radio blocks made, by kind
+        self._attach()
+
+    def _attach(self):
+        """Fresh streams: the air resets both rings, then acknowledges."""
         h = self.shm.hdr
         token = (os.getpid() << 16) | random.getrandbits(16)
         h[H_PID] = os.getpid()
         h[H_RXON] = 0
-        h[H_GEN] = token                               # the air resets both streams, then acknowledges
+        h[H_GEN] = token
         t_end = time.monotonic() + 5.0
         while h[H_ACK] != token:
             if time.monotonic() > t_end:
-                raise RuntimeError(f"fake ANTSDR: the fake air '{air}' does not answer. Is "
-                                   f"'python3 -m wavelink fake-air --name {air}' running?")
+                raise RuntimeError(f"fake ANTSDR: the fake air '{self.air}' does not answer. Is "
+                                   f"'python3 -m wavelink fake-air --name {self.air}' running?")
             time.sleep(0.01)
         self.beat()
-        self._warned = False
-        self.air_lost = 0                              # buffers dropped / zeros made up while the air was gone
+
+    def block(self, kind: str) -> int:
+        """A radio block of this kind ('sink', 'source') is being made: its flowgraph's generation.  The first
+        block of a newer flowgraph (the app started it again after the radio stopped) starts fresh streams,
+        as a new libiio context does; the blocks of an older one then end.  With the cable out it fails
+        after a while, as creating a libiio context does."""
+        if int(self.shm.hdr[H_UNPLUG]):
+            time.sleep(CONNECT_FAIL_S)
+            raise RuntimeError("Unable to create context")
+        self.made[kind] += 1
+        if self.made[kind] > self.epoch:
+            if self.epoch:
+                self._attach()
+            self.epoch = self.made[kind]
+        return self.epoch
+
+    def gone(self, epoch: int, since: list, what: str) -> bool:
+        """A radio block waiting on the air: has it to give up?  Yes when a newer flowgraph uses the radio,
+        or when the cable has been out for IIO_TIMEOUT_S (since[0]: when the wait began with the cable out)."""
+        if epoch != self.epoch:
+            return True
+        if not int(self.shm.hdr[H_UNPLUG]):
+            since[0] = None
+            return False
+        t = time.monotonic()
+        if since[0] is None:
+            since[0] = t
+            return False
+        if t - since[0] < IIO_TIMEOUT_S:
+            return False
+        print(f"fake ANTSDR slot {self.slot}: Unable to {what} buffer: Connection timed out", file=sys.stderr)
+        return True
 
     def beat(self):
         self.shm.hdr[H_BEAT] = time.monotonic_ns()
@@ -233,6 +282,8 @@ def _make_blocks():
         def __init__(self, uri, ch_en=(True, True), buffer_size=32768, cyclic=False):
             gr.sync_block.__init__(self, name="fake_fmcomms2_sink", in_sig=[np.complex64], out_sig=None)
             self.link = _StationLink.get(uri)
+            self.epoch = self.link.block("sink")
+            self._since = [None]
             self.B = int(buffer_size)
             if not 0 < self.B * KERNEL_BUFFERS < self.link.shm.ring:
                 raise ValueError(f"fake ANTSDR: buffer size {self.B} out of range")
@@ -274,6 +325,8 @@ def _make_blocks():
             limit = (KERNEL_BUFFERS - 1) * B
             for k in range(0, n, B):
                 while True:                            # iio_buffer_push(): wait for a free kernel buffer
+                    if link.gone(self.epoch, self._since, "push"):
+                        return -1                      # (libiio gave up, or a newer flowgraph has the radio)
                     queued = int(h[H_TXW]) - int(h[H_TXR])
                     if queued <= limit:
                         break
@@ -302,6 +355,8 @@ def _make_blocks():
         def __init__(self, uri, ch_en=(True, True), buffer_size=32768):
             gr.sync_block.__init__(self, name="fake_fmcomms2_source", in_sig=None, out_sig=[np.complex64])
             self.link = _StationLink.get(uri)
+            self.epoch = self.link.block("source")
+            self._since = [None]
             self.B = int(buffer_size)
             if not 0 < self.B * KERNEL_BUFFERS < self.link.shm.ring:
                 raise ValueError(f"fake ANTSDR: buffer size {self.B} out of range")
@@ -357,6 +412,8 @@ def _make_blocks():
                 h[H_RXON] = 1
             fs = float(link.fs or 4e6)
             while True:                                # iio_buffer_refill(): wait for a full buffer
+                if link.gone(self.epoch, self._since, "refill"):
+                    return -1                          # (libiio gave up, or a newer flowgraph has the radio)
                 avail = int(h[H_RXW]) - int(h[H_RXR])
                 if avail >= B:
                     break
@@ -439,6 +496,7 @@ class _Slot:
         self.lo_hz = 0.0
         self.ppm = 0.0
         self.rs_tx = self.rs_rx = None
+        self.unplugged = False        # its radio's cable is out: no samples either way
         self.stats = collections.Counter()
 
     def setup_clock(self):
@@ -498,7 +556,7 @@ class _Slot:
     def take_tx(self, N: int, out: np.ndarray) -> bool:
         """Put the next N air samples of this station's DAC into out.  False: nothing written
         (station off the air; out is left as it was)."""
-        if not self.alive:
+        if not self.alive or self.unplugged:
             return False
         h = self.shm.hdr
         rs = self.rs_tx
@@ -534,6 +592,9 @@ class _Slot:
 
     def deliver(self, y: np.ndarray):
         """Receive samples into this station's ADC buffers (resampled to its clock, faults)."""
+        if self.unplugged:                             # (they never reach the PC)
+            self.stats["unplugged_lost"] += y.size
+            return
         rs = self.rs_rx
         if rs is not None:
             from .modem import _FD_TAPS
@@ -672,6 +733,16 @@ class FakeAir:
         for other in self.slots:
             if other != slot:
                 self.set_link(slot, other, cut=off)
+
+    def set_unplugged(self, slot: int, out: bool = True):
+        """Pull (out=True) or plug back the cable of a slot's radio: no samples either way meanwhile; after
+        IIO_TIMEOUT_S its radio blocks give up (see the module docstring)."""
+        s = self.slots[slot]
+        with self._lock:
+            s.unplugged = bool(out)
+            s.shm.hdr[H_UNPLUG] = 1 if out else 0
+            self.slips.append((self.clock / self.fs, slot, "cable out" if out else "cable back"))
+        self.log(f"slot {slot}: cable {'pulled' if out else 'back'}")
 
     def set_ppm(self, slot: int, ppm: float):
         """Sample-clock error of a station's radio (its TX and RX); takes effect when it attaches."""
@@ -897,7 +968,7 @@ class FakeAir:
             h = s.shm.hdr
             if not s.attached:
                 continue
-            out["slots"][i] = dict(alive=s.alive, pid=s.pid, attaches=s.stats["attaches"],
+            out["slots"][i] = dict(alive=s.alive, pid=s.pid, attaches=s.stats["attaches"], unplugged=s.unplugged,
                                    underruns=int(h[H_UNDER]), underrun_ms=round(1000 * int(h[H_UNDER_S]) / self.fs, 1),
                                    overflows=int(h[H_OVER]), overflow_ms=round(1000 * int(h[H_OVER_S]) / self.fs, 1),
                                    underrun_samples=int(h[H_UNDER_S]), overflow_samples=int(h[H_OVER_S]),
@@ -964,6 +1035,8 @@ class FakeAir:
             self.inject_tx_gap(int(j["slot"]), int(j["n"]))
         elif c == "rxdrop":
             self.inject_rx_drop(int(j["slot"]), int(j["n"]))
+        elif c == "unplug":
+            self.set_unplugged(int(j["slot"]), bool(j.get("on", True)))
         elif c == "speed":
             self.set_speed(float(j["x"]))
         elif c == "interference":

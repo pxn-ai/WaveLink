@@ -146,10 +146,11 @@ def grc_station_radio(fg, node_id: int, tx_buffer: int, simulated: bool = False)
     return GrcPhyRadio(fg, node_id, cfg, tx_buffer=tx_buffer, simulated=simulated)
 
 
-def open_grc(path: str, params: dict):
-    """Compile the .grc (always, so edits made in GRC take effect) and instantiate it."""
+def open_grc(path: str, params: dict, recompile: bool = True):
+    """Compile the .grc (always, so edits made in GRC take effect) and instantiate it.  recompile=False:
+    instantiate the one compiled at start-up again (the radio watchdog restarting a radio)."""
     from .grc_phy import open_flowgraph
-    return open_flowgraph(path, params)
+    return open_flowgraph(path, params, recompile=recompile)
 
 
 def cmd_run(a):
@@ -162,9 +163,12 @@ def cmd_run(a):
             from . import fake_antsdr
             fake_antsdr.install(default_slot=a.id)
         codes = resolve_codes(a)
-        fg = open_grc(a.grc, dict(node_id=a.id, uri=a.uri, center_freq=a.freq, rx_gain=a.rx_gain,
-                                  tx_atten=a.tx_atten, tx_buffer=a.tx_buffer, code_family=codes))
+        params = dict(node_id=a.id, uri=a.uri, center_freq=a.freq, rx_gain=a.rx_gain,
+                      tx_atten=a.tx_atten, tx_buffer=a.tx_buffer, code_family=codes)
+        fg = open_grc(a.grc, params)
         radio = grc_station_radio(fg, a.id, a.tx_buffer)
+        # radio watchdog: a radio whose samples stop (its cable, its power) is started again with this
+        radio.reopen = lambda: open_grc(a.grc, params, recompile=False)
         if radio.cfg.codes != codes:
             print(f"warning: {a.grc} has no code_family parameter: it runs {radio.cfg.codes} codes, not {codes} "
                   f"(rebuild it with tools/make_grc.py)")

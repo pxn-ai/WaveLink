@@ -479,7 +479,10 @@ next two slot headers: an *ACK record* (sender, acker, msg_id, fragments, cumula
 last, Es/N0, a SACK bitmap of up to 512 fragments beyond the base). A fragment sent before the one heard last and
 still missing is known lost and goes again in the sender's next slot; a timeout (3 cycles + 2 hand-over times
 + 0.1 s, or 2.5 × the measured round trip + a cycle if that is longer) resends what is in flight. Losses that keep
-coming step the link's modulation down for 10 s, as with ALOHA (section 2.2). A big transfer streams in every slot,
+coming step the link's modulation down for 10 s, as with ALOHA (section 2.2), but at most two rungs below what the
+receiver's reports allow (they already follow its SNR, interference included); and frames lost while the station's
+own radio stream slipped (a TX underrun, lost receive samples, the TX → RX offset in doubt) don't count against the
+link: they were the slip's, not the channel's. A big transfer streams in every slot,
 up to 496 fragments ahead of the first one not yet acknowledged. If the receiver leaves the network (no slot, not
 heard for 5 s), a message to it is *held*: nothing more is sent until the receiver is back in the network, and then
 it carries on from where it stopped, so a few seconds out of range, or a relay restarting, doesn't lose a file. If
@@ -1120,7 +1123,9 @@ clock: per-link gain, delay, phase and LO offset, a station's own transmitter 25
 station needs about 0.5 cores of a 2.1 GHz Xeon idle and 0.9 while receiving (section 9); on a PC too small for all of them,
 `--speed 0.5` runs the air (and the stations' timers, which follow its sample clock) at half speed. The control port takes JSON
 lines: `{"cmd": "cut", "a": 1, "b": 3, "on": true}`, `{"cmd": "off", "slot": 2}`, `{"cmd": "esn0", "db": 10}`,
-`{"cmd": "txgap", "slot": 2, "n": 6000}`, `{"cmd": "status"}`.
+`{"cmd": "txgap", "slot": 2, "n": 6000}`, `{"cmd": "unplug", "slot": 2, "on": true}` (its radio's cable pulled: no
+samples either way; after 5 s its radio blocks give up as gr-iio's do, and new ones fail until `"on": false`),
+`{"cmd": "status"}`.
 
 The dashboard's mode line shows which PHY a station runs: "GNU Radio PHY · ANTSDR", "GNU Radio PHY · simulated
 channel" or "simulation (numpy PHY)".
@@ -1378,6 +1383,13 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
 - **TD-CDMA: "late bursts" climbing** (dashboard, *Time slots* panel). Bursts reached the radio after their slot had
   begun and were dropped (they would have landed in another station's slot). The flowgraph hands bursts over
   earlier by itself (up to 450 ms ahead); if the count keeps climbing the PC is overloaded: close other programs.
+- **"Radio not responding" (a red banner over the chat, and a console line).** The station gets no samples from
+  its ANTSDR, or the ANTSDR takes none: its Ethernet cable, its power, or a hung driver. A stream that resumes within
+  a few seconds was a glitch (the station re-measures its timing, as after a TX underrun). After 6 s with nothing
+  (libiio gives up on a network link after 5 s, and gr-iio's blocks then stop for good) the station builds and
+  starts its flowgraph again, every 3 s until the radio answers: "Radio disconnected: starting it again (attempt N)".
+  Nothing is lost meanwhile: the chats stay, messages to and from the station wait instead of failing, and when the
+  radio is back the station rejoins the network and they carry on. Check the cable and `iio_info -u <uri>`.
 - **TD-CDMA: "D jumps", or "receiver search: everywhere (checking timing)".** A TX underrun or a lost RX buffer
   shifted the station's TX → RX offset; it measures it again within a few slots. If it happens often, raise
   `--tx-buffer` and see the RX overflow item above.
