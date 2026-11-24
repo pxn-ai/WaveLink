@@ -230,7 +230,7 @@ async def play_race(pages, n, laps=2, rematch=True, biome=1):
             await g.press("#gccText", "Enter")
             await wait_for(host, "[...S.msgs.values()].some((m) => m.text === 'wasd and space go here, not to my car')", 30, "chat from the race")
             await shot(g, f"race-{n}p-chat.png")
-            running = await g.evaluate(f"!!RACE.root && RACE.tg() > {tg0} + 0.5")
+            running = await wait_for(g, f"!!RACE.root && RACE.tg() > {tg0} + 0.5", 5, "race advancing during chat")
             heard = await host.evaluate(f"RACE.cars[{n - 1}].rx[RACE.cars[{n - 1}].rx.length - 1] > {heard0}")
             await g.press("#gccText", "Escape")
             print(f"race 1: chat sent from the race; the race kept running {running}, the others kept hearing the car {heard}")
@@ -325,6 +325,14 @@ async def verify_biomes(pages):
         await asyncio.sleep(0.35)
         await shot(host, f"race-biome{bm}-chase.png")
         await host.keyboard.press("v")
+        await wait_for(host, "pref('raceCam') === 'bird' && RACE.birdOn && RACE.miniCv.hidden", 5,
+                       f"bird's-eye camera active in biome {bm}")
+        await asyncio.sleep(0.25)
+        if bm == 0:
+            await shot(host, "race-biome0-bird.png")
+        await host.keyboard.press("v")
+        await wait_for(host, "pref('raceCam') === 'north' && !RACE.miniCv.hidden", 5,
+                       f"north-up camera restored in biome {bm}")
         for pg in pages:
             await pg.evaluate("clearInterval(window.__auto); setPref('raceCam', 'north')")
         await host.evaluate(f"GC.post({{a: 'leave', r: '{rid}'}})")
@@ -332,7 +340,93 @@ async def verify_biomes(pages):
             await wait_for(pg, f"(GC.room('{rid}') || {{}}).state === 'closed'", 20, f"biome {bm} closed on guests")
         for pg in pages:
             await pg.evaluate(f"GC.post({{a: 'dismiss', r: '{rid}'}}).catch(() => 0).then(() => {{ GC.focus = null; GC.unmount(); GC.render(); }})")
-    print("Slot Rush biome QA: verified biomes 0, 2, 3, 4 (plus 1 in play_race) in north-up and chase cameras")
+    print("Slot Rush biome QA: verified biomes 0, 2, 3, 4 (plus 1 in play_race) across north-up, chase, and bird's-eye")
+    return True
+
+
+async def verify_spectator(pages):
+    """Test Live Now discovery + read-only UNO & Slot Rush spectator UX on a non-playing station."""
+    if len(pages) < 3:
+        return True
+    p0, p1, spec = pages[0], pages[1], pages[2]
+    for pg in pages:
+        await pg.evaluate("""(async () => {
+          for (const r of (GC.snap?.rooms || [])) {
+            if (r.state === 'closed') try { await GC.post({a: 'dismiss', r: r.r}); } catch (e) {}
+          }
+          GC.focus = null; GC.unmount();
+          if (GC.snap?.watching) try { await GC.post({a: 'unwatch'}); } catch (e) {}
+          if (!GC.open) GC.show(true); else GC.render();
+        })()""")
+
+    # UNO Spectator
+    rid_u = await make_room([p0, p1], "uno")
+    await wait_for(p0, "!!document.querySelector('.lobby .primary:not([disabled])')", 20, "2p UNO lobby ready")
+    await p0.click(".lobby .primary")
+    for pg in (p0, p1):
+        await wait_for(pg, "!!(UNO.view && UNO.el)", 20, "2p UNO table")
+    await wait_for(spec, f"!!document.querySelector(`.live-row .watch[data-r='{rid_u}']`)", 15, "Live Now UNO row")
+    await shot(spec, "live-now-home.png")
+    await spec.click(f".live-row .watch[data-r='{rid_u}']")
+    await wait_for(spec, "!!document.querySelector('.uno-room.is-spec') && !!UNO.pub && UNO.view === null", 20,
+                   "UNO spectator table")
+    uno_dom = await spec.evaluate("""(() => ({
+      badge: document.querySelector('.uno-room .spec-badge')?.textContent,
+      hands: document.querySelectorAll('.uno-hand').length,
+      btns: document.querySelectorAll('.uno-bar .uno-btn').length,
+      backs: document.querySelectorAll('.seat .card.cback').length,
+      hasPriv: 'hand' in UNO.pub || 'hands' in UNO.pub || 'deck' in UNO.pub || 'draw_pile' in UNO.pub || 'hs' in UNO.pub
+    }))()""")
+    assert uno_dom["badge"] == "SPECTATING" and uno_dom["hands"] == 0 and uno_dom["btns"] == 0 \
+        and uno_dom["backs"] >= 14 and not uno_dom["hasPriv"], f"UNO spectator UI check failed: {uno_dom}"
+    await shot(spec, "uno-spectator.png")
+    await spec.click("#unoLeave")
+    await wait_for(spec, "GC.watching() === null && !!document.querySelector('.gc-home')", 10, "UNO unwatch")
+    await p0.evaluate(f"GC.post({{a: 'leave', r: '{rid_u}'}})")
+    await wait_for(p1, f"(GC.room('{rid_u}') || {{}}).state === 'closed'", 15, "2p UNO closed")
+    for pg in (p0, p1):
+        await pg.evaluate(f"GC.post({{a: 'dismiss', r: '{rid_u}'}}).catch(() => 0).then(() => {{ GC.focus = null; GC.unmount(); GC.render(); }})")
+
+    # Slot Rush Spectator
+    rid_r = await make_room([p0, p1], "race", laps=2, biome=0)
+    await wait_for(p0, "(() => { const b = document.querySelector('.lobby .primary:not([disabled])'); return !!(b && b.textContent.includes('2 players')); })()", 40, "2p race lobby synced")
+    await p0.click(".lobby .primary")
+    for pg in (p0, p1):
+        await wait_for(pg, f"RACE.root && RACE.rid === '{rid_r}'", 20, "2p race view")
+        await pg.evaluate(AUTOPILOT)
+    await wait_for(spec, f"!!document.querySelector(`.live-row .watch[data-r='{rid_r}']`)", 15, "Live Now Race row")
+    await spec.click(f".live-row .watch[data-r='{rid_r}']")
+    await wait_for(spec, "!!document.querySelector('.race-room.is-spec') && RACE.spec && RACE.me === null && !!RACE.view",
+                   20, "Slot Rush spectator view")
+    await wait_for(p0, "RACE.tg() > 1.5", 30, "2p race started")
+    await asyncio.sleep(0.6)
+    await shot(spec, "race-spectator-bird.png")
+    # Chat overlay open & typing stays isolated from spectator shortcuts
+    await spec.click(".gc-chatbtn")
+    await spec.click("#gccTabs button[data-chat='u:1']")
+    await spec.type("#gccText", "watching v f 1 2 + -")
+    await spec.press("#gccText", "Escape")
+    assert await spec.evaluate("RACE.specCam.follow === null && !RACE.specCam.autoChase"), "Chat typing leaked to spectator camera"
+    # Zoom, Follow, Auto-Chase, Full Track reset
+    await spec.keyboard.press("=")
+    await asyncio.sleep(0.15)
+    await spec.keyboard.press("1")
+    await wait_for(spec, "RACE.specCam.follow === 0", 5, "Spectator follow player 1")
+    await spec.keyboard.press("v")
+    await wait_for(spec, "RACE.specCam.autoChase && Math.abs(RACE.view.rot) > 0", 5, "Spectator auto-chase")
+    await asyncio.sleep(0.25)
+    await shot(spec, "race-spectator-chase.png")
+    await spec.keyboard.press("f")
+    await wait_for(spec, "RACE.specCam.follow === null && !RACE.specCam.autoChase", 5, "Spectator Full Track reset")
+    await spec.click("#raceLeave")
+    await wait_for(spec, "GC.watching() === null && !!document.querySelector('.gc-home')", 10, "Race unwatch")
+    for pg in (p0, p1):
+        await pg.evaluate("clearInterval(window.__auto)")
+    await p0.evaluate(f"GC.post({{a: 'leave', r: '{rid_r}'}})")
+    await wait_for(p1, f"(GC.room('{rid_r}') || {{}}).state === 'closed'", 15, "2p race closed")
+    for pg in (p0, p1):
+        await pg.evaluate(f"GC.post({{a: 'dismiss', r: '{rid_r}'}}).catch(() => 0).then(() => {{ GC.focus = null; GC.unmount(); GC.render(); }})")
+    print("Spectator UI QA: verified Live Now discovery, UNO spectator zero-leak table, Slot Rush interactive Bird's-Eye/Follow/Auto-Chase/Chat isolation")
     return True
 
 
@@ -364,6 +458,8 @@ async def main():
         if a.only in (None, "race"):
             await play_race(pages, a.n)
             await verify_biomes(pages)
+            if a.only is None:
+                await verify_spectator(pages)
         await b.close()
     if errors:
         print("page errors:", *errors[:10], sep="\n  ")

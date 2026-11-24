@@ -45,6 +45,10 @@ GC.onEvent = function (ev, data) {
 };
 
 GC.room = (rid) => GC.snap?.rooms.find((r) => r.r === rid) || null;
+GC.watching = () => {
+  const w = GC.snap?.watching;
+  return w ? (GC.snap?.live || []).find((x) => x.r === w) || null : null;
+};
 GC.me = () => S.me?.addr;
 GC.name = (room, a) => room?.names?.[a] || contactName(a);
 
@@ -54,6 +58,7 @@ GC.autoOpen = function (before, now) {
     const old = before?.rooms.find((x) => x.r === r.r);
     if (r.state === "playing" && r.me_seat !== null && (!old || old.state !== "playing")) {
       GC.focus = r.r;
+      if (now.watching) GC.post({ a: "unwatch" }).catch(() => {});
       if (!GC.open) GC.show(true);
     }
   }
@@ -92,8 +97,15 @@ GC.render = function () {
   const inGame = room && room.me_seat !== null && (room.state === "playing" || (room.state === "over" && room.g === "race"));
   if (inGame) {
     if (!GC.mods[room.g]) return;
-    if (GC.mounted?.r !== room.r) { GC.unmount(); GC.mounted = { r: room.r, g: room.g }; cancelAnimationFrame(GC.anim); }
+    if (GC.mounted?.r !== room.r || GC.mounted?.spec) { GC.unmount(); GC.mounted = { r: room.r, g: room.g, spec: false }; cancelAnimationFrame(GC.anim); }
     GC.mods[room.g].show(room, $("#gcBody"));
+    return;
+  }
+  const watchRoom = !room ? GC.watching() : null;
+  if (watchRoom) {
+    if (!GC.mods[watchRoom.g]) return;
+    if (GC.mounted?.r !== watchRoom.r || !GC.mounted?.spec) { GC.unmount(); GC.mounted = { r: watchRoom.r, g: watchRoom.g, spec: true }; cancelAnimationFrame(GC.anim); }
+    GC.mods[watchRoom.g].show(watchRoom, $("#gcBody"));
     return;
   }
   if (GC.mounted) GC.unmount();
@@ -138,6 +150,8 @@ GC.wire = function (root) {
         else if (a === "join") { await GC.post({ a: "answer", r: rid, ok: true }); GC.focus = rid; }
         else if (a === "decline") { await GC.post({ a: "answer", r: rid, ok: false }); await GC.post({ a: "dismiss", r: rid }); GC.focus = null; }
         else if (a === "open") { GC.focus = rid; GC.render(); }
+        else if (a === "watch") { GC.focus = null; await GC.post({ a: "watch", r: rid }); }
+        else if (a === "unwatch") { await GC.post({ a: "unwatch", r: rid || "" }); GC.focus = null; }
         else if (a === "start") await GC.post({ a: "start", r: rid });
         else if (a === "leave") { await GC.post({ a: "leave", r: rid }); }
         else if (a === "dismiss") { await GC.post({ a: "dismiss", r: rid }); GC.focus = null; }
@@ -163,7 +177,7 @@ GC.renderHome = function () {
   const dock = rooms.filter((r) => r.state !== "closed" || r.why).map((r) => {
     const host = GC.name(r, r.h), game = GC.snap.games[r.g];
     if (r.state === "invited") return `<div class="invite"><span class="who"><b>${esc(host)}</b> invites you to ${esc(game)}
-        <small>${r.seats.length} players${r.g === "race" ? `, ${esc(r.o.laps)} laps · ${esc(GC.biomeName(r.o.biome ?? 255))}` : ""}</small></span>
+        <small>${esc(r.seats.length)} players${r.g === "race" ? `, ${esc(r.o.laps)} laps · ${esc(GC.biomeName(r.o.biome ?? 255))}` : ""}</small></span>
         <button class="yes" data-act="join" data-r="${esc(r.r)}">Join</button><button class="no" data-act="decline" data-r="${esc(r.r)}">Not now</button></div>`;
     if (r.state === "closed") return `<div class="invite"><span class="who">${esc(game)}: ${esc(r.why || "room closed")}</span>
         <button class="no" data-act="dismiss" data-r="${esc(r.r)}">OK</button></div>`;
@@ -171,9 +185,20 @@ GC.renderHome = function () {
         <small>${r.state === "lobby" ? "waiting in the lobby" : "running"}</small></span>
         <button class="open" data-act="open" data-r="${esc(r.r)}">Open</button></div>`;
   }).join("");
+  const liveRows = (GC.snap.live || []).map((r) => {
+    const game = GC.snap.games[r.g] || r.g;
+    const names = (r.player_list || []).map((p) => p.name).join(", ");
+    const sub = r.g === "race"
+      ? `${GC.biomeName(r.biome)} · ${r.o?.laps || 3} laps${r.live_state === "finished" ? " · finished" : ""}`
+      : (r.live_state === "finished" ? "round finished" : "live round");
+    return `<div class="invite live-row"><span class="live-badge"><i class="live-dot" aria-hidden="true"></i>LIVE</span>
+      <span class="who"><b>${esc(game)}</b> · ${esc(sub)}<small>${esc(names)}</small></span>
+      <button class="watch" data-act="watch" data-r="${esc(r.r)}">Watch</button></div>`;
+  }).join("");
+  const liveSec = liveRows ? `<div class="live-sec"><div class="live-hdr">Live Now</div>${liveRows}</div>` : "";
   const n = (g) => GC.pick[g].size;
   $("#gcBody").innerHTML = `${GC.bar("Game center", "", true)}
-    <div class="gc-dock">${dock}</div>
+    <div class="gc-dock">${dock}${liveSec}</div>
     <div class="gc-home">
       <section class="poster p-uno">
         <div class="fan" aria-hidden="true">${typeof UNO !== "undefined" ? UNO.fanHtml() : ""}</div>
@@ -295,8 +320,8 @@ GC.now = (rid) => performance.now() / 1000 + (GC.clocks[rid]?.off ?? 0);
   $("#gcBtn").onclick = () => GC.show(!GC.open);
   document.addEventListener("keydown", (e) => {
     if (!GC.open || !GC.keysToGame(e)) return;
-    const room = GC.current();
-    if (GC.mounted && room && GC.mods[room.g]?.onKey && GC.mods[room.g].onKey(e)) { e.preventDefault(); return; }
+    const active = GC.current() || GC.watching();
+    if (GC.mounted && active && GC.mods[active.g]?.onKey && GC.mods[active.g].onKey(e)) { e.preventDefault(); return; }
     if (e.key === "Escape") { GC.show(false); e.preventDefault(); }
   });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => GC.load());
@@ -305,5 +330,5 @@ GC.now = (rid) => performance.now() / 1000 + (GC.clocks[rid]?.off ?? 0);
 
 // app.js calls this when the station list changes: refresh the player pickers
 GC.contactsChanged = function () {
-  if (GC.open && GC.snap && !GC.mounted && !GC.current()) GC.renderHome();
+  if (GC.open && GC.snap && !GC.mounted && !GC.current() && !GC.watching()) GC.renderHome();
 };

@@ -32,8 +32,8 @@ const UNO_RING = (() => {            // three clockwise arcs with arrowheads (mi
 })();
 
 const UNO = {
-  rid: null, room: null, view: null, sel: 0, armed: false, picker: null, log: [], seenEv: new Set(),
-  pendingV: null, pendingAt: 0, prevHand: new Set(), prevTop: null, el: null, tick: 0,
+  rid: null, room: null, view: null, pub: null, spec: false, sel: 0, armed: false, picker: null,
+  log: [], seenEv: new Set(), pendingV: null, pendingAt: 0, prevHand: new Set(), prevTop: null, el: null, tick: 0,
 };
 
 UNO.cardName = function (id) {
@@ -65,38 +65,104 @@ UNO.fanHtml = function () {           // decoration for the poster
 // ------------------------------------------------------------------ module interface (games.js)
 UNO.show = function (room, root) {
   UNO.room = room;
-  if (UNO.rid !== room.r || !root.querySelector(".uno-room")) {
-    UNO.rid = room.r;
+  const isSpec = Boolean(room.spectator || room.me_seat === null);
+  if (UNO.rid !== room.r || UNO.spec !== isSpec || !root.querySelector(".uno-room")) {
+    UNO.rid = room.r; UNO.spec = isSpec;
     UNO.log = []; UNO.seenEv = new Set(); UNO.sel = 0; UNO.armed = false; UNO.picker = null;
     if (UNO.view && UNO.view.r !== room.r) UNO.view = null;  // another table's view
+    if (UNO.pub && UNO.pub.r !== room.r && UNO.pub.room_id !== room.r) UNO.pub = null;
     UNO.prevHand = new Set(); UNO.prevTop = null;
-    root.innerHTML = `<div class="uno-room">${GC.bar("UNO", `<span class="uno-scores"></span><button class="gc-ghost" id="unoLeave">Leave table</button>`)}
+    const title = isSpec ? '<span class="spec-badge">SPECTATING</span>UNO' : "UNO";
+    const leaveTxt = isSpec ? "Leave" : "Leave table";
+    root.innerHTML = `<div class="uno-room${isSpec ? " is-spec" : ""}">${GC.bar(title, `<span class="uno-scores"></span><button class="gc-ghost" id="unoLeave">${leaveTxt}</button>`)}
       <div class="uno-table"></div></div>`;
     GC.wire(root);
-    root.querySelector("#unoLeave").onclick = () => GC.post({ a: "leave", r: room.r }).catch((e) => toast(e.message));
+    root.querySelector("#unoLeave").onclick = () => GC.post(
+      UNO.spec ? { a: "unwatch", r: room.r } : { a: "leave", r: room.r }
+    ).catch((e) => toast(e.message));
     UNO.el = root.querySelector(".uno-table");
     UNO.scoreEl = root.querySelector(".uno-scores");
     clearInterval(UNO.tick);
     UNO.tick = setInterval(UNO.timerTick, 200);
     UNO.quiet = true;                                        // no sounds for what happened before
-    if (room.uno) UNO.setView(room.uno);
+    if (isSpec && room.uno_pub) UNO.setPubView(room.uno_pub);
+    else if (!isSpec && room.uno) UNO.setView(room.uno);
     UNO.quiet = false;
+  } else if (isSpec && room.uno_pub) {
+    UNO.setPubView(room.uno_pub);
   }
   UNO.render();
 };
 
-UNO.unmount = function () { clearInterval(UNO.tick); UNO.el = null; UNO.rid = null; };
+UNO.unmount = function () { clearInterval(UNO.tick); UNO.el = null; UNO.rid = null; UNO.spec = false; };
 
 UNO.onEvent = function (ev, data) {
   if (ev === "uno") {
-    if (data.r === UNO.rid) { UNO.setView(data); UNO.render(); }
+    if (!UNO.spec && data.r === UNO.rid) { UNO.setView(data); UNO.render(); }
+    return true;
+  }
+  if (ev === "uno_pub") {
+    if (UNO.spec && (data.r === UNO.rid || data.room_id === UNO.rid)) { UNO.setPubView(data); UNO.render(); }
     return true;
   }
   if (ev === "unoerr") {
-    if (data.r === UNO.rid) { UNO.pendingV = null; toast(data.m, 3200); SFX.play("nope"); UNO.render(); }
+    if (!UNO.spec && data.r === UNO.rid) { UNO.pendingV = null; toast(data.m, 3200); SFX.play("nope"); UNO.render(); }
     return true;
   }
   return false;
+};
+
+UNO.setPubView = function (pub) {
+  const old = UNO.pub;
+  if (old && old.round === pub.round && (old.host_num ?? 0) === (pub.host_num ?? 0) && old.v >= pub.v) return;
+  if (old && old.round !== pub.round) UNO.seenEv = new Set();
+  const next = { ...pub };
+  if (next.dl_at === undefined && next.turn_remaining !== null && next.turn_remaining !== undefined) {
+    next.dl_at = Date.now() / 1000 + next.turn_remaining;
+  }
+  if (next.pause_until === undefined && next.paused && next.pause_remaining !== null && next.pause_remaining !== undefined) {
+    next.pause_until = Date.now() / 1000 + next.pause_remaining;
+  }
+  UNO.pub = next;
+  const e = next.last_event;
+  if (e) {
+    const key = `${next.round}:${e.i ?? `${next.v}:${e.e}`}`;
+    if (!UNO.seenEv.has(key)) {
+      UNO.seenEv.add(key);
+      const line = UNO.describePub(e, next);
+      if (line) UNO.log.push(line);
+      UNO.log = UNO.log.slice(-6);
+      if (old && !UNO.quiet && GC.open) {
+        const nm = e.e === "win" ? "win" : e.e === "caught" ? "caught" : e.e === "uno" ? "uno"
+          : (e.e === "play" || e.e === "skip" || e.e === "reverse") ? "card"
+            : (e.e === "draw" || e.e === "deal") ? "draw" : null;
+        if (nm) SFX.play(nm);
+      }
+    }
+  }
+};
+
+UNO.describePub = function (e, pub) {
+  const w = (s) => pub.seats?.[s]?.name || `Player ${s + 1}`;
+  switch (e.e) {
+    case "deal": return `Round ${e.round}: ${w(e.dealer)} dealt. First card ${UNO.cardName(e.top)}.`;
+    case "play": return `${w(e.s)} played ${UNO.cardName(e.c)}${UNO_CARDS[e.c][0] < 0 ? `, colour ${UNO_COLOR_NAMES[e.col].toLowerCase()}` : ""}.`;
+    case "draw":
+      if (e.why === "draw") return `${w(e.s)} drew a card.`;
+      if (e.why === "caught") return null;
+      return `${w(e.s)} draws ${e.k}.`;
+    case "skip": return `${w(e.s)} is skipped.`;
+    case "reverse": return "Direction reversed.";
+    case "uno": return `${w(e.s)}: UNO!`;
+    case "caught": return `${w(e.by)} caught ${w(e.s)} without UNO: 2 cards.`;
+    case "pass": return `${w(e.s)} passed.`;
+    case "timeout": return `${w(e.s)} ran out of time.`;
+    case "color": return `${w(e.s)} chose ${UNO_COLOR_NAMES[e.col].toLowerCase()}.`;
+    case "shuffle": return "Discards shuffled into a new draw pile.";
+    case "left": return `${w(e.s)} left the table.`;
+    case "win": return `${w(e.s)} won the round: ${e.pts} points.`;
+  }
+  return null;
 };
 
 UNO.setView = function (v) {
@@ -172,6 +238,7 @@ UNO.layout = function (n, rel) {
 };
 
 UNO.render = function () {
+  if (UNO.spec) { UNO.renderSpec(); return; }
   const v = UNO.view, el = UNO.el;
   if (!el) return;
   if (!v) { el.innerHTML = `<div class="uno-center"><div class="uno-status">Dealing…</div></div>`; return; }
@@ -262,11 +329,80 @@ UNO.modalHtml = function (v) {
   return "";
 };
 
+UNO.specPos = (n, s) => (n === 2 ? ["bottom", "top"] : n === 3 ? ["bottom", "left", "right"] : ["bottom", "left", "top", "right"])[s % n];
+
+UNO.renderSpec = function () {
+  const pub = UNO.pub, el = UNO.el;
+  if (!el) return;
+  if (!pub) {
+    el.innerHTML = `<div class="uno-center"><div class="uno-status">Syncing table…</div></div>`;
+    return;
+  }
+  const n = pub.seats.length;
+  let seats = "";
+  for (let s = 0; s < n; s++) {
+    const st = pub.seats[s], pos = UNO.specPos(n, s);
+    const backs = st.out ? "" : Array.from({ length: Math.min(st.card_count, 12) }, () => '<div class="card cback sm"></div>').join("");
+    const flag = st.away ? '<span class="flag away">away</span>'
+      : (st.card_count === 1 && !st.out ? (st.called_uno ? '<span class="flag">UNO</span>' : '<span class="flag bad">1 card!</span>') : "");
+    const turnCls = !pub.round_over && pub.turn_seat === s && !st.out ? "turn" : "";
+    seats += `<div class="seat ${pos} ${turnCls} ${st.out ? "out" : ""}">
+      <div class="who">${avatarHtml(st.id, "av", st.name)}
+      <span class="nm">${esc(st.name)}</span><span class="sc">${esc(st.score)} pts</span><span class="n">${st.out ? "left" : esc(st.card_count)}</span></div>
+      <div class="backs">${backs}</div>${flag}</div>`;
+  }
+  const colIdx = pub.active_colour ?? 0;
+  const curColor = `var(--c-${UNO_COLORS[colIdx]})`;
+  const topIsNew = UNO.prevTop !== pub.discard_top;
+  UNO.prevTop = pub.discard_top;
+  const center = `<div class="uno-center">
+      <div class="pile draw" title="Draw pile">
+        <div class="card cback" style="transform:translate(3px,3px)"></div><div class="card cback"></div>
+        <div class="count">${esc(pub.deck_count)} left</div></div>
+      <div class="pile disc"><div class="ring ${pub.direction < 0 ? "ccw" : ""}" style="--cur:${curColor}"
+          title="Play goes ${pub.direction < 0 ? "counter-clockwise" : "clockwise"}"><div class="glow"></div>${UNO_RING}</div>
+        ${UNO.cardHtml(pub.discard_top, topIsNew ? "land" : "")}
+        <div class="color-name">Colour in play: ${UNO_COLOR_NAMES[colIdx].toLowerCase()}</div></div>
+    </div>`;
+  const turnNm = pub.seats[pub.turn_seat]?.name || `Player ${pub.turn_seat + 1}`;
+  let status;
+  if (pub.round_over) {
+    const winNm = pub.winner !== null && pub.winner !== undefined ? (pub.seats[pub.winner]?.name || `Player ${pub.winner + 1}`) : "Round over";
+    status = `<b>${esc(winNm)}</b> won round ${esc(pub.round)}.`;
+  } else if (pub.paused) {
+    const left = pub.pause_until ? Math.max(0, Math.round(pub.pause_until - Date.now() / 1000)) : Math.round(pub.pause_remaining || 0);
+    const who = pub.seats.filter((s) => s.away).map((s) => s.name).join(", ") || "a player";
+    status = `<b>Paused.</b> Waiting for ${esc(who)}: <span class="uno-wait" data-until="${pub.pause_until || ""}">${left}</span> s`;
+  } else {
+    status = `<b>${esc(turnNm)}</b>${pub.phase === "color" ? " is picking the colour" : "'s turn"} · Round ${esc(pub.round)}`;
+  }
+  if (UNO.scoreEl) UNO.scoreEl.innerHTML = pub.seats.map((s) => `<span>${esc(s.name)} <b>${esc(s.score)}</b></span>`).join("");
+  let modal = "";
+  if (pub.round_over) {
+    const rows = [...pub.seats].map((s, idx) => ({ ...s, idx })).sort((a, b) => b.score - a.score)
+      .map((r) => `<tr class="${r.idx === pub.winner ? "win" : ""}"><td>${esc(r.name)}</td><td>${r.idx === pub.winner ? `+${esc(pub.round_points)}` : `${esc(r.card_count)} cards left`}</td><td>${esc(r.score)}</td></tr>`).join("");
+    const winNm = pub.seats[pub.winner]?.name || "Winner";
+    const hostNm = pub.seats.find((s) => s.id === pub.host)?.name || GC.name(UNO.room, pub.host);
+    modal = `<div class="uno-modal"><div class="box"><h3>${esc(winNm)} wins</h3>
+      <p>Round ${esc(pub.round)}: ${esc(pub.round_points)} points from the remaining hands.</p>
+      <table class="standings">${rows}</table>
+      <p>${esc(hostNm)} can deal the next round.</p>
+      <button class="gc-ghost" data-act="unwatch" data-r="${esc(UNO.rid)}">Leave</button></div></div>`;
+  }
+  el.innerHTML = `${seats}${center}
+    <div class="uno-log" aria-live="polite">${UNO.log.slice(-3).map((l) => `<div>${esc(l)}</div>`).join("")}</div>
+    <div class="uno-bar"><span class="uno-status">${status}</span></div>${modal}`;
+  GC.wire(el);
+  UNO.timerTick();
+};
+
 UNO.timerTick = function () {
-  const v = UNO.view, el = UNO.el;
+  const v = UNO.spec ? UNO.pub : UNO.view, el = UNO.el;
   if (!v || !el) return;
   const left = v.dl_at ? Math.max(0, Math.min(1, (v.dl_at - Date.now() / 1000) / (GC.snap?.turn_s || 30))) : 0;
-  el.querySelectorAll(".uno-wait").forEach((x) => (x.textContent = Math.max(0, Math.round(+x.dataset.until - Date.now() / 1000))));
+  el.querySelectorAll(".uno-wait").forEach((x) => {
+    if (x.dataset.until) x.textContent = Math.max(0, Math.round(+x.dataset.until - Date.now() / 1000));
+  });
   el.querySelectorAll(".turn .av, .me-timer.me-turn").forEach((x) => x.style.setProperty("--left", left.toFixed(3)));
 };
 
@@ -340,6 +476,7 @@ UNO.key = function (k) {
 };
 
 UNO.onKey = function (e) {
+  if (UNO.spec) return false;
   if (e.ctrlKey || e.metaKey || e.altKey) return false;
   return UNO.key(e.key);
 };

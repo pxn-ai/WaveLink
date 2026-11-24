@@ -143,7 +143,7 @@ const RACE = {
   rid: null, room: null, root: null, cv: null, ctx: null, T: null, me: null, cars: [], keys: new Set(),
   raf: 0, last: 0, acc: 0, postT: 0, posting: false, outEv: [], eid: 0, missiles: [], mines: [], fx: [],
   rain: [], splash: [], tiles: new Map(), hudT: 0, msgs: [], results: null, syncT: 0, laps: 3, seatN: 2,
-  biome: 0, B: BIOMES[0], BIOMES,
+  biome: 0, B: BIOMES[0], BIOMES, spec: false, specCam: null, quiet: false,
   cam: { x: 0, y: 0, z: 1 }, hist: [], seen: new Map(), mini: null, lastPos: 0,
 };
 
@@ -249,7 +249,13 @@ RACE.finishTrack = function (pts, rng, seed = 0, biomeId = 0) {
   }
   // Signed lateral offset (+off is (-ty, tx)): in Y-down screen coords, area > 0 means clockwise loop, so -1 points outward.
   const outSide = area > 0 ? -1 : 1;
-  const T = { M, L, x, y, tx, ty, curv, outSide, box: [x0 - 900, y0 - 900, x1 + 900, y1 + 900], grid: new Map(), cell: 160 };
+  const fitPad = R_TW + R_RUN + 320;
+  const T = {
+    M, L, x, y, tx, ty, curv, outSide,
+    box: [x0 - 900, y0 - 900, x1 + 900, y1 + 900],
+    fitBox: [x0 - fitPad, y0 - fitPad, x1 + fitPad, y1 + fitPad],
+    grid: new Map(), cell: 160,
+  };
   for (let i = 0; i < M; i++) {
     const k = `${Math.floor(x[i] / T.cell)},${Math.floor(y[i] / T.cell)}`;
     (T.grid.get(k) || T.grid.set(k, []).get(k)).push(i);
@@ -928,7 +934,7 @@ RACE.tile = function (tx, ty) {
   }
 
   RACE.tiles.set(key, c);
-  while (RACE.tiles.size > 96) RACE.tiles.delete(RACE.tiles.keys().next().value);
+  while (RACE.tiles.size > 256) RACE.tiles.delete(RACE.tiles.keys().next().value);
   return c;
 };
 
@@ -1206,9 +1212,94 @@ function drawCar(ctx, car, biomeId) {
 RACE.drawCar = drawCar;
 
 // ====================================================================== module interface (games.js)
+const R_CAMS = ["north", "chase", "bird"];
+const R_CAM_NAMES = { north: "north up", chase: "chase", bird: "bird's-eye" };
+const R_CAM_SAY = { north: "North-up camera", chase: "Chase camera", bird: "Bird's-eye view" };
+const R_SPEC_TIERS = [0.28, 0.46, 0.72, 1.05, 1.45];
+
+RACE.calcFit = function (W, H) {
+  const b = RACE.T?.fitBox || RACE.T?.box || [0, 0, 4800, 3400];
+  const bw = Math.max(400, b[2] - b[0]), bh = Math.max(400, b[3] - b[1]);
+  const vw = Math.max(120, W - 48), vh = Math.max(120, H - 104);
+  return {
+    scale: rClamp(Math.min(vw / bw, vh / bh), 0.14, 1.5),
+    cx: (b[0] + b[2]) / 2,
+    cy: (b[1] + b[3]) / 2,
+  };
+};
+
+RACE.pickTileZ = function (dpr, z) {
+  if (!RACE.spec) return Math.max(0.16, Math.round(RACE.TILE * dpr * z) / RACE.TILE);
+  let tier = R_SPEC_TIERS[R_SPEC_TIERS.length - 1];
+  for (const t of R_SPEC_TIERS) if (t >= z * 0.94) { tier = t; break; }
+  return Math.round(RACE.TILE * dpr * tier) / RACE.TILE;
+};
+
+RACE.clampSpecCam = function (x, y, zoom, W, H) {
+  const b = RACE.T.fitBox || RACE.T.box, fit = RACE.calcFit(W, H);
+  if (zoom <= fit.scale * 1.02) return [fit.cx, fit.cy];
+  const halfW = (W / 2) / zoom, halfH = (H / 2) / zoom;
+  const minX = b[0] + Math.min(halfW * 0.65, (b[2] - b[0]) * 0.45);
+  const maxX = b[2] - Math.min(halfW * 0.65, (b[2] - b[0]) * 0.45);
+  const minY = b[1] + Math.min(halfH * 0.65, (b[3] - b[1]) * 0.45);
+  const maxY = b[3] - Math.min(halfH * 0.65, (b[3] - b[1]) * 0.45);
+  return [minX <= maxX ? rClamp(x, minX, maxX) : fit.cx, minY <= maxY ? rClamp(y, minY, maxY) : fit.cy];
+};
+
+RACE.specZoomAt = function (factorOrAbs, sx, sy, isAbs = false) {
+  const sc = RACE.specCam, cv = RACE.cv;
+  if (!sc || !cv || !RACE.T) return;
+  const W = cv.clientWidth || 1200, H = cv.clientHeight || 800, fit = RACE.calcFit(W, H);
+  const minZ = fit.scale, maxZ = 1.5;
+  const oldZ = sc.targetZoom ?? minZ;
+  const newZ = rClamp(isAbs ? factorOrAbs : oldZ * factorOrAbs, minZ, maxZ);
+  if (sc.follow !== null) {
+    sc.targetZoom = newZ;
+    return;
+  }
+  const wx = sc.tx + (sx - W / 2) / oldZ, wy = sc.ty + (sy - (H / 2 + 12)) / oldZ;
+  const [cx, cy] = RACE.clampSpecCam(wx - (sx - W / 2) / newZ, wy - (sy - (H / 2 + 12)) / newZ, newZ, W, H);
+  sc.targetZoom = newZ; sc.tx = cx; sc.ty = cy;
+};
+
+RACE.followSeat = function (seat) {
+  const sc = RACE.specCam, c = RACE.cars[seat];
+  if (!sc || !c || !RACE.cv) return;
+  const W = RACE.cv.clientWidth || 1200, H = RACE.cv.clientHeight || 800, fit = RACE.calcFit(W, H);
+  sc.follow = seat;
+  if ((sc.targetZoom ?? fit.scale) < Math.max(0.72, fit.scale * 1.45)) sc.targetZoom = rClamp(Math.max(0.82, fit.scale * 1.7), fit.scale, 1.5);
+  sc.a = c.dh ?? c.h ?? 0;
+  RACE.say(`Following ${c.name}`, 1.1);
+};
+
+RACE.toggleSpecChase = function () {
+  const sc = RACE.specCam;
+  if (!sc) return;
+  if (sc.follow === null) {
+    const first = RACE.order(true)[0] || RACE.cars[0];
+    if (!first) return;
+    RACE.followSeat(first.s);
+    sc.autoChase = true;
+  } else {
+    sc.autoChase = !sc.autoChase;
+  }
+  const c = RACE.cars[sc.follow];
+  RACE.say(sc.autoChase ? `Auto-Chase: ${c?.name || "car"}` : `Follow (North-Up): ${c?.name || "car"}`, 1.1);
+};
+
+RACE.resetSpecCam = function () {
+  const sc = RACE.specCam, cv = RACE.cv;
+  if (!sc || !cv || !RACE.T) return;
+  const fit = RACE.calcFit(cv.clientWidth || 1200, cv.clientHeight || 800);
+  sc.follow = null; sc.autoChase = false;
+  sc.targetZoom = fit.scale; sc.tx = fit.cx; sc.ty = fit.cy;
+  RACE.say("Full track · Bird's-eye", 1.0);
+};
+
 RACE.show = function (room, root) {
   RACE.room = room;
-  if (RACE.rid === room.r && root.querySelector(".race-room") && RACE.round === room.n) {
+  const isSpec = Boolean(room.spectator || room.me_seat === null);
+  if (RACE.rid === room.r && RACE.spec === isSpec && root.querySelector(".race-room") && RACE.round === room.n) {
     RACE.updateRoom(room);
     return;
   }
@@ -1224,7 +1315,8 @@ RACE.resolveBiome = function (room) {
 
 RACE.mount = function (room, root) {
   RACE.unmount();
-  RACE.rid = room.r; RACE.round = room.n; RACE.room = room;
+  RACE.rid = room.r; RACE.round = room.n || 1; RACE.room = room;
+  RACE.spec = Boolean(room.spectator || room.me_seat === null);
   RACE.seatN = room.players.length; RACE.laps = room.o?.laps || 3;
   RACE.biome = RACE.resolveBiome(room);
   RACE.B = BIOMES[RACE.biome];
@@ -1235,45 +1327,175 @@ RACE.mount = function (room, root) {
   RACE.hist = []; RACE.results = room.state === "over" ? room.results : null; RACE.keys.clear();
   RACE.cars = room.players.map((a, s) => {
     const [x, y, h, i, d] = RACE.gridSlot(s);
-    return { s, a, name: GC.name(room, a), col: R_SEAT[s % 4], x, y, h, vx: 0, vy: 0, w: 0, d, i, fl: 0, it: 0,
+    return { s, a, name: GC.name(room, a), col: R_SEAT[s % 4], x, y, h, dx: x, dy: y, dh: h, dvx: 0, dvy: 0,
+      vx: 0, vy: 0, w: 0, d, i, fl: 0, it: 0,
       pkt: null, err: null, rx: [], fin: room.finish?.[s] ?? null, lapT: [], prevLap: 0, wake: [], slip: 0 };
   });
-  RACE.me = RACE.cars[room.me_seat];
-  Object.assign(RACE.me, { item: "", boost: 0, shield: 0, stun: 0, spin: 0, spinDir: 1, throttle: 0, steer: 0,
-    lapStart: 0, best: null, lapNow: 0, finT: null, off: false });
-  RACE.resume(room.state === "playing" ? room.mine : null);
-  root.innerHTML = `<div class="race-room"><canvas class="world"></canvas><div class="vignette"></div>
-    <div class="hud">
-      <div class="pos"><span class="big">–</span><span class="of"></span></div>
-      <div class="lap"></div><div class="times"></div>
-      <div class="board"></div>
-      <canvas class="mini" width="400" height="300"></canvas>
-      <div class="item"><span class="slot"></span><span class="nm"></span></div>
-      <div class="speed"><span class="v">0</span><small>km/h</small></div>
-      <div class="count"></div><div class="r-msg"></div><div class="keys"></div>
-    </div>
-    ${GC.bar(`Slot Rush <span style="opacity:.72;font-weight:500">· ${esc(RACE.B.name)} · ${RACE.laps} laps</span>`,
-      `<button class="gc-ghost" id="raceCam" title="Switch the camera (V)"></button><button class="gc-ghost" id="raceLeave">Leave race</button>`)}
-    <div class="race-results" hidden></div></div>`;
+  if (RACE.spec) {
+    RACE.me = null;
+    RACE.quiet = true;
+    for (const p of room.last_cars || []) RACE.onRemote({ ...p, r: room.r, s: p.seat ?? p.s, ev: [] });
+    RACE.quiet = false;
+    root.innerHTML = `<div class="race-room is-spec"><canvas class="world"></canvas><div class="vignette"></div>
+      <div class="hud">
+        <div class="board spec-board" aria-label="Leaderboard: click a racer to follow"></div>
+        <canvas class="mini" width="400" height="300"></canvas>
+        <div class="speed spec-tele" hidden><span class="v">0</span><small>km/h</small></div>
+        <div class="spec-bar" role="toolbar" aria-label="Spectator camera controls">
+          <span class="spec-follow-lbl">Free Bird's-Eye</span>
+          <button type="button" class="spec-btn" id="specZoomOut" title="Zoom out (-)">−</button>
+          <button type="button" class="spec-btn" id="specFull" title="Full track (0 / F)">Full Track<kbd>F</kbd></button>
+          <button type="button" class="spec-btn" id="specZoomIn" title="Zoom in (+)">+</button>
+          <button type="button" class="spec-btn" id="specChase" aria-pressed="false" title="Toggle Auto-Chase / Follow (V)">Auto-Chase<kbd>V</kbd></button>
+        </div>
+        <div class="count"></div><div class="r-msg"></div><div class="keys"></div>
+      </div>
+      ${GC.bar(`<span class="spec-badge">SPECTATING</span>Slot Rush <span style="opacity:.72;font-weight:500">· ${esc(RACE.B.name)} · ${RACE.laps} laps</span>`,
+        `<button class="gc-ghost" id="raceLeave">Leave</button>`)}
+      <div class="race-results" hidden></div></div>`;
+  } else {
+    RACE.me = RACE.cars[room.me_seat];
+    Object.assign(RACE.me, { item: "", boost: 0, shield: 0, stun: 0, spin: 0, spinDir: 1, throttle: 0, steer: 0,
+      lapStart: 0, best: null, lapNow: 0, finT: null, off: false });
+    RACE.resume(room.state === "playing" ? room.mine : null);
+    root.innerHTML = `<div class="race-room"><canvas class="world"></canvas><div class="vignette"></div>
+      <div class="hud">
+        <div class="pos"><span class="big">–</span><span class="of"></span></div>
+        <div class="lap"></div><div class="times"></div>
+        <div class="board"></div>
+        <canvas class="mini" width="400" height="300"></canvas>
+        <div class="item"><span class="slot"></span><span class="nm"></span></div>
+        <div class="speed"><span class="v">0</span><small>km/h</small></div>
+        <div class="count"></div><div class="r-msg"></div><div class="keys"></div>
+      </div>
+      ${GC.bar(`Slot Rush <span style="opacity:.72;font-weight:500">· ${esc(RACE.B.name)} · ${RACE.laps} laps</span>`,
+        `<button class="gc-ghost" id="raceCam" title="Switch the camera (V)"></button><button class="gc-ghost" id="raceLeave">Leave race</button>`)}
+      <div class="race-results" hidden></div></div>`;
+  }
   RACE.root = root.querySelector(".race-room");
   GC.wire(RACE.root);
-  RACE.root.querySelector("#raceLeave").onclick = () => GC.post({ a: "leave", r: room.r }).catch((e) => toast(e.message));
-  RACE.root.querySelector("#raceCam").onclick = (e) => { RACE.toggleCam(); e.currentTarget.blur(); };
-  RACE.camLabel();
+  RACE.root.querySelector("#raceLeave").onclick = () => GC.post(
+    RACE.spec ? { a: "unwatch", r: room.r } : { a: "leave", r: room.r }
+  ).catch((e) => toast(e.message));
   RACE.cv = RACE.root.querySelector("canvas.world");
   RACE.ctx = RACE.cv.getContext("2d");
-  RACE.hud = Object.fromEntries(["pos", "lap", "times", "board", "item", "speed", "count", "r-msg", "keys"].map((k) => [k.replace("r-", ""), RACE.root.querySelector(".hud ." + k)]));
   RACE.miniCv = RACE.root.querySelector("canvas.mini");
   RACE.initWeather();
-  RACE.cam = { x: RACE.me.x, y: RACE.me.y, z: 1, a: RACE.me.h };
+  if (RACE.spec) {
+    RACE.hud = Object.fromEntries(["board", "speed", "count", "r-msg", "keys", "spec-follow-lbl"].map((k) => [
+      k === "r-msg" ? "msg" : k === "spec-follow-lbl" ? "followLbl" : k,
+      RACE.root.querySelector(".hud ." + k),
+    ]));
+    const W = RACE.cv.clientWidth || window.innerWidth || 1200, H = RACE.cv.clientHeight || window.innerHeight || 800;
+    const fit = RACE.calcFit(W, H);
+    RACE.specCam = { zoom: fit.scale, targetZoom: fit.scale, x: fit.cx, y: fit.cy, tx: fit.cx, ty: fit.cy,
+      follow: null, autoChase: false, a: 0, ptrs: new Map(), drag: null, pinchD: 0 };
+    RACE.cam = { x: fit.cx, y: fit.cy, z: fit.scale, a: 0 };
+    RACE.wireSpecControls();
+  } else {
+    RACE.root.querySelector("#raceCam").onclick = (e) => { RACE.toggleCam(); e.currentTarget.blur(); };
+    RACE.camLabel();
+    RACE.hud = Object.fromEntries(["pos", "lap", "times", "board", "item", "speed", "count", "r-msg", "keys"].map((k) => [k.replace("r-", ""), RACE.root.querySelector(".hud ." + k)]));
+    RACE.cam = { x: RACE.me.x, y: RACE.me.y, z: 1, a: RACE.me.h };
+  }
   RACE.countSaid = null;
   RACE.last = performance.now(); RACE.acc = 0;
   GC.clocks[room.r] = GC.clocks[room.r] || { s: [], off: null };
-  for (let k = 0; k < 5; k++) setTimeout(() => GC.syncClock(room.r), k * 120);
+  GC.syncClock(room.r);
+  for (let k = 1; k < 5; k++) setTimeout(() => GC.syncClock(room.r), k * 120);
   RACE.syncT = setInterval(() => GC.syncClock(room.r), 2000);
   if (typeof MUSIC !== "undefined") MUSIC.setHint(RACE.B.music);
   RACE.raf = requestAnimationFrame(RACE.frame);
   if (RACE.results) RACE.showResults(RACE.results);
+};
+
+RACE.wireSpecControls = function () {
+  const cv = RACE.cv, root = RACE.root;
+  if (!cv || !root) return;
+  root.querySelector("#specZoomOut").onclick = (e) => { e.currentTarget.blur(); RACE.specZoomAt(1 / 1.25, cv.clientWidth / 2, cv.clientHeight / 2); };
+  root.querySelector("#specZoomIn").onclick = (e) => { e.currentTarget.blur(); RACE.specZoomAt(1.25, cv.clientWidth / 2, cv.clientHeight / 2); };
+  root.querySelector("#specFull").onclick = (e) => { e.currentTarget.blur(); RACE.resetSpecCam(); };
+  root.querySelector("#specChase").onclick = (e) => { e.currentTarget.blur(); RACE.toggleSpecChase(); };
+
+  cv.addEventListener("wheel", (e) => {
+    if (!RACE.spec || !RACE.specCam) return;
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    RACE.specZoomAt(Math.pow(1.0016, -e.deltaY), e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+
+  cv.addEventListener("pointerdown", (e) => {
+    const sc = RACE.specCam;
+    if (!RACE.spec || !sc || e.button !== 0) return;
+    sc.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (sc.ptrs.size === 1) {
+      sc.drag = { id: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
+      try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    } else if (sc.ptrs.size === 2) {
+      const [p0, p1] = [...sc.ptrs.values()];
+      sc.pinchD = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+      sc.drag = null;
+      cv.classList.remove("dragging");
+    }
+  });
+
+  cv.addEventListener("pointermove", (e) => {
+    const sc = RACE.specCam;
+    if (!RACE.spec || !sc || !sc.ptrs.has(e.pointerId)) return;
+    sc.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const W = cv.clientWidth || 1200, H = cv.clientHeight || 800;
+    if (sc.ptrs.size === 2) {
+      const [p0, p1] = [...sc.ptrs.values()];
+      const d = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+      const r = cv.getBoundingClientRect();
+      const mx = (p0.x + p1.x) / 2 - r.left, my = (p0.y + p1.y) / 2 - r.top;
+      if (sc.pinchD > 0) RACE.specZoomAt(d / sc.pinchD, mx, my);
+      sc.pinchD = d;
+      return;
+    }
+    if (sc.drag && sc.drag.id === e.pointerId) {
+      if (!sc.drag.moved) {
+        if (Math.hypot(e.clientX - sc.drag.startX, e.clientY - sc.drag.startY) <= 4) return;
+        sc.drag.moved = true;
+        sc.follow = null;
+        sc.autoChase = false;
+        cv.classList.add("dragging");
+      }
+      const dx = e.clientX - sc.drag.lastX, dy = e.clientY - sc.drag.lastY;
+      sc.drag.lastX = e.clientX; sc.drag.lastY = e.clientY;
+      const z = sc.zoom || 1;
+      const [cx, cy] = RACE.clampSpecCam(sc.tx - dx / z, sc.ty - dy / z, z, W, H);
+      sc.tx = sc.x = cx; sc.ty = sc.y = cy;
+    }
+  });
+
+  const endPtr = (e, allowClick) => {
+    const sc = RACE.specCam;
+    if (!sc) return;
+    if (allowClick && sc.drag && sc.drag.id === e.pointerId && !sc.drag.moved && RACE.view?.M) {
+      const r = cv.getBoundingClientRect(), dpr = RACE.dpr || 1;
+      const sx = (e.clientX - r.left) * dpr, sy = (e.clientY - r.top) * dpr;
+      const M = RACE.view.M, det = M[0] * M[3] - M[1] * M[2];
+      if (Math.abs(det) > 1e-6) {
+        const u = sx - M[4], v = sy - M[5];
+        const wx = (M[3] * u - M[2] * v) / det, wy = (-M[1] * u + M[0] * v) / det;
+        const rad = Math.max(54, 34 / Math.max(sc.zoom || 0.4, 0.14));
+        let best = null, bd = rad;
+        for (const c of RACE.cars) {
+          const cx = c.dx ?? c.x, cy = c.dy ?? c.y;
+          const d = Math.hypot(wx - cx, wy - cy);
+          if (d < bd) { bd = d; best = c; }
+        }
+        if (best) RACE.followSeat(best.s);
+      }
+    }
+    sc.ptrs.delete(e.pointerId);
+    if (sc.drag && sc.drag.id === e.pointerId) { sc.drag = null; cv.classList.remove("dragging"); }
+    if (sc.ptrs.size < 2) sc.pinchD = 0;
+  };
+  cv.addEventListener("pointerup", (e) => endPtr(e, true));
+  cv.addEventListener("pointercancel", (e) => endPtr(e, false));
+  cv.addEventListener("lostpointercapture", (e) => endPtr(e, false));
 };
 
 // back after a page reload mid-race: carry on from the state this station last posted (the hub keeps
@@ -1297,7 +1519,7 @@ RACE.unmount = function () {
   cancelAnimationFrame(RACE.raf); clearInterval(RACE.syncT);
   SFX.engineStop();
   if (typeof MUSIC !== "undefined") MUSIC.setHint(null);
-  RACE.rid = null; RACE.root = null; RACE.tiles = new Map();
+  RACE.rid = null; RACE.root = null; RACE.tiles = new Map(); RACE.spec = false; RACE.specCam = null;
 };
 
 RACE.updateRoom = function (room) {
@@ -1308,7 +1530,7 @@ RACE.updateRoom = function (room) {
     RACE.buildBiomeProps(RACE.T, room.seed, nb);
     RACE.tiles = new Map(); RACE.mini = null;
     const tEl = RACE.root?.querySelector(".gc-bar .gc-title");
-    if (tEl) tEl.innerHTML = `Slot Rush <span style="opacity:.72;font-weight:500">· ${esc(RACE.B.name)} · ${RACE.laps} laps</span>`;
+    if (tEl) tEl.innerHTML = `${RACE.spec ? '<span class="spec-badge">SPECTATING</span>' : ""}Slot Rush <span style="opacity:.72;font-weight:500">· ${esc(RACE.B.name)} · ${RACE.laps} laps</span>`;
     if (typeof MUSIC !== "undefined") MUSIC.setHint(RACE.B.music);
   }
   for (const c of RACE.cars) {
@@ -1331,6 +1553,21 @@ RACE.onEvent = function (ev, data) {
 
 RACE.onKey = function (e) {
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (RACE.spec) {
+    const sc = RACE.specCam, cv = RACE.cv;
+    if (!sc || !cv) return false;
+    const W = cv.clientWidth || 1200, H = cv.clientHeight || 800;
+    if (k === "+" || k === "=") { RACE.specZoomAt(1.22, W / 2, H / 2); return true; }
+    if (k === "-" || k === "_") { RACE.specZoomAt(1 / 1.22, W / 2, H / 2); return true; }
+    if ((k === "0" || k === "f") && !e.repeat) { RACE.resetSpecCam(); return true; }
+    if (k === "v" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { RACE.toggleSpecChase(); return true; }
+    if (["1", "2", "3", "4"].includes(k) && !e.repeat) {
+      const s = Number(k) - 1;
+      if (s < RACE.cars.length) RACE.followSeat(s);
+      return true;
+    }
+    return ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d"].includes(k);
+  }
   const map = { ArrowUp: "up", w: "up", ArrowDown: "down", s: "down", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right", " ": "use" };
   if (k === "v" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { RACE.toggleCam(); return true; }
   const act = map[k];
@@ -1339,17 +1576,20 @@ RACE.onKey = function (e) {
   return true;
 };
 
-// camera: north up (the car turns) or chase (the car points up the screen and the track turns)
+// camera: north up -> chase -> bird's-eye
 RACE.toggleCam = function () {
-  const chase = pref("raceCam") !== "chase";
-  setPref("raceCam", chase ? "chase" : "north");
+  if (RACE.spec) { RACE.toggleSpecChase(); return; }
+  const cur = pref("raceCam"), i = R_CAMS.indexOf(cur);
+  const next = R_CAMS[(i + 1) % R_CAMS.length];
+  setPref("raceCam", next);
   RACE.camLabel();
-  RACE.say(chase ? "Chase camera" : "North-up camera", 1.1);
+  if (typeof SETTINGS !== "undefined" && SETTINGS.built) SETTINGS.refresh();
+  RACE.say(R_CAM_SAY[next], 1.1);
 };
 RACE.camLabel = function () {
   RACE._camPref = pref("raceCam");
   const b = RACE.root?.querySelector("#raceCam");
-  if (b) b.innerHTML = `Camera: ${RACE._camPref === "chase" ? "chase" : "north up"} <kbd>V</kbd>`;
+  if (b) b.innerHTML = `Camera: ${R_CAM_NAMES[RACE._camPref] || "north up"} <kbd>V</kbd>`;
 };
 // sounds only while the race is on screen
 RACE.sfx = (name, opt) => { if (GC.open) SFX.play(name, opt); };
@@ -1542,7 +1782,7 @@ RACE.moveMissiles = function (tg) {
       const dt = Math.min(1 / 120, tg - m.simT);
       m.simT += dt;
       const tgt = m.tgt !== null ? RACE.cars[m.tgt] : null;
-      const tp = tgt ? (tgt === RACE.me ? [tgt.x, tgt.y] : [tgt.dx, tgt.dy]) : null;
+      const tp = tgt ? (RACE.me && tgt === RACE.me ? [tgt.x, tgt.y] : [tgt.dx, tgt.dy]) : null;
       if (tp && (m.homing || Math.hypot(tp[0] - m.x, tp[1] - m.y) < 520)) {
         m.homing = true;
         const want = Math.atan2(tp[1] - m.y, tp[0] - m.x);
@@ -1640,7 +1880,7 @@ RACE.predictTrack = function (p, tg) {
 
 RACE.onRemote = function (p) {
   const c = RACE.cars[p.s];
-  if (!c || c === RACE.me) return;
+  if (!c || (RACE.me && c === RACE.me)) return;
   const now = RACE.tg();
   const before = c.pkt ? RACE.predictTrack(c.pkt, now) : null;
   RACE.prep(p, c.pkt ? c.pkt.tp.i : undefined);
@@ -1666,7 +1906,7 @@ RACE.onRemote = function (p) {
 RACE.placeRemotes = function (tg) {
   const T = RACE.T, lim = RACE.LIM();
   for (const c of RACE.cars) {
-    if (c === RACE.me || !c.pkt) continue;
+    if ((RACE.me && c === RACE.me) || !c.pkt) continue;
     let [s, lat, h] = RACE.predictTrack(c.pkt, tg);
     if (c.err) {
       const u = rClamp((performance.now() - c.err.at) / 160, 0, 1), k = 1 - u * u * (3 - 2 * u);
@@ -1689,25 +1929,28 @@ RACE.remoteEvent = function (c, e) {
   if (now - (RACE.seen.get(key) ?? -1e9) < 10000) return;
   RACE.seen.set(key, now);
   if (RACE.seen.size > 512) for (const [k, t] of RACE.seen) if (now - t > 10000) RACE.seen.delete(k);
-  const near = Math.hypot(e.x - RACE.me.x, e.y - RACE.me.y) < 1100;
+  const fx = RACE.me ? RACE.me.x : (RACE.cam?.x || 0), fy = RACE.me ? RACE.me.y : (RACE.cam?.y || 0);
+  const near = !RACE.quiet && Math.hypot(e.x - fx, e.y - fy) < (RACE.me ? 1100 : 1800);
   if (near && (e.k === "missile" || e.k === "mine")) RACE.sfx(e.k, { gap: 0.2 });
-  if (near && e.k === "hit" && (e.a & 0xff) !== RACE.me.s) RACE.sfx((e.a >> 8) === 3 ? "emp" : "boom", { gap: 0.2 });
-  if (e.k === "hit" && (e.a & 0xff) === RACE.me.s) RACE.sfx("boom", { gap: 0.2 });
+  if (near && e.k === "hit" && (!RACE.me || (e.a & 0xff) !== RACE.me.s)) RACE.sfx((e.a >> 8) === 3 ? "emp" : "boom", { gap: 0.2 });
+  if (!RACE.quiet && e.k === "hit" && RACE.me && (e.a & 0xff) === RACE.me.s) RACE.sfx("boom", { gap: 0.2 });
   if (e.k === "missile") RACE.addMissile(c.s, e);
   else if (e.k === "mine") RACE.addMine(c.s, e);
   else if (e.k === "emp") {
     RACE.fx.push({ k: "emp", x: e.x, y: e.y, t: 0, col: c.col });
-    const me = RACE.me, t = e.t / 1000;
-    let best = null;
-    for (const h of RACE.hist) if (!best || Math.abs(h[0] - t) < Math.abs(best[0] - t)) best = h;
-    const pos = best && Math.abs(best[0] - t) < 0.3 ? [best[1], best[2]] : [me.x, me.y];
-    if (me.finT === null && Math.hypot(pos[0] - e.x, pos[1] - e.y) < R_EMP_R) RACE.hitMe(3, c.s, e.id);
+    if (RACE.me) {
+      const me = RACE.me, t = e.t / 1000;
+      let best = null;
+      for (const h of RACE.hist) if (!best || Math.abs(h[0] - t) < Math.abs(best[0] - t)) best = h;
+      const pos = best && Math.abs(best[0] - t) < 0.3 ? [best[1], best[2]] : [me.x, me.y];
+      if (me.finT === null && Math.hypot(pos[0] - e.x, pos[1] - e.y) < R_EMP_R) RACE.hitMe(3, c.s, e.id);
+    }
   } else if (e.k === "hit" || e.k === "block") {
     const src = e.a & 0xff, srcId = e.b;
     for (const m of RACE.missiles) if (m.seat === src && m.id === srcId) m.dead = true;
     for (const m of RACE.mines) if (m.seat === src && m.id === srcId) m.dead = true;
     RACE.fx.push({ k: e.k === "hit" ? ((e.a >> 8) === 3 ? "zap" : "boom") : "block", x: e.x, y: e.y, t: 0, col: c.col });
-    if (src === RACE.me.s) RACE.say(e.k === "hit" ? `You hit ${c.name}` : `${c.name}'s Walsh Shield stopped it`, 1.6);
+    if (RACE.me && src === RACE.me.s) RACE.say(e.k === "hit" ? `You hit ${c.name}` : `${c.name}'s Walsh Shield stopped it`, 1.6);
   } else if (e.k === "finish") {
     if (c.fin === null) c.fin = e.t;
   }
@@ -1745,6 +1988,21 @@ RACE.frame = function (now) {
     RACE.fpsT = now; RACE.fpsN = 0;
   }
   if (GC.clocks[RACE.rid]?.off === null || GC.clocks[RACE.rid]?.off === undefined) return;
+  if (RACE.spec) {
+    const tg = RACE.tg();
+    RACE.placeRemotes(tg);
+    RACE.moveMissiles(tg);
+    RACE.stepSpecCam(dtw);
+    if (!GC.open) { RACE.keys.clear(); SFX.engineStop(); return; }
+    const n = tg < 0 && tg > -3 ? Math.ceil(-tg) : tg >= 0 && tg < 1 ? 0 : null;
+    if (n !== RACE.countSaid && n !== null) SFX.play(n ? "beep" : "go");
+    RACE.countSaid = n;
+    const t0d = performance.now();
+    RACE.draw(dtw, tg);
+    RACE.drawMs = 0.95 * (RACE.drawMs || 0) + 0.05 * (performance.now() - t0d);
+    if (now - RACE.hudT > 100) { RACE.hudT = now; RACE.drawSpecHud(tg); }
+    return;
+  }
   RACE.acc += dtw;
   while (RACE.acc >= R_DT) { RACE.step(R_DT); RACE.acc -= R_DT; }
   const tg = RACE.tg();
@@ -1757,6 +2015,39 @@ RACE.frame = function (now) {
   RACE.draw(dtw, tg);
   RACE.drawMs = 0.95 * (RACE.drawMs || 0) + 0.05 * (performance.now() - t0d);
   if (now - RACE.hudT > 100) { RACE.hudT = now; RACE.drawHud(tg); }
+};
+
+RACE.stepSpecCam = function (dt) {
+  const sc = RACE.specCam, cv = RACE.cv;
+  if (!sc || !cv || !RACE.T) return;
+  const W = cv.clientWidth || 1200, H = cv.clientHeight || 800, fit = RACE.calcFit(W, H);
+  if (sc.targetZoom === null) { sc.zoom = sc.targetZoom = fit.scale; sc.x = sc.tx = fit.cx; sc.y = sc.ty = fit.cy; }
+  sc.targetZoom = rClamp(sc.targetZoom, fit.scale, 1.5);
+  const kx = (RACE.keys.has("right") ? 1 : 0) - (RACE.keys.has("left") ? 1 : 0);
+  const ky = (RACE.keys.has("down") ? 1 : 0) - (RACE.keys.has("up") ? 1 : 0);
+  if ((kx || ky) && !sc.drag?.moved) {
+    sc.follow = null; sc.autoChase = false;
+    const sp = (780 / Math.max(sc.zoom || fit.scale, 0.14)) * dt;
+    const [nx, ny] = RACE.clampSpecCam(sc.tx + kx * sp, sc.ty + ky * sp, sc.targetZoom, W, H);
+    sc.tx = sc.x = nx; sc.ty = sc.y = ny;
+  }
+  if (sc.follow !== null) {
+    const fc = RACE.cars[sc.follow];
+    if (fc) {
+      const fx = fc.dx ?? fc.x, fy = fc.dy ?? fc.y, fh = fc.dh ?? fc.h ?? 0;
+      sc.tx = fx; sc.ty = fy;
+      if (sc.autoChase) {
+        const err = rWrap(fh - sc.a);
+        sc.a = rWrap(sc.a + err * (1 - Math.exp(-dt / (0.05 + 0.25 * Math.abs(err) / Math.PI))));
+      }
+    }
+  }
+  const k = 1 - Math.exp(-dt * 10);
+  sc.zoom += (sc.targetZoom - sc.zoom) * k;
+  const [tx, ty] = RACE.clampSpecCam(sc.tx, sc.ty, sc.targetZoom, W, H);
+  sc.tx = tx; sc.ty = ty;
+  sc.x += (sc.tx - sc.x) * k;
+  sc.y += (sc.ty - sc.y) * k;
 };
 
 RACE.sounds = function (tg) {
@@ -1851,52 +2142,111 @@ RACE.drawWeather = function (g, dt, W, H) {
 RACE.draw = function (dt, tg) {
   const cv = RACE.cv, g = RACE.ctx, T = RACE.T, me = RACE.me, bm = RACE.biome, pal = RACE.B;
   const dpr = Math.min(1.5, window.devicePixelRatio || 1) * RACE.res, W = cv.clientWidth, H = cv.clientHeight;
+  RACE.dpr = dpr;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-  const S0 = RACE.TILE;
-  const z = rClamp(Math.min(W / 1500, H / 950) * 1.12, 0.55, 1.35);
-  const tz = Math.round(S0 * dpr * z) / S0;
-  if (tz !== RACE.tz) { RACE.tz = tz; RACE.tiles = new Map(); }
-  const cam = RACE.cam, chase = pref("raceCam") === "chase", B = RACE.BLEED, TS = Math.round(S0 * tz);
-  cam.z = tz / dpr;
-  let M, vx0, vy0, vx1, vy1, eye, rot = 0;
+  const S0 = RACE.TILE, cam = RACE.cam, B = RACE.BLEED;
+  let z, chase = false, bird = false, M, vx0, vy0, vx1, vy1, eye, rot = 0;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = bm === 4 ? pal.bgSea : pal.bg; g.fillRect(0, 0, cv.width, cv.height);
-  if (chase) {
-    if (!RACE.chaseOn) cam.a = me.h;
-    const err = rWrap(me.h - cam.a);
-    if (!(me.spin > 0)) cam.a = rWrap(cam.a + err * (1 - Math.exp(-dt / (0.05 + 0.25 * Math.abs(err) / Math.PI))));
-    cam.x = me.x; cam.y = me.y;
-    rot = -cam.a - Math.PI / 2;
-    const co = Math.cos(rot) * tz, si = Math.sin(rot) * tz, Ax = dpr * W / 2, Ay = dpr * H * 0.66;
-    M = [co, si, -si, co, Ax - (co * cam.x - si * cam.y), Ay - (si * cam.x + co * cam.y)];
-    const inv = (sx, sy) => { const u = sx - M[4], v = sy - M[5], d = tz * tz; return [(co * u + si * v) / d, (-si * u + co * v) / d]; };
-    const cs = [inv(0, 0), inv(dpr * W, 0), inv(0, dpr * H), inv(dpr * W, dpr * H)];
-    vx0 = Math.min(...cs.map((p) => p[0])); vx1 = Math.max(...cs.map((p) => p[0]));
-    vy0 = Math.min(...cs.map((p) => p[1])); vy1 = Math.max(...cs.map((p) => p[1]));
-    const ec = inv(dpr * W / 2, dpr * H / 2);
-    eye = { x: ec[0], y: ec[1] };
+
+  if (RACE.spec) {
+    const sc = RACE.specCam, fit = RACE.calcFit(W, H);
+    z = rClamp(sc?.zoom || fit.scale, fit.scale, 1.5);
+    cam.x = sc ? sc.x : fit.cx; cam.y = sc ? sc.y : fit.cy; cam.z = z;
+    chase = Boolean(sc && sc.follow !== null && sc.autoChase);
+    bird = z <= fit.scale * 1.15 && (!sc || sc.follow === null);
+    if (RACE.miniCv) RACE.miniCv.hidden = z <= fit.scale * 1.15;
+    const tz = RACE.pickTileZ(dpr, z), sd = z * dpr;
+    if (tz !== RACE.tz) { RACE.tz = tz; RACE.tiles = new Map(); }
+    if (chase) {
+      rot = -(sc.a || 0) - Math.PI / 2;
+      const co = Math.cos(rot) * sd, si = Math.sin(rot) * sd, Ax = dpr * W / 2, Ay = dpr * H * 0.62;
+      M = [co, si, -si, co, Ax - (co * cam.x - si * cam.y), Ay - (si * cam.x + co * cam.y)];
+      const inv = (sx, sy) => { const u = sx - M[4], v = sy - M[5], d = sd * sd; return [(co * u + si * v) / d, (-si * u + co * v) / d]; };
+      const cs = [inv(0, 0), inv(dpr * W, 0), inv(0, dpr * H), inv(dpr * W, dpr * H)];
+      vx0 = Math.min(...cs.map((p) => p[0])); vx1 = Math.max(...cs.map((p) => p[0]));
+      vy0 = Math.min(...cs.map((p) => p[1])); vy1 = Math.max(...cs.map((p) => p[1]));
+      const ec = inv(dpr * W / 2, dpr * H / 2);
+      eye = { x: ec[0], y: ec[1] };
+    } else {
+      const cyOff = bird ? dpr * (H / 2 + 12) : dpr * H / 2;
+      const ox = dpr * W / 2 - cam.x * sd, oy = cyOff - cam.y * sd;
+      M = [sd, 0, 0, sd, ox, oy];
+      vx0 = (0 - ox) / sd; vy0 = (0 - oy) / sd; vx1 = (dpr * W - ox) / sd; vy1 = (dpr * H - oy) / sd;
+      eye = { x: cam.x, y: cam.y };
+    }
     g.setTransform(...M);
-    const rad = TS * 0.72 + B;
+    const TS = S0 * sd, rad = TS * 0.72 + B;
     for (let tx2 = Math.floor(vx0 / S0); tx2 <= Math.floor(vx1 / S0); tx2++)
       for (let ty2 = Math.floor(vy0 / S0); ty2 <= Math.floor(vy1 / S0); ty2++) {
-        const cx = (tx2 + 0.5) * S0, cy = (ty2 + 0.5) * S0;
-        const sx = M[0] * cx + M[2] * cy + M[4], sy = M[1] * cx + M[3] * cy + M[5];
-        if (sx < -rad || sy < -rad || sx > dpr * W + rad || sy > dpr * H + rad) continue;
+        if (chase) {
+          const cx = (tx2 + 0.5) * S0, cy = (ty2 + 0.5) * S0;
+          const sx = M[0] * cx + M[2] * cy + M[4], sy = M[1] * cx + M[3] * cy + M[5];
+          if (sx < -rad || sy < -rad || sx > dpr * W + rad || sy > dpr * H + rad) continue;
+        }
         g.drawImage(RACE.tile(tx2, ty2), tx2 * S0 - B / tz, ty2 * S0 - B / tz, S0 + 2 * B / tz, S0 + 2 * B / tz);
       }
   } else {
-    const tx = me.x + me.vx * 0.32, ty = me.y + me.vy * 0.32, k = 1 - Math.exp(-dt * 5);
-    cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
-    const ox = Math.round(dpr * W / 2 - cam.x * tz), oy = Math.round(dpr * H / 2 - cam.y * tz);
-    vx0 = (0 - ox) / tz; vy0 = (0 - oy) / tz; vx1 = (dpr * W - ox) / tz; vy1 = (dpr * H - oy) / tz;
-    for (let tx2 = Math.floor(vx0 / S0); tx2 <= Math.floor(vx1 / S0); tx2++)
-      for (let ty2 = Math.floor(vy0 / S0); ty2 <= Math.floor(vy1 / S0); ty2++) g.drawImage(RACE.tile(tx2, ty2), ox + tx2 * TS - B, oy + ty2 * TS - B);
-    M = [tz, 0, 0, tz, ox, oy];
-    eye = { x: cam.x, y: cam.y };
-    g.setTransform(...M);
+    const mode = pref("raceCam");
+    chase = mode === "chase";
+    bird = mode === "bird";
+    if (RACE.miniCv) RACE.miniCv.hidden = bird;
+    const fit = bird ? RACE.calcFit(W, H) : null;
+    z = bird ? fit.scale : rClamp(Math.min(W / 1500, H / 950) * 1.12, 0.55, 1.35);
+    const tz = RACE.pickTileZ(dpr, z), sd = z * dpr;
+    if (tz !== RACE.tz) { RACE.tz = tz; RACE.tiles = new Map(); }
+    cam.z = bird ? z : tz / dpr;
+    const TS = Math.round(S0 * tz);
+    if (chase) {
+      if (!RACE.chaseOn) cam.a = me.h;
+      const err = rWrap(me.h - cam.a);
+      if (!(me.spin > 0)) cam.a = rWrap(cam.a + err * (1 - Math.exp(-dt / (0.05 + 0.25 * Math.abs(err) / Math.PI))));
+      cam.x = me.x; cam.y = me.y;
+      rot = -cam.a - Math.PI / 2;
+      const co = Math.cos(rot) * tz, si = Math.sin(rot) * tz, Ax = dpr * W / 2, Ay = dpr * H * 0.66;
+      M = [co, si, -si, co, Ax - (co * cam.x - si * cam.y), Ay - (si * cam.x + co * cam.y)];
+      const inv = (sx, sy) => { const u = sx - M[4], v = sy - M[5], d = tz * tz; return [(co * u + si * v) / d, (-si * u + co * v) / d]; };
+      const cs = [inv(0, 0), inv(dpr * W, 0), inv(0, dpr * H), inv(dpr * W, dpr * H)];
+      vx0 = Math.min(...cs.map((p) => p[0])); vx1 = Math.max(...cs.map((p) => p[0]));
+      vy0 = Math.min(...cs.map((p) => p[1])); vy1 = Math.max(...cs.map((p) => p[1]));
+      const ec = inv(dpr * W / 2, dpr * H / 2);
+      eye = { x: ec[0], y: ec[1] };
+      g.setTransform(...M);
+      const rad = TS * 0.72 + B;
+      for (let tx2 = Math.floor(vx0 / S0); tx2 <= Math.floor(vx1 / S0); tx2++)
+        for (let ty2 = Math.floor(vy0 / S0); ty2 <= Math.floor(vy1 / S0); ty2++) {
+          const cx = (tx2 + 0.5) * S0, cy = (ty2 + 0.5) * S0;
+          const sx = M[0] * cx + M[2] * cy + M[4], sy = M[1] * cx + M[3] * cy + M[5];
+          if (sx < -rad || sy < -rad || sx > dpr * W + rad || sy > dpr * H + rad) continue;
+          g.drawImage(RACE.tile(tx2, ty2), tx2 * S0 - B / tz, ty2 * S0 - B / tz, S0 + 2 * B / tz, S0 + 2 * B / tz);
+        }
+    } else if (bird) {
+      cam.x = fit.cx; cam.y = fit.cy;
+      const ox = dpr * W / 2 - cam.x * sd, oy = dpr * (H / 2 + 12) - cam.y * sd;
+      M = [sd, 0, 0, sd, ox, oy];
+      vx0 = (0 - ox) / sd; vy0 = (0 - oy) / sd; vx1 = (dpr * W - ox) / sd; vy1 = (dpr * H - oy) / sd;
+      eye = { x: cam.x, y: cam.y };
+      g.setTransform(...M);
+      for (let tx2 = Math.floor(vx0 / S0); tx2 <= Math.floor(vx1 / S0); tx2++)
+        for (let ty2 = Math.floor(vy0 / S0); ty2 <= Math.floor(vy1 / S0); ty2++)
+          g.drawImage(RACE.tile(tx2, ty2), tx2 * S0 - B / tz, ty2 * S0 - B / tz, S0 + 2 * B / tz, S0 + 2 * B / tz);
+    } else {
+      const tx = me.x + me.vx * 0.32, ty = me.y + me.vy * 0.32, k = 1 - Math.exp(-dt * 5);
+      cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+      const ox = Math.round(dpr * W / 2 - cam.x * tz), oy = Math.round(dpr * H / 2 - cam.y * tz);
+      vx0 = (0 - ox) / tz; vy0 = (0 - oy) / tz; vx1 = (dpr * W - ox) / tz; vy1 = (dpr * H - oy) / tz;
+      for (let tx2 = Math.floor(vx0 / S0); tx2 <= Math.floor(vx1 / S0); tx2++)
+        for (let ty2 = Math.floor(vy0 / S0); ty2 <= Math.floor(vy1 / S0); ty2++) g.drawImage(RACE.tile(tx2, ty2), ox + tx2 * TS - B, oy + ty2 * TS - B);
+      M = [tz, 0, 0, tz, ox, oy];
+      eye = { x: cam.x, y: cam.y };
+      g.setTransform(...M);
+    }
   }
   RACE.chaseOn = chase;
+  RACE.birdOn = bird;
   RACE.view = { M, rot };
+  const entScale = z < 0.72 ? rClamp(Math.pow(0.72 / Math.max(z, 0.14), 0.55), 1.0, 2.2) : 1.0;
+  const lblScale = z < 0.85 ? rClamp(0.85 / Math.max(z, 0.14), 1.0, 3.6) : 1.0;
   const vis = (x, y, m = 80) => x > vx0 - m && x < vx1 + m && y > vy0 - m && y < vy1 + m;
   const t = performance.now() / 1000;
 
@@ -1929,7 +2279,7 @@ RACE.draw = function (dt, tg) {
   for (const b of T.caches) {
     const [bx, by] = RACE.at(T, b.i, b.off);
     if (!vis(bx, by) || b.gone > performance.now()) continue;
-    g.save(); g.translate(bx, by); g.rotate(t * 1.6 + b.off);
+    g.save(); g.translate(bx, by); if (entScale > 1.02) g.scale(entScale, entScale); g.rotate(t * 1.6 + b.off);
     g.globalCompositeOperation = "lighter";
     g.fillStyle = "rgba(255,171,64,0.18)"; g.fillRect(-22, -22, 44, 44);
     g.strokeStyle = "rgba(255,208,138,0.9)"; g.lineWidth = 2; g.strokeRect(-14, -14, 28, 28);
@@ -1941,7 +2291,8 @@ RACE.draw = function (dt, tg) {
   for (const m of RACE.mines) {
     if (m.dead || !vis(m.x, m.y)) continue;
     const armed = tg - m.t0 > R_MINE_ARM, pulse = 0.5 + 0.5 * Math.sin(t * 8);
-    g.save(); g.globalCompositeOperation = "lighter";
+    g.save(); g.translate(m.x, m.y); if (entScale > 1.02) g.scale(entScale, entScale); g.translate(-m.x, -m.y);
+    g.globalCompositeOperation = "lighter";
     g.strokeStyle = armed ? `rgba(255,59,48,${0.6 + 0.35 * pulse})` : "rgba(255,171,64,0.4)";
     g.lineWidth = 2.4; g.beginPath();
     for (let s = 0; s <= 36; s++) {
@@ -1958,13 +2309,14 @@ RACE.draw = function (dt, tg) {
   }
 
   // Per-car biome trails, drift particles & car bodies
-  const order = RACE.cars.filter((c) => c === me || c.pkt);
+  const order = RACE.cars.filter((c) => (me && c === me) || c.pkt || (RACE.spec && RACE.tg() < 2));
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   for (const c of order) {
-    const x = c === me ? c.x : c.dx, y = c === me ? c.y : c.dy, h = c === me ? c.h : c.dh;
-    const vx = c === me ? c.vx : c.dvx, vy = c === me ? c.vy : c.dvy;
+    const isMe = me && c === me;
+    const x = isMe ? c.x : (c.dx ?? c.x), y = isMe ? c.y : (c.dy ?? c.y), h = isMe ? c.h : (c.dh ?? c.h);
+    const vx = isMe ? c.vx : c.dvx, vy = isMe ? c.vy : c.dvy;
     const sp = Math.hypot(vx || 0, vy || 0);
-    const slip = c === me ? c.slip : Math.abs(-(vx || 0) * Math.sin(h) + (vy || 0) * Math.cos(h));
+    const slip = isMe ? c.slip : Math.abs(-(vx || 0) * Math.sin(h) + (vy || 0) * Math.cos(h));
     if (!c.wake) c.wake = [];
     if (bm === 1 || bm === 4) {
       c.wake.push({ x, y, h, sp, t });
@@ -2005,17 +2357,40 @@ RACE.draw = function (dt, tg) {
       g.restore();
     }
     if (!vis(x, y, 300)) continue;
+    const isFocal = isMe || (RACE.spec && RACE.specCam?.follow === c.s);
+    if (z < 0.72 || isFocal) {
+      g.save(); g.translate(x, y);
+      if (z < 0.72) {
+        g.fillStyle = "rgba(6,8,14,0.68)";
+        g.beginPath(); g.arc(0, 0, 32 * entScale, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = c.col; g.lineWidth = isFocal ? 3.5 * entScale : 2.2 * entScale;
+        g.beginPath(); g.arc(0, 0, 32 * entScale, 0, Math.PI * 2); g.stroke();
+      }
+      if (isFocal && (bird || z < 0.72)) {
+        g.rotate(h);
+        g.fillStyle = isMe ? "#fff" : c.col;
+        g.strokeStyle = "#080a10"; g.lineWidth = 2;
+        g.beginPath();
+        const r = 46 * entScale;
+        g.moveTo(r + 14 * entScale, 0); g.lineTo(r - 2 * entScale, -10 * entScale); g.lineTo(r - 2 * entScale, 10 * entScale);
+        g.closePath(); g.fill(); g.stroke();
+      }
+      g.restore();
+    }
     g.save(); g.translate(x, y); g.rotate(h);
+    if (entScale > 1.02) g.scale(entScale, entScale);
     drawCar(g, c, bm);
     g.restore();
-    if (c !== me) {
+    if (!isMe || bird) {
       g.save(); g.translate(x, y); g.rotate(-rot);
+      if (lblScale > 1.02) g.scale(lblScale, lblScale);
       g.font = "700 13px 'Chakra Petch', system-ui"; g.textAlign = "center";
-      g.lineWidth = 3; g.strokeStyle = "rgba(8,10,16,0.85)";
-      const nmTxt = c.away ? `${c.name} · reconnecting` : c.name;
-      g.strokeText(nmTxt, 0, -34);
-      g.fillStyle = c.col;
-      g.fillText(nmTxt, 0, -34);
+      g.lineWidth = 3.5; g.strokeStyle = "rgba(8,10,16,0.9)";
+      const nmTxt = isMe ? "YOU" : (c.away ? `${c.name} · reconnecting` : c.name);
+      const yOff = -(24 + (entScale - 1) * 14) / lblScale * entScale;
+      g.strokeText(nmTxt, 0, Math.min(-32, yOff));
+      g.fillStyle = isMe ? "#ffffff" : c.col;
+      g.fillText(nmTxt, 0, Math.min(-32, yOff));
       g.restore();
     }
   }
@@ -2025,21 +2400,22 @@ RACE.draw = function (dt, tg) {
     if (m.dead) continue;
     const lockCol = R_SEAT[m.seat % 4];
     const tgt = m.tgt !== null ? RACE.cars[m.tgt] : null;
-    const tx = tgt ? (tgt === me ? tgt.x : tgt.dx) : undefined;
-    const ty = tgt ? (tgt === me ? tgt.y : tgt.dy) : undefined;
+    const tx = tgt ? ((me && tgt === me) ? tgt.x : tgt.dx) : undefined;
+    const ty = tgt ? ((me && tgt === me) ? tgt.y : tgt.dy) : undefined;
     if (tx !== undefined && vis(tx, ty, 60)) {
       g.save(); g.translate(tx, ty); g.rotate(t * 3.5);
       g.strokeStyle = lockCol; g.lineWidth = 2; g.setLineDash([7, 5]);
-      g.beginPath(); g.arc(0, 0, 29, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(0, 0, 29 * entScale, 0, Math.PI * 2); g.stroke();
       g.setLineDash([]);
       for (let q = 0; q < 4; q++) {
         g.rotate(Math.PI / 2);
-        g.beginPath(); g.moveTo(22, -8); g.lineTo(29, -8); g.lineTo(29, -2); g.stroke();
+        g.beginPath(); g.moveTo(22 * entScale, -8 * entScale); g.lineTo(29 * entScale, -8 * entScale); g.lineTo(29 * entScale, -2 * entScale); g.stroke();
       }
       g.restore();
     }
     if (!vis(m.x, m.y)) continue;
     g.save(); g.translate(m.x, m.y); g.rotate(m.h);
+    if (entScale > 1.02) g.scale(entScale, entScale);
     g.globalCompositeOperation = "lighter";
     const gr = g.createLinearGradient(-70, 0, 0, 0); gr.addColorStop(0, "rgba(255,171,64,0)"); gr.addColorStop(1, "rgba(255,190,90,0.85)");
     g.fillStyle = gr; g.fillRect(-70, -3, 70, 6);
@@ -2140,7 +2516,7 @@ RACE.draw = function (dt, tg) {
   // Weather in screen space
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   RACE.drawWeather(g, dt, W, H);
-  RACE.drawMini();
+  if (RACE.miniCv && !RACE.miniCv.hidden) RACE.drawMini();
 };
 
 RACE.drawBuilding = function (g, b, cam, t) {
@@ -2229,16 +2605,64 @@ RACE.drawMini = function () {
   g.clearRect(0, 0, cv.width, cv.height);
   g.drawImage(RACE.mini, 0, 0);
   for (const c of RACE.cars) {
-    const x = c === RACE.me ? c.x : c.dx, y = c === RACE.me ? c.y : c.dy;
+    const x = RACE.me && c === RACE.me ? c.x : c.dx, y = RACE.me && c === RACE.me ? c.y : c.dy;
     if (x === undefined) continue;
     g.fillStyle = c.col; g.beginPath();
-    if (c === RACE.me) {
-      const px = x * s + ox, py = y * s + oy, a = c.h;
+    if ((RACE.me && c === RACE.me) || (RACE.spec && RACE.specCam?.follow === c.s)) {
+      const px = x * s + ox, py = y * s + oy, a = RACE.me && c === RACE.me ? c.h : (c.dh ?? c.h);
       g.moveTo(px + Math.cos(a) * 11, py + Math.sin(a) * 11);
       g.lineTo(px + Math.cos(a + 2.5) * 8, py + Math.sin(a + 2.5) * 8);
       g.lineTo(px + Math.cos(a - 2.5) * 8, py + Math.sin(a - 2.5) * 8);
       g.closePath(); g.fill(); g.strokeStyle = "#fff"; g.lineWidth = 2; g.stroke();
     } else { g.arc(x * s + ox, y * s + oy, 5.5, 0, Math.PI * 2); g.fill(); }
+  }
+};
+
+RACE.drawSpecHud = function (tg) {
+  const h = RACE.hud, sc = RACE.specCam, T = RACE.T;
+  if (!h || !sc) return;
+  const order = RACE.order(true);
+  const fc = sc.follow !== null ? RACE.cars[sc.follow] : null;
+  if (h.speed) {
+    if (fc) {
+      h.speed.hidden = false;
+      h.speed.querySelector(".v").textContent = Math.round(Math.hypot(fc.dvx || 0, fc.dvy || 0) * 0.36);
+    } else {
+      h.speed.hidden = true;
+    }
+  }
+  if (h.followLbl) {
+    h.followLbl.textContent = fc
+      ? `${sc.autoChase ? "Chase" : "Follow"}: ${fc.name} · Lap ${Math.min(RACE.laps, Math.max(1, Math.floor((fc.d || 0) / T.L) + 1))}/${RACE.laps}`
+      : "Free Bird's-Eye";
+  }
+  const chaseBtn = RACE.root?.querySelector("#specChase");
+  if (chaseBtn) {
+    chaseBtn.setAttribute("aria-pressed", String(Boolean(fc && sc.autoChase)));
+    chaseBtn.innerHTML = `${fc && sc.autoChase ? "Auto-Chase" : fc ? "North-Up" : "Auto-Chase"}<kbd>V</kbd>`;
+  }
+  h.board.innerHTML = order.map((c, k) => {
+    let q;
+    if (c.fin !== null) q = RACE.fmt(c.fin / 1000);
+    else {
+      const rate = c.rx.length > 1 ? (c.rx.length - 1) / ((c.rx[c.rx.length - 1] - c.rx[0]) / 1000) : 0;
+      q = c.away ? "reconnecting" : c.gone ? "left" : c.pkt ? `${rate.toFixed(0)}/s` : "grid";
+    }
+    return `<button type="button" data-seat="${c.s}" class="${sc.follow === c.s ? "r-follow" : ""}" title="Follow ${esc(c.name)} (${c.s + 1})">`
+      + `<span class="sw" style="background:${c.col}"></span><span class="nm">${k + 1}. ${esc(c.name)}</span><span class="q">${esc(q)}</span></button>`;
+  }).join("");
+  h.board.querySelectorAll("button[data-seat]").forEach((b) => {
+    b.onclick = () => { RACE.followSeat(+b.dataset.seat); b.blur(); };
+  });
+  let count = "", cls = "count";
+  if (tg < 0 && tg > -3) count = String(Math.ceil(-tg));
+  else if (tg >= 0 && tg < 0.9) { count = "GO"; cls = "count go"; }
+  h.count.className = cls; h.count.textContent = count;
+  h.keys.textContent = tg < -0.2 ? "Drag to pan, scroll to zoom, click a car or 1–4 to follow, V for Auto-Chase, F for Full Track" : "";
+  if (tg < -3) h.msg.textContent = `Get ready · ${RACE.B.name}`;
+  else {
+    RACE.msgs = RACE.msgs.filter((m) => m.until > performance.now());
+    h.msg.textContent = RACE.msgs.length ? RACE.msgs[RACE.msgs.length - 1].text : "";
   }
 };
 
@@ -2282,13 +2706,16 @@ RACE.drawHud = function (tg) {
 RACE.showResults = function (res) {
   const box = RACE.root?.querySelector(".race-results");
   if (!box) return;
-  const host = RACE.room.h === S.me.addr, T = RACE.T;
-  const rows = res.map((r, k) => `<tr><td>${k + 1}.</td><td><span style="color:${R_SEAT[r.s % 4]}">■</span> ${esc(r.a === S.me.addr ? "You" : r.name)}</td>
+  const host = !RACE.spec && RACE.room.h === S.me.addr, T = RACE.T;
+  const rows = res.map((r, k) => `<tr><td>${k + 1}.</td><td><span style="color:${R_SEAT[r.s % 4]}">■</span> ${esc(!RACE.spec && r.a === S.me.addr ? "You" : r.name)}</td>
     <td class="t">${r.ft !== null && r.ft !== undefined ? RACE.fmt(r.ft / 1000) : r.gone ? "left" : `DNF, ${Math.max(0, r.d / T.L).toFixed(1)} laps`}</td></tr>`).join("");
   box.hidden = false;
   box.innerHTML = `<div class="box"><h3>Results</h3><table>${rows}</table><div class="acts">
-    ${host ? `<button class="primary" data-act="start" data-r="${esc(RACE.rid)}">Rematch on a new track</button>` : `<span style="opacity:.75">${esc(GC.name(RACE.room, RACE.room.h))} can start a rematch.</span>`}
-    <button class="gc-ghost" data-act="leave" data-r="${esc(RACE.rid)}">${host ? "Close room" : "Leave"}</button></div></div>`;
+    ${RACE.spec
+      ? `<button class="gc-ghost" data-act="unwatch" data-r="${esc(RACE.rid)}">Leave</button>`
+      : `${host ? `<button class="primary" data-act="start" data-r="${esc(RACE.rid)}">Rematch on a new track</button>` : `<span style="opacity:.75">${esc(GC.name(RACE.room, RACE.room.h))} can start a rematch.</span>`}
+         <button class="gc-ghost" data-act="leave" data-r="${esc(RACE.rid)}">${host ? "Close room" : "Leave"}</button>`}
+    </div></div>`;
   GC.wire(box);
 };
 

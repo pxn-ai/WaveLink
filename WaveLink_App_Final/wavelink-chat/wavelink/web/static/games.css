@@ -96,6 +96,18 @@
 .invite .who small { display: block; opacity: .7; }
 .invite .yes { background: var(--brass-400); color: var(--plum-950); border: 0; border-radius: 999px; padding: 7px 16px; font-weight: 700; }
 .invite .no, .invite .open { background: transparent; color: inherit; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 7px 14px; }
+.live-sec { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.live-hdr { font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--neon-cyan);
+  padding: 0 6px; text-shadow: 0 1px 4px rgba(0,0,0,.85); }
+.live-row { border-color: rgba(63, 230, 255, .36); background: rgba(12, 16, 26, .92); }
+.live-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  padding: 3px 9px; border-radius: 999px; background: rgba(63, 230, 255, .14); color: var(--neon-cyan);
+  border: 1px solid rgba(63, 230, 255, .42); }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--neon-lime); animation: unoPulse 1.4s ease-in-out infinite; }
+.invite .watch { background: var(--neon-cyan); color: #06131a; border: 0; border-radius: 999px; padding: 7px 16px; font-weight: 700; }
+.spec-badge { display: inline-block; vertical-align: middle; margin-right: 8px; padding: 2px 9px; border-radius: 999px;
+  font-family: var(--ui); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  background: rgba(63, 230, 255, .16); color: var(--neon-cyan); border: 1px solid rgba(63, 230, 255, .5); }
 
 /* ------------------------------------------------------------------ lobby */
 .lobby { margin: auto; width: min(520px, calc(100% - 32px)); padding: 26px 26px 20px; border-radius: 22px;
@@ -225,12 +237,17 @@
 .seat.top { left: 50%; top: 4%; transform: translateX(-50%); }
 .seat.left { left: 4%; top: 36%; }
 .seat.right { right: 4%; top: 36%; }
+.seat.bottom { left: 50%; bottom: 74px; transform: translateX(-50%); }
+.uno-room.is-spec .uno-center { top: 40%; }
+.uno-room.is-spec .uno-log { top: calc(40% + 128px); }
 .seat.out { opacity: .35; }
+.seat .flag.away { background: rgba(255, 171, 64, .9); color: #1a1006; }
 .seat .who { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 5px; border-radius: 999px;
   background: rgba(0,0,0,.3); border: 1px solid rgba(246, 227, 180, .2); }
 .seat .av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700;
   position: relative; color: #fff; }
 .seat .nm { font-weight: 600; max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat .sc { font-size: 12px; opacity: .75; }
 .seat .n { font-family: "Cardface", var(--ui); color: var(--brass-200); font-size: 18px; }
 .seat .backs { display: flex; height: 58px; }
 .seat .backs .card { margin-left: -24px; }
@@ -283,6 +300,8 @@
 .race-room { flex: 1; position: relative; background: var(--asphalt); min-height: 0; overflow: hidden;
   font-family: "Chakra Petch", var(--ui); color: #eef3fb; }
 .race-room canvas.world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.race-room.is-spec canvas.world { cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
+.race-room.is-spec canvas.world.dragging { cursor: grabbing; }
 .race-room .vignette { position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(0, 0, 0, .55) 100%); }
 .race-room .gc-bar { position: absolute; left: 0; right: 0; top: 0; background: linear-gradient(180deg, rgba(5,6,10,.7), transparent); }
@@ -317,6 +336,22 @@
 .hud .board .nm { flex: 1; }
 .hud .board .q { font-size: 12px; opacity: .75; font-variant-numeric: tabular-nums; }
 .hud .board .r-me { outline: 1px solid rgba(255, 255, 255, .45); }
+.hud .board.spec-board { pointer-events: auto; }
+.hud .board.spec-board button { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px;
+  background: rgba(8, 10, 16, .78); border: 1px solid rgba(255, 255, 255, .1); color: inherit; font-size: 14px;
+  text-align: left; width: 100%; }
+.hud .board.spec-board button:hover { background: rgba(20, 26, 40, .88); border-color: rgba(63, 230, 255, .4); }
+.hud .board.spec-board button.r-follow { border-color: var(--neon-cyan); box-shadow: 0 0 12px rgba(63, 230, 255, .28); }
+.hud .spec-bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex;
+  align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; padding: 7px 12px; border-radius: 999px;
+  background: rgba(8, 10, 16, .82); border: 1px solid rgba(255, 255, 255, .18); pointer-events: auto;
+  backdrop-filter: blur(6px); max-width: calc(100% - 32px); }
+.hud .spec-follow-lbl { font-size: 13px; padding: 0 6px; color: var(--neon-cyan); white-space: nowrap; }
+.hud .spec-btn { border: 1px solid rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .06); color: inherit;
+  border-radius: 999px; padding: 5px 11px; font-size: 13px; display: inline-flex; align-items: center; }
+.hud .spec-btn:hover { background: rgba(255, 255, 255, .14); }
+.hud .spec-btn[aria-pressed="true"] { background: var(--neon-cyan); color: #06131a; border-color: var(--neon-cyan); font-weight: 700; }
+.hud .spec-btn:disabled { opacity: .4; cursor: not-allowed; }
 .hud canvas.mini { position: absolute; left: 18px; bottom: 18px; width: 200px; height: 150px; border-radius: 12px;
   background: rgba(8, 10, 16, .76); border: 1px solid rgba(255,255,255,.16); }
 .hud .count { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); font-size: clamp(90px, 16vw, 200px);

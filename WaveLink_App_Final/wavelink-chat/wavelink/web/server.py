@@ -290,8 +290,13 @@ def game_action(hub, j: dict) -> dict:
     a = j.get("a")
     if a == "create":
         return {"r": hub.create(j["game"], j.get("players") or [], j.get("o") or {})}
+    if a == "unwatch":
+        hub.unwatch(j.get("r"))
+        return {"ok": True}
     rid = j["r"]
-    if a == "answer":
+    if a == "watch":
+        hub.watch(rid)
+    elif a == "answer":
         hub.answer(rid, bool(j.get("ok")))
     elif a == "opts":
         hub.set_opts(rid, j.get("o") or {})

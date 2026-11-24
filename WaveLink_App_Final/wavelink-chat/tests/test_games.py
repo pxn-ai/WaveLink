@@ -13,6 +13,7 @@ age of a state when it is heard, events delivered (and duplicates passed to the 
 """
 import argparse
 import collections
+import json
 import math
 import os
 import random
@@ -23,6 +24,7 @@ import threading
 import time
 
 from wavelink.config import PhyConfig
+from wavelink.games.hub import _assert_no_private_uno
 from wavelink.games.uno import CARDS, WILD, WILD4
 from wavelink.node import Node
 from wavelink.radio_sim import SimAir
@@ -284,6 +286,205 @@ def run_race(nodes, seconds=20.0, finish_at=None):
                 results=results, clocks=clocks, load=sum(loads) / max(1, len(loads)))
 
 
+def spectator_tests(nodes, air, ebn0=25.0, key=None, mac="tdcdma"):
+    """Verify read-only spectators for Slot Rush (0 DGRAM TX), UNO (0 leaked cards + move rejection),
+    and UNO host handover continuing uno_pub updates."""
+    assert len(nodes) >= 3
+    n0, n1, spec = nodes[0], nodes[1], nodes[2]
+
+    # 1. Slot Rush spectator receives broadcast DGRAMs without sending any DGRAMs
+    rid_r = room_lobby([n0, n1], "race", {"laps": 2, "biome": 3})
+    assert wait(lambda: all(n0.hub.rooms[rid_r]["sync"].get(nd.addr) for nd in (n0, n1)), 30)
+    n0.hub.start_game(rid_r)
+    assert wait(lambda: any(x["r"] == rid_r for x in spec.hub.snapshot()["live"]), 15), \
+        "race live announcement not discovered on spectator"
+    live_r = next(x for x in spec.hub.snapshot()["live"] if x["r"] == rid_r)
+    assert live_r["g"] == "race" and live_r["biome"] == 3 and live_r["o"]["laps"] == 2 \
+        and live_r["seed"] == n0.hub.rooms[rid_r]["seed"]
+
+    dgram_tx0 = spec.mac.stats["dgram_tx"]
+    pings_tx0 = spec.hub.stats["pings_tx"]
+    race_tx0 = spec.hub.stats["race_tx"]
+    spec.hub.watch(rid_r)
+    assert spec.hub.race_post(rid_r, {"x": 100.0, "y": 100.0, "h": 0.0, "vx": 0.0, "vy": 0.0, "d": 0.0}) is False
+
+    stop_r = threading.Event()
+    res_seen = {}
+
+    def r_fin(ev, d, a):
+        if ev == "raceover" and d.get("r") == rid_r:
+            res_seen[a] = d["res"]
+
+    n0.hub.listeners.append(lambda ev, d: r_fin(ev, d, n0.addr))
+    n1.hub.listeners.append(lambda ev, d: r_fin(ev, d, n1.addr))
+    t0_r = n0.hub.rooms[rid_r]["t0"]
+
+    def drv(nd, s):
+        eid = 0
+        fin = False
+        while not stop_r.is_set():
+            tg = nd.hub.host_now(rid_r) - t0_r
+            st = dict(t=tg * 1000, x=1500.0 + s * 40, y=1200.0, h=0.0, vx=200.0, vy=0.0,
+                      w=0.0, d=max(0.0, 220.0 * tg), fl=0, it=0)
+            evs = []
+            if not fin and tg > 3.5 + s:
+                eid += 1
+                evs.append(dict(k="finish", id=eid, t=tg * 1000, x=st["x"], y=st["y"], a=2, b=0))
+                fin = True
+            nd.hub.race_post(rid_r, st, evs)
+            time.sleep(0.05)
+
+    ths = [threading.Thread(target=drv, args=(nd, s), daemon=True) for s, nd in enumerate((n0, n1))]
+    for th in ths:
+        th.start()
+    try:
+        assert wait(lambda: len(res_seen) == 2, 40), "2-player race did not finish"
+        assert wait(lambda: next((x for x in spec.hub.snapshot()["live"] if x["r"] == rid_r), {}).get("live_state") == "finished", 15), \
+            "spectator did not receive race finish announcement"
+    finally:
+        stop_r.set()
+        for th in ths:
+            th.join()
+        n0.hub.listeners.clear()
+        n1.hub.listeners.clear()
+
+    sr_stats = spec.hub.race_stats(rid_r)
+    assert sr_stats["rx"].get(0, {}).get("n", 0) >= 10 and sr_stats["rx"].get(1, {}).get("n", 0) >= 10, \
+        f"spectator missed race DGRAM stream: {sr_stats}"
+    assert spec.mac.stats["dgram_tx"] == dgram_tx0 and spec.hub.stats["pings_tx"] == pings_tx0 \
+        and spec.hub.stats["race_tx"] == race_tx0, "spectator transmitted race/ping DGRAMs!"
+    data_tx0 = spec.mac.stats["data_tx"]
+    spec.hub.unwatch(rid_r)
+    assert spec.mac.stats["data_tx"] == data_tx0 and spec.hub.snapshot()["watching"] is None
+    n0.hub.leave(rid_r)
+    assert wait(lambda: all(x["r"] != rid_r for x in spec.hub.snapshot()["live"]), 15), \
+        "ended race room stayed live on spectator"
+    for nd in (n0, n1):
+        nd.hub.dismiss(rid_r)
+
+    # 2. UNO spectator zero hand/deck leakage + rejected move intents
+    pub_wires = []
+    orig_send_gc = n0.send_gc
+
+    def spy_send_gc(dst, obj, *a, **kw):
+        if isinstance(obj, dict) and obj.get("t") == "uno_pub":
+            pub_wires.append((dst, json.dumps(obj, separators=(",", ":"))))
+        return orig_send_gc(dst, obj, *a, **kw)
+
+    n0.send_gc = spy_send_gc
+    spec_pubs = []
+    player_views = {}
+    rid_u = room_lobby([n0, n1], "uno")
+    n0.hub.listeners.append(lambda ev, d: ev == "uno" and d.get("r") == rid_u and player_views.__setitem__(n0.addr, d))
+    n1.hub.listeners.append(lambda ev, d: ev == "uno" and d.get("r") == rid_u and player_views.__setitem__(n1.addr, d))
+    spec.hub.listeners.append(lambda ev, d: ev == "uno_pub" and d.get("r") == rid_u and spec_pubs.append(d))
+    try:
+        n0.hub.start_game(rid_u)
+        assert wait(lambda: any(x["r"] == rid_u for x in spec.hub.snapshot()["live"]), 15)
+        spec.hub.watch(rid_u)
+        assert wait(lambda: len(spec_pubs) >= 1 and len(player_views) == 2, 15)
+        # Play several turns between n0 and n1
+        rng = random.Random(21)
+        acted = {}
+        t_lim = time.time() + 30
+        moves_done = 0
+        while time.time() < t_lim and moves_done < 5:
+            time.sleep(0.05)
+            for nd in (n0, n1):
+                v = player_views.get(nd.addr)
+                if not v or v["phase"] == "over" or v["turn"] != v["seat"] or acted.get(nd.addr) == v["v"]:
+                    continue
+                acted[nd.addr] = v["v"]
+                if v["phase"] == "color":
+                    nd.hub.uno_action(rid_u, "color", col=0)
+                elif v["phase"] == "drawn":
+                    nd.hub.uno_action(rid_u, "play" if v["legal"] else "keep",
+                                      c=(v["drawn"] if v["legal"] else None),
+                                      col=(rng.randrange(4) if v["legal"] else None))
+                elif v["legal"]:
+                    c = v["legal"][0]
+                    nd.hub.uno_action(rid_u, "play", c=c,
+                                      col=(rng.randrange(4) if CARDS[c][1] in (WILD, WILD4) else None),
+                                      uno=len(v["hand"]) == 2)
+                else:
+                    nd.hub.uno_action(rid_u, "draw")
+                moves_done += 1
+        assert wait(lambda: len(spec_pubs) >= 4 and len(pub_wires) >= 4, 15), \
+            f"insufficient uno_pub updates: wires={len(pub_wires)}, rx={len(spec_pubs)}"
+        for _, raw in pub_wires:
+            parsed = json.loads(raw)
+            _assert_no_private_uno(parsed)
+        for p in spec_pubs:
+            _assert_no_private_uno(p)
+        # Spectator local API raises and raw 'ui' over radio is ignored by host
+        try:
+            spec.hub.uno_action(rid_u, "draw")
+            raise AssertionError("spectator uno_action unexpectedly succeeded")
+        except ValueError:
+            pass
+        ver_before = n0.hub.rt[rid_u]["ver"]
+        rej_before = n0.hub.stats.get("uno_spectator_rejected", 0)
+        spec.send_gc(n0.addr, dict(t="ui", r=rid_u, n=99, a="draw"))
+        assert wait(lambda: n0.hub.stats.get("uno_spectator_rejected", 0) > rej_before, 10), \
+            "host did not reject spectator move intent"
+        assert n0.hub.rt[rid_u]["ver"] == ver_before
+    finally:
+        n0.send_gc = orig_send_gc
+        spec.hub.unwatch(rid_u)
+        n0.hub.leave(rid_u)
+        wait(lambda: all(x["r"] != rid_u for x in spec.hub.snapshot()["live"]), 10)
+        for nd in (n0, n1, spec):
+            nd.hub.listeners.clear()
+            nd.hub.dismiss(rid_u)
+
+    # 3. UNO host handover continues delivering uno_pub to spectator
+    ho_air, ho_nodes, ho_tmp = make_stations(4, ebn0, key=key, seed=11, mac=mac)
+    try:
+        h0, h1, h2, hspec = ho_nodes
+        ho_pubs = []
+        ho_views = {}
+        rid_h = room_lobby([h0, h1, h2], "uno")
+        hspec.hub.listeners.append(lambda ev, d: ev == "uno_pub" and d.get("r") == rid_h and ho_pubs.append(d))
+        for nd in (h0, h1, h2):
+            nd.hub.listeners.append(lambda ev, d, a=nd.addr: ev == "uno" and d.get("r") == rid_h and ho_views.__setitem__(a, d))
+        h0.hub.start_game(rid_h)
+        assert wait(lambda: any(x["r"] == rid_h for x in hspec.hub.snapshot()["live"]), 15)
+        hspec.hub.watch(rid_h)
+        assert wait(lambda: any(p["host"] == h0.addr for p in ho_pubs) and len(ho_views) == 3, 15)
+        # Take original host offline so h1 takes over hosting
+        for x in (h1, h2, hspec):
+            ho_air.set_link(h0.addr, x.addr, cut=True)
+        assert wait(lambda: any(p["host"] == h1.addr and p["host_num"] >= 1 for p in ho_pubs), 25), \
+            f"spectator did not receive post-handover uno_pub: {[(p.get('host'), p.get('host_num')) for p in ho_pubs]}"
+        ver_ho = max(p["v"] for p in ho_pubs if p["host"] == h1.addr)
+        # Reconnect h0 so the paused UNO round resumes and new host pushes another move update
+        for x in (h1, h2, hspec):
+            ho_air.set_link(h0.addr, x.addr, cut=False)
+        assert wait(lambda: not ho_pubs[-1]["paused"], 25), "UNO round did not unpause after h0 returned"
+        v_cur = ho_views.get(h1.addr) or ho_views.get(h2.addr)
+        actor = [h0, h1, h2][ho_pubs[-1]["turn_seat"]]
+        va = ho_views[actor.addr]
+        if va["phase"] == "color":
+            actor.hub.uno_action(rid_h, "color", col=2)
+        elif va["legal"]:
+            c = va["legal"][0]
+            actor.hub.uno_action(rid_h, "play", c=c, col=(1 if CARDS[c][1] in (WILD, WILD4) else None))
+        else:
+            actor.hub.uno_action(rid_h, "draw")
+        assert wait(lambda: any(p["host"] == h1.addr and p["v"] > ver_ho and not p["paused"] for p in ho_pubs), 20), \
+            "new host did not continue uno_pub updates after move"
+        for p in ho_pubs:
+            _assert_no_private_uno(p)
+        hspec.hub.unwatch(rid_h)
+        h1.hub.leave(rid_h)
+    finally:
+        for nd in ho_nodes:
+            nd.hub.listeners.clear()
+            nd.stop()
+        shutil.rmtree(ho_tmp, ignore_errors=True)
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("n", type=int, nargs="?", default=3)
@@ -336,6 +537,10 @@ def main():
             print(f"  results on {len(r['results'])} stations: "
                   f"{[(x['name'], x['ft']) for x in res] if res else None}")
             fail |= bool(r["missing"]) or r["dups"] > 0 or len(r["results"]) != a.n
+        if a.n >= 3 and not a.uno_only and not a.race_only:
+            ok_spec = spectator_tests(nodes, air, ebn0=a.ebn0, key=a.key, mac=a.mac)
+            print(f"Spectator (Slot Rush 0-DGRAM, UNO 0-leak + handover): {'ok' if ok_spec else 'FAILED'}")
+            fail |= not ok_spec
     finally:
         for nd in nodes:
             nd.stop()

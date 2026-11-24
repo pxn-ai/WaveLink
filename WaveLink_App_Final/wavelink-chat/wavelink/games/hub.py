@@ -58,8 +58,8 @@ import struct
 import threading
 import time
 
-from ..config import BROADCAST_ADDR, BROADCAST_CODE
-from .uno import Uno, UnoError
+from ..config import BROADCAST_ADDR, BROADCAST_CODE, MAX_NODE_ID
+from .uno import Uno, UnoError, CARDS as UNO_CARDS
 from . import race as R
 
 GAMES = {"uno": "UNO", "race": "Slot Rush"}
@@ -97,6 +97,39 @@ PING = struct.Struct(">BHdd")            # kind, id, t1, r1 (sender's game and r
 PONG = struct.Struct(">BHdddddd")        # kind, id, t1, r1, t2, r2 (host rx), t3, r3 (host tx)
 PING_FAST, PING_SLOW = 0.25, 2.0         # s between pings: until synchronised / afterwards
 SYNC_SAMPLES = 3
+
+LIVE_PERIOD = 5.0                        # s between host public 'live' announcements
+LIVE_TTL = 10.0                          # s before a silent 'live' entry expires locally
+SPEC_REQ_GAP = 1.5                       # s per (room, requester) rate limit on spectate_req
+FORBIDDEN_PUB_KEYS = frozenset(
+    {"hands", "hand", "deck", "draw_pile", "table_copy", "hs", "drawn", "legal", "cards"}
+)
+
+
+def _valid_addr(x) -> bool:
+    return type(x) is int and 1 <= x <= MAX_NODE_ID
+
+
+def _is_num(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def _clean_label(x, limit: int = 32) -> str:
+    if not isinstance(x, str):
+        return ""
+    return "".join(ch for ch in x if ch.isprintable()).strip()[:limit]
+
+
+def _assert_no_private_uno(obj) -> None:
+    """Reject any public UNO structure that accidentally contains private hand/deck/table keys."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if str(k) in FORBIDDEN_PUB_KEYS:
+                raise ValueError(f"forbidden UNO private field in public payload: {k!r}")
+            _assert_no_private_uno(v)
+    elif isinstance(obj, (list, tuple)):
+        for it in obj:
+            _assert_no_private_uno(it)
 
 
 class Clock:
@@ -154,6 +187,9 @@ class GameHub:
         self.lock = threading.RLock()
         self.rooms: dict[str, dict] = {}          # rid -> room (what the UI shows)
         self.rt: dict[str, dict] = {}             # rid -> runtime state (not shown)
+        self.live: dict[str, dict] = {}           # rid -> public live table discovered on code 0
+        self.spec_rt: dict[str, dict] = {}        # rid -> read-only spectator runtime (race/uno)
+        self.spectating: str | None = None        # rid currently watched by local UI
         self.clocks: dict[int, Clock] = {}        # host addr -> Clock
         self._inbox: queue.Queue = queue.Queue()
         self._pings: dict[int, tuple] = {}        # ping id -> (host, t1)
@@ -164,6 +200,8 @@ class GameHub:
         self._t_slow = 0.0
         self.host_clk = 0.0                        # added to our clock when we host a race taken over
         self._told: dict = {}                      # (room, station) -> when we last told it it was dropped
+        self._spec_req_rx: dict = {}               # (rid, addr) -> last host reply mono()
+        self._spec_req_tx: dict = {}               # rid -> last local request mono()
 
     # ================================================================ lifecycle
     def start(self):
@@ -216,6 +254,21 @@ class GameHub:
             self.log(f"games: send to {dst} failed: {e}")
             return None
 
+    def _bcast_gc(self, obj: dict):
+        """Send a compact public game-center broadcast on code 0 (and unicast to relayed peers)."""
+        m = None
+        try:
+            m = self.node.send_gc(BROADCAST_ADDR, obj)
+        except Exception as e:                  # e.g. no recipients on TD-CDMA yet
+            self.log(f"games: broadcast failed: {e}")
+        try:
+            via = self.node.reachable_via()
+        except Exception:
+            via = {}
+        for d in via:
+            self._send(d, obj)
+        return m
+
     def _emit(self, ev: str, data):
         self.node.publish(ev, data)
         for fn in self.listeners:
@@ -241,22 +294,81 @@ class GameHub:
 
     def host_now(self, rid: str | None = None) -> float:
         """The game clock: the room host's monotonic clock (a host that took a race over keeps the
-        first host's clock)."""
+        first host's clock; spectators align t0 against their local monotonic clock without pinging)."""
         room = self.rooms.get(rid) if rid else None
-        if room and room["h"] == self.addr:
+        if room is None:
+            return self.mono()
+        if room["h"] == self.addr:
             return self.mono() + room.get("clk", 0.0)
-        return self.mono() + (self.host_offset(room) if room else 0.0)
+        return self.mono() + self.host_offset(room)
 
     def _members(self, room: dict) -> list[int]:
         """Stations to keep informed about the lobby (not those who declined or left)."""
         return [a for a in room["seats"] if room["st"].get(a) in ("invited", "joined")]
 
+    def _is_active_player(self, rid: str) -> bool:
+        """True if this station is seated in rid (and hasn't left/declined/been dropped)."""
+        room = self.rooms.get(rid)
+        if not room or room["state"] in ("closed", "invited"):
+            return False
+        if room["state"] in ("playing", "over"):
+            return self.addr in (room.get("players") or []) and room["st"].get(self.addr) in ("joined", "away")
+        return self.addr in (room.get("seats") or []) and room["st"].get(self.addr) == "joined"
+
     # ================================================================ snapshot for the UI
     def snapshot(self) -> dict:
         with self.lock:
             rooms = [self._room_public(r) for r in sorted(self.rooms.values(), key=lambda r: r["created"])]
-        return dict(me=self.addr, rooms=rooms, games=GAMES, laps=list(RACE_LAPS),
-                    biomes=RACE_BIOMES, turn_s=UNO_TURN)
+            live = [
+                self._live_public(e)
+                for e in sorted(self.live.values(), key=lambda x: x.get("discovered", 0.0))
+                if not self._is_active_player(e["r"])
+            ]
+            watching = self.spectating if (self.spectating and any(x["r"] == self.spectating for x in live)) else None
+            if watching != self.spectating:
+                self.spectating = watching
+        return dict(me=self.addr, rooms=rooms, live=live, watching=watching, games=GAMES,
+                    laps=list(RACE_LAPS), biomes=RACE_BIOMES, turn_s=UNO_TURN)
+
+    def _live_public(self, e: dict) -> dict:
+        rid = e["r"]
+        srt = self.spec_rt.get(rid, {})
+        d = {
+            "r": rid,
+            "room_id": rid,
+            "g": e["game"],
+            "game": e["game"],
+            "h": e["host"],
+            "host": e["host"],
+            "host_num": e["host_num"],
+            "players": [p["id"] for p in e["players"]],
+            "player_list": [dict(p) for p in e["players"]],
+            "seats": [p["id"] for p in e["players"]],
+            "names": {str(p["id"]): p["name"] for p in e["players"]},
+            "state": "over" if (e["state"] == "finished" and e["game"] == "race") else "playing",
+            "live_state": e["state"],
+            "spectator": True,
+            "me_seat": None,
+            "n": e.get("n", 1),
+        }
+        if e["game"] == "race":
+            d.update(
+                seed=e["seed"],
+                biome=e["biome"],
+                o={"laps": e["laps"], "biome": e["biome"]},
+                t0=srt.get("spec_t0", e.get("spec_t0")),
+                finish={str(k): v for k, v in srt.get("finish", {}).items()},
+                results=e.get("results"),
+                last_cars=[{k: val for k, val in v.items() if k != "rid"} for v in srt.get("last", {}).values()],
+            )
+        elif e["game"] == "uno" and srt.get("uno_pub"):
+            pub = dict(srt["uno_pub"])
+            if pub.get("turn_remaining") is not None and "dl_at" not in pub:
+                pub["dl_at"] = time.time() + pub["turn_remaining"]
+            if pub.get("paused") and pub.get("pause_remaining") is not None and "pause_until" not in pub:
+                pub["pause_until"] = time.time() + pub["pause_remaining"]
+            d["uno_pub"] = pub
+        return d
 
     def _room_public(self, room: dict) -> dict:
         d = {k: room.get(k) for k in ("r", "g", "h", "seats", "st", "o", "state", "players", "seed",
@@ -415,9 +527,11 @@ class GameHub:
                 self._send(a, msg)
         self._begin(rid)
         self.stats["games_started"] += 1
+        self._broadcast_live(rid)
         self._publish()
 
     def leave(self, rid: str):
+        ended = False
         with self.lock:
             room = self._room(rid)
             was = room["state"]
@@ -426,12 +540,15 @@ class GameHub:
             room["state"] = "closed"
             room["why"] = "You left"
             if room["h"] == self.addr:
+                ended = was in ("playing", "over")
                 for a in others:
                     self._send(a, dict(t="close", r=rid, why=f"{self.node.name} (host) closed the room"))
             elif was not in ("closed", "invited"):
                 self._send(room["h"], dict(t="leave", r=rid))
             elif was == "invited":
                 self._send(room["h"], dict(t="ans", r=rid, ok=False))
+        if ended:
+            self._broadcast_live(rid, state_override="ended")
         self._publish()
 
     def dismiss(self, rid: str):
@@ -440,6 +557,35 @@ class GameHub:
             if room and room["state"] == "closed":
                 self.rooms.pop(rid, None)
                 self.rt.pop(rid, None)
+        self._publish()
+
+    def watch(self, rid: str):
+        """Enter read-only spectator mode for a discovered live room."""
+        if not (isinstance(rid, str) and ROOM_ID.fullmatch(rid)):
+            raise ValueError("invalid room id")
+        req_host = None
+        with self.lock:
+            if self._is_active_player(rid):
+                raise ValueError("you are playing in this game")
+            live = self.live.get(rid)
+            if live is None:
+                raise ValueError("this game is no longer live")
+            self.spectating = rid
+            self.spec_rt.setdefault(rid, {})
+            now = self.mono()
+            if now - self._spec_req_tx.get(rid, -1e9) >= 2.0:
+                self._spec_req_tx[rid] = now
+                req_host = live["host"]
+        if req_host is not None:
+            self._send(req_host, dict(t="spectate_req", r=rid, room_id=rid))
+            self.stats["spectate_req_tx"] += 1
+        self._publish()
+
+    def unwatch(self, rid: str | None = None):
+        """Leave spectator mode locally without sending any radio message."""
+        with self.lock:
+            if rid is None or self.spectating == rid:
+                self.spectating = None
         self._publish()
 
     def _room(self, rid: str) -> dict:
@@ -500,11 +646,17 @@ class GameHub:
                 self.log("games tick error", repr(e))
 
     def _handle(self, src: int, o: dict):
-        if not isinstance(o, dict):
+        if not isinstance(o, dict) or not _valid_addr(src):
             return
-        if "r" in o and not (isinstance(o["r"], str) and ROOM_ID.fullmatch(o["r"])):
+        for rk in ("r", "room_id"):
+            if rk in o and not (isinstance(o[rk], str) and ROOM_ID.fullmatch(o[rk])):
+                self.stats["gc_bad_room_id"] += 1
+                return
+        if "r" in o and "room_id" in o and o["r"] != o["room_id"]:
             self.stats["gc_bad_room_id"] += 1
             return
+        if "room_id" in o and "r" not in o:
+            o["r"] = o["room_id"]
         if "o" in o:                                   # room options: only the race's laps & biome
             x = o["o"] if isinstance(o["o"], dict) else {}
             clean_o = {}
@@ -521,6 +673,10 @@ class GameHub:
             else:
                 o["biome"] = b_top
         t = o.get("t")
+        if t in ("inv", "ans", "lobby", "sync", "start", "leave", "close", "note",
+                 "rejoin", "host", "ui", "uv", "ue", "rf", "rr", "live", "spectate_req", "uno_pub") and "r" not in o:
+            self.stats["gc_bad_room_id"] += 1
+            return
         fn = getattr(self, "_on_" + str(t), None)
         if fn is None:
             self.log(f"games: unknown message {t!r} from {src}")
@@ -537,6 +693,7 @@ class GameHub:
             self._uno_timers(now)
             self._race_timers(now)
             self._presence(now)
+            self._live_timers(now)
 
     def _dgram(self, dst: int, payload: bytes, urgent: bool = True, at: float | None = None,
                latest: float | None = None):
@@ -552,8 +709,13 @@ class GameHub:
         with self.lock:
             if rid in self.rooms:
                 return
-            seats = [int(a) for a in o["p"]]
-            if self.addr not in seats or o["g"] not in GAMES or src != o["h"]:
+            raw_p = o.get("p")
+            if not isinstance(raw_p, list) or not (2 <= len(raw_p) <= MAX_PLAYERS) or not all(_valid_addr(a) for a in raw_p):
+                return
+            if len(set(raw_p)) != len(raw_p):
+                return
+            seats = list(raw_p)
+            if self.addr not in seats or o.get("g") not in GAMES or not _valid_addr(o.get("h")) or src != o["h"]:
                 return
             self.rooms[rid] = dict(r=rid, g=o["g"], h=src, seats=seats,
                                    st={a: ("joined" if a == src else "invited") for a in seats},
@@ -626,7 +788,9 @@ class GameHub:
             room = self.rooms.get(rid)
             if not room or room["h"] != self.addr or src not in room["seats"]:
                 return
-            if room["st"].get(src) == "left":
+            if room["st"].get(src) in ("left", "declined", "missed", "gone"):
+                return
+            if room["state"] in ("playing", "over") and src not in room.get("players", []):
                 return
             room["st"][src] = "left"
         self._player_gone(rid, src, f"{self._name(src)} left")
@@ -744,9 +908,14 @@ class GameHub:
         return time.time() - heard < secs
 
     def _close(self, room: dict, why: str):
+        ended = False
         with self.lock:
+            was = room["state"]
+            ended = room["h"] == self.addr and was in ("playing", "over")
             room["state"] = "closed"
             room["why"] = why
+        if ended:
+            self._broadcast_live(room["r"], state_override="ended")
         self._emit("toast", why)
         self._publish()
 
@@ -927,6 +1096,7 @@ class GameHub:
         self._emit("toast", why)
         if room["g"] == "uno":
             self._uno_push(rid)
+        self._broadcast_live(rid)
         self._publish()
 
     def _on_host(self, src, o):
@@ -1000,6 +1170,7 @@ class GameHub:
             rt["sent_upto"] = {}
             rt["pending"] = {}
         self._uno_push(rid)
+        self._broadcast_live(rid)
 
     def _on_ui(self, src, o):
         rid = o["r"]
@@ -1007,9 +1178,15 @@ class GameHub:
             room = self.rooms.get(rid)
             rt = self.rt.get(rid, {})
             g = rt.get("uno")
-            if not room or room["h"] != self.addr or g is None or src not in room["players"]:
+            if not room or room["h"] != self.addr or g is None or room["state"] != "playing":
+                return
+            if src not in room["players"] or room["st"].get(src) in ("left", "gone"):
+                self.stats["uno_spectator_rejected"] += 1
                 return
             seat = room["players"].index(src)
+            if seat in g.out:
+                self.stats["uno_spectator_rejected"] += 1
+                return
             a = o.get("a")
             try:
                 if rt.get("pause_t") is not None:
@@ -1081,8 +1258,67 @@ class GameHub:
                     if m is not None:
                         rt["pending"][seat] = (m, start)
                     self.stats["uno_views_sent"] += 1
+            pub = self._uno_pub_msg(rid)
         for view in out:
             self._on_uv(self.addr, dict(view, t="uv"))
+        if pub is not None:
+            self._bcast_gc(pub)
+            self.stats["uno_pub_tx"] += 1
+            if pub["round_over"]:
+                self._broadcast_live(rid)
+
+    def _uno_pub_msg(self, rid: str) -> dict | None:
+        """Build the strictly public UNO spectator snapshot (zero hands/deck/table_copy)."""
+        with self.lock:
+            room = self.rooms.get(rid)
+            rt = self.rt.get(rid, {})
+            g = rt.get("uno")
+            if not room or g is None or room["h"] != self.addr:
+                return None
+            now = self.mono()
+            paused = rt.get("pause_t") is not None
+            pause_rem = None
+            if paused:
+                away, rn = room.get("away", {}), self.rnow()
+                pause_rem = round(max(0.0, AWAY_GRACE - (rn - min(away.values(), default=rn))), 1)
+            turn_rem = round(max(0.0, rt["deadline"] - now), 2) if rt.get("deadline") and not paused and g.phase != "over" else None
+            seats = []
+            for s, a in enumerate(room["players"]):
+                seats.append(dict(
+                    id=int(a),
+                    name=self._name(a)[:32],
+                    card_count=len(g.hands[s]),
+                    called_uno=bool(len(g.hands[s]) == 1 and s in getattr(g, "uno_called", ())),
+                    away=bool(room["st"].get(a) == "away"),
+                    out=bool(s in g.out or room["st"].get(a) in ("left", "gone")),
+                    score=int(g.scores[s]),
+                ))
+            last_ev = Uno.spectator_event(g.events[-1]) if g.events else None
+            pub = dict(
+                t="uno_pub",
+                r=rid,
+                room_id=rid,
+                host=int(room["h"]),
+                host_num=int(room.get("hv", 0)),
+                round=int(g.round_no),
+                v=int(rt.get("ver", 0)),
+                seats=seats,
+                discard_top=int(g.top),
+                deck_count=len(g.draw_pile),
+                active_colour=int(g.color),
+                direction=int(g.direction),
+                turn_seat=int(g.turn),
+                phase="over" if g.phase == "over" else ("color" if g.phase == "color" else "play"),
+                turn_remaining=turn_rem,
+                last_event=last_ev,
+                paused=bool(paused),
+                pause_remaining=pause_rem,
+                winner=int(g.winner) if g.winner is not None else None,
+                round_points=int(g.round_points) if g.phase == "over" else 0,
+                round_over=bool(g.phase == "over"),
+            )
+            _assert_no_private_uno(pub)
+            return pub
 
     def _uno_timers(self, now: float):
         for rid, rt in list(self.rt.items()):
@@ -1195,14 +1431,16 @@ class GameHub:
 
     def _on_rf(self, src, o):
         rid = o["r"]
+        if type(o.get("s")) is not int or type(o.get("ft")) is not int:
+            return
         with self.lock:
             room = self.rooms.get(rid)
             if not room or src not in room.get("players", []) or rid not in self.rt:
                 return
-            if room["players"].index(src) != int(o["s"]):
+            if room["players"].index(src) != o["s"]:
                 return
             if "finish" in self.rt[rid]:
-                self._record_finish(rid, int(o["s"]), int(o["ft"]))
+                self._record_finish(rid, o["s"], o["ft"])
 
     def _slot_datagrams(self):
         """TD-CDMA slot source: the newest state of our car (with its events) for each race we drive in,
@@ -1308,46 +1546,110 @@ class GameHub:
         if p is None:
             return
         rid = p["rid"].hex()
+        emit_race = None
+        emit_fin = None
         with self.lock:
             room = self.rooms.get(rid)
             rt = self.rt.get(rid)
-            if not room or rt is None or "seen" not in rt or room["state"] not in ("playing", "over"):
-                return
-            seat = p["seat"]
-            if seat >= len(room["players"]) or room["players"][seat] != src:
-                return
-            now_ms = (self.host_now(rid) - room["t0"]) * 1000.0
-            age = (now_ms - p["t"]) / 1000.0
-            st = rt["rx"][seat]
-            st["n"] += 1
-            if st["first"] is None:
-                st["first"] = self.mono()
-            st["last"] = self.mono()
-            st["ages"].append(age)
-            if len(st["ages"]) > 2000:
-                del st["ages"][:1000]
-            if st["lastseq"] is not None:
-                gap = (p["seq"] - st["lastseq"]) & 0xFF
-                if 0 < gap < 128:
-                    st["seqs"] += gap
-                    st["lost"] += gap - 1
-            st["lastseq"] = p["seq"]
-            seen = rt["seen"].setdefault(seat, {})
-            fresh = []
-            for e in p["ev"]:
-                t_seen = seen.get(e["id"])
-                if t_seen is not None and self.mono() - t_seen < 30:
-                    self.stats["race_ev_dups"] += 1
-                    continue
-                seen[e["id"]] = self.mono()
-                fresh.append(e)
-                self.stats["race_ev_rx"] += 1
-                if e["k"] == "finish":
-                    self._record_finish(rid, seat, int(e["t"]))
-            rt["last"][seat] = p
-        out = {k: v for k, v in p.items() if k not in ("rid", "seat")}
-        out.update(r=rid, s=seat, ev=fresh, age=round(age, 3))
-        self._emit("race", out)
+            if room and rt is not None and "seen" in rt and room["state"] in ("playing", "over"):
+                seat = p["seat"]
+                if seat >= len(room["players"]) or room["players"][seat] != src:
+                    return
+                now_ms = (self.host_now(rid) - room["t0"]) * 1000.0
+                age = (now_ms - p["t"]) / 1000.0
+                st = rt["rx"][seat]
+                st["n"] += 1
+                if st["first"] is None:
+                    st["first"] = self.mono()
+                st["last"] = self.mono()
+                st["ages"].append(age)
+                if len(st["ages"]) > 2000:
+                    del st["ages"][:1000]
+                if st["lastseq"] is not None:
+                    gap = (p["seq"] - st["lastseq"]) & 0xFF
+                    if 0 < gap < 128:
+                        st["seqs"] += gap
+                        st["lost"] += gap - 1
+                st["lastseq"] = p["seq"]
+                seen = rt["seen"].setdefault(seat, {})
+                fresh = []
+                for e in p["ev"]:
+                    t_seen = seen.get(e["id"])
+                    if t_seen is not None and self.mono() - t_seen < 30:
+                        self.stats["race_ev_dups"] += 1
+                        continue
+                    seen[e["id"]] = self.mono()
+                    fresh.append(e)
+                    self.stats["race_ev_rx"] += 1
+                    if e["k"] == "finish":
+                        self._record_finish(rid, seat, int(e["t"]))
+                rt["last"][seat] = p
+                out = {k: v for k, v in p.items() if k not in ("rid", "seat")}
+                out.update(r=rid, s=seat, ev=fresh, age=round(age, 3))
+                emit_race = out
+            else:
+                live = self.live.get(rid)
+                if not live or live["game"] != "race" or self._is_active_player(rid):
+                    return
+                seat = p["seat"]
+                if seat >= len(live["players"]) or live["players"][seat]["id"] != src:
+                    return
+                now_m = self.mono()
+                live["last_heard"] = now_m
+                srt = self.spec_rt.setdefault(rid, {})
+                if "seen" not in srt:
+                    srt.update(
+                        seen={}, finish={}, last={},
+                        rx=collections.defaultdict(lambda: dict(n=0, first=None, last=None, ages=[],
+                                                              seqs=0, lost=0, lastseq=None)),
+                        t0_samples=collections.deque(maxlen=24),
+                        spec_t0=live.get("spec_t0", now_m),
+                    )
+                est_t0 = now_m - p["t"] / 1000.0 - 0.02
+                srt["t0_samples"].append((now_m, est_t0))
+                while len(srt["t0_samples"]) > 1 and now_m - srt["t0_samples"][0][0] > 15.0:
+                    srt["t0_samples"].popleft()
+                srt["spec_t0"] = min(c for _, c in srt["t0_samples"])
+                live["spec_t0"] = srt["spec_t0"]
+                age = (now_m - srt["spec_t0"]) - p["t"] / 1000.0
+                st = srt["rx"][seat]
+                st["n"] += 1
+                if st["first"] is None:
+                    st["first"] = now_m
+                st["last"] = now_m
+                st["ages"].append(age)
+                if len(st["ages"]) > 2000:
+                    del st["ages"][:1000]
+                if st["lastseq"] is not None:
+                    gap = (p["seq"] - st["lastseq"]) & 0xFF
+                    if 0 < gap < 128:
+                        st["seqs"] += gap
+                        st["lost"] += gap - 1
+                st["lastseq"] = p["seq"]
+                seen = srt["seen"].setdefault(seat, {})
+                fresh = []
+                for e in p["ev"]:
+                    t_seen = seen.get(e["id"])
+                    if t_seen is not None and now_m - t_seen < 30:
+                        self.stats["race_ev_dups"] += 1
+                        continue
+                    seen[e["id"]] = now_m
+                    fresh.append(e)
+                    self.stats["race_ev_rx"] += 1
+                    if e["k"] == "finish" and seat not in srt["finish"]:
+                        ft = int(e["t"])
+                        srt["finish"][seat] = ft
+                        if self.spectating == rid:
+                            emit_fin = dict(r=rid, s=seat, ft=ft)
+                srt["last"][seat] = p
+                if self.spectating == rid:
+                    out = {k: v for k, v in p.items() if k not in ("rid", "seat")}
+                    out.update(r=rid, s=seat, ev=fresh, age=round(age, 3))
+                    emit_race = out
+        if emit_fin is not None:
+            self._emit("racefin", emit_fin)
+        if emit_race is not None:
+            self._emit("race", emit_race)
 
     def _race_timers(self, now: float):
         for rid, rt in list(self.rt.items()):
@@ -1381,6 +1683,7 @@ class GameHub:
             if a != self.addr and room["st"].get(a) == "joined":
                 self._send(a, dict(t="rr", r=rid, res=res))
         self._emit("raceover", dict(r=rid, res=res))
+        self._broadcast_live(rid)
         self._publish()
 
     def _on_rr(self, src, o):
@@ -1398,7 +1701,9 @@ class GameHub:
     def race_stats(self, rid: str) -> dict:
         """Per-car reception statistics (tests, dashboard)."""
         with self.lock:
-            rt = self.rt.get(rid, {})
+            rt = self.rt.get(rid) if rid in self.rooms else self.spec_rt.get(rid, {})
+            if rt is None:
+                rt = {}
             out = {}
             for seat, st in rt.get("rx", {}).items():
                 dur = (st["last"] - st["first"]) if st["first"] is not None and st["last"] else 0
@@ -1409,6 +1714,389 @@ class GameHub:
                                  lost=st["lost"], seqs=st["seqs"])
             return dict(rx=out, tx=rt.get("tx", 0), skipped=rt.get("skipped", 0), P=rt.get("P"),
                         air=rt.get("air"))
+
+    # ================================================================ live discovery & spectators
+    def _live_msg(self, room: dict, state_override: str | None = None) -> dict:
+        rid = room["r"]
+        players = [{"id": int(a), "name": self._name(a)[:32]} for a in (room.get("players") or [])]
+        rt = self.rt.get(rid, {})
+        if state_override:
+            state = state_override
+        elif room["state"] == "over":
+            state = "finished"
+        elif room["g"] == "uno" and rt.get("uno") is not None and rt["uno"].phase == "over":
+            state = "finished"
+        else:
+            state = "running"
+        msg = dict(
+            t="live",
+            r=rid,
+            room_id=rid,
+            game=room["g"],
+            host=int(room["h"]),
+            host_num=int(room.get("hv", 0)),
+            players=players,
+            state=state,
+            n=int(room.get("n", 1)),
+        )
+        if room["g"] == "race" and state != "ended":
+            hnow = self.host_now(rid)
+            t0 = room.get("t0")
+            tg_now = hnow - (t0 if t0 is not None else hnow)
+            msg.update(
+                seed=int(room["seed"]),
+                biome=int(room["biome"]),
+                laps=int(room["o"].get("laps", 3)),
+                start_time=round(time.time() - tg_now, 3),
+                elapsed=round(tg_now, 3),
+            )
+            if room.get("results"):
+                msg["results"] = room["results"]
+        return msg
+
+    def _broadcast_live(self, rid: str, state_override: str | None = None, periodic: bool = False):
+        with self.lock:
+            room = self.rooms.get(rid)
+            if not room or room["h"] != self.addr:
+                return
+            if state_override is None and room["state"] not in ("playing", "over"):
+                return
+            rt = self.rt.setdefault(rid, {})
+            if periodic:
+                prev = rt.get("live_out")
+                if prev is not None and getattr(getattr(prev, "state", None), "value", None) in ("queued", "sending"):
+                    return
+            msg = self._live_msg(room, state_override=state_override)
+            rt["last_live_tx"] = self.mono()
+        m = self._bcast_gc(msg)
+        with self.lock:
+            if rid in self.rt:
+                self.rt[rid]["live_out"] = m
+        self.stats["live_tx"] += 1
+
+    def _live_timers(self, now: float):
+        with self.lock:
+            due_hosts = [
+                r["r"]
+                for r in self.rooms.values()
+                if r["h"] == self.addr and r["state"] in ("playing", "over")
+                and now - self.rt.get(r["r"], {}).get("last_live_tx", 0.0) >= LIVE_PERIOD
+            ]
+        for rid in due_hosts:
+            self._broadcast_live(rid, periodic=True)
+        expired, unwatched = [], False
+        with self.lock:
+            for rid, entry in list(self.live.items()):
+                if now - entry.get("last_heard", 0.0) > LIVE_TTL:
+                    self.live.pop(rid, None)
+                    self.spec_rt.pop(rid, None)
+                    expired.append(rid)
+                    if self.spectating == rid:
+                        self.spectating = None
+                        unwatched = True
+        if unwatched:
+            self._emit("toast", "Live game ended")
+        if expired:
+            self._publish()
+
+    @staticmethod
+    def _claim_newer_live(entry: dict, src: int, hv: int) -> bool:
+        cur = int(entry.get("host_num", 0))
+        if hv != cur:
+            return hv > cur
+        return src == entry["host"] or src < entry["host"]
+
+    def _on_live(self, src: int, o: dict):
+        rid = o["r"]
+        if src == self.addr:
+            return
+        game = o.get("game")
+        host = o.get("host")
+        hv = o.get("host_num")
+        state = o.get("state")
+        if game not in GAMES or not _valid_addr(host) or host != src or type(hv) is not int or not (0 <= hv <= 10000):
+            self.stats["gc_bad_live"] += 1
+            return
+        if state not in ("running", "finished", "ended"):
+            self.stats["gc_bad_live"] += 1
+            return
+        if state == "ended":
+            unwatched = False
+            changed = False
+            with self.lock:
+                cur = self.live.get(rid)
+                if cur and self._claim_newer_live(cur, src, hv):
+                    self.live.pop(rid, None)
+                    self.spec_rt.pop(rid, None)
+                    changed = True
+                    if self.spectating == rid:
+                        self.spectating = None
+                        unwatched = True
+            if unwatched:
+                self._emit("toast", "The live game ended")
+            if changed:
+                self._publish()
+            return
+        raw_players = o.get("players")
+        if not isinstance(raw_players, list) or not (2 <= len(raw_players) <= MAX_PLAYERS):
+            self.stats["gc_bad_live"] += 1
+            return
+        players, seen_ids = [], set()
+        for p in raw_players:
+            if not isinstance(p, dict) or not _valid_addr(p.get("id")) or p["id"] in seen_ids:
+                self.stats["gc_bad_live"] += 1
+                return
+            seen_ids.add(p["id"])
+            nm = _clean_label(p.get("name")) or self._name(p["id"])
+            players.append({"id": p["id"], "name": nm})
+        if host not in seen_ids:
+            self.stats["gc_bad_live"] += 1
+            return
+        rnd_n = o.get("n", 1)
+        if type(rnd_n) is not int or not (1 <= rnd_n <= 10000):
+            self.stats["gc_bad_live"] += 1
+            return
+        extra = {}
+        clean_res = None
+        if game == "race":
+            seed = o.get("seed")
+            biome = o.get("biome")
+            laps = o.get("laps")
+            st_wall = o.get("start_time")
+            elapsed = o.get("elapsed")
+            if (type(seed) is not int or not (0 <= seed < (1 << 31))
+                    or type(biome) is not int or biome not in RACE_BIOMES
+                    or type(laps) is not int or laps not in RACE_LAPS
+                    or not _is_num(st_wall)):
+                self.stats["gc_bad_live"] += 1
+                return
+            if elapsed is not None:
+                if not _is_num(elapsed) or not (-30.0 <= float(elapsed) <= 86400.0):
+                    self.stats["gc_bad_live"] += 1
+                    return
+                el_f = float(elapsed)
+            else:
+                el_f = max(-30.0, min(86400.0, time.time() - float(st_wall)))
+            if o.get("results") is not None:
+                if not isinstance(o["results"], list) or len(o["results"]) > MAX_PLAYERS:
+                    self.stats["gc_bad_live"] += 1
+                    return
+                clean_res = []
+                for r in o["results"]:
+                    if (not isinstance(r, dict) or type(r.get("s")) is not int or not (0 <= r["s"] < len(players))
+                            or not _valid_addr(r.get("a")) or not _is_num(r.get("d", 0))):
+                        self.stats["gc_bad_live"] += 1
+                        return
+                    ft = r.get("ft")
+                    if ft is not None and (not _is_num(ft) or float(ft) < 0):
+                        self.stats["gc_bad_live"] += 1
+                        return
+                    clean_res.append(dict(
+                        s=r["s"], a=r["a"], name=_clean_label(r.get("name")) or self._name(r["a"]),
+                        ft=int(ft) if ft is not None else None, d=float(r.get("d", 0)),
+                        gone=bool(r.get("gone")),
+                    ))
+            now_m = self.mono()
+            extra = dict(seed=seed, biome=biome, laps=laps, spec_t0=now_m - el_f - 0.05, results=clean_res)
+        now_m = self.mono()
+        emit_res = None
+        with self.lock:
+            if self._is_active_player(rid):
+                return
+            cur = self.live.get(rid)
+            if cur is not None:
+                cur_ids = {p["id"] for p in cur["players"]}
+                if host not in cur_ids or not self._claim_newer_live(cur, src, hv):
+                    self.stats["stale_live_claims"] += 1
+                    return
+            else:
+                while len(self.live) >= 32:
+                    old_rid = min(self.live, key=lambda k: self.live[k].get("last_heard", 0.0))
+                    self.live.pop(old_rid, None)
+                    self.spec_rt.pop(old_rid, None)
+                    if self.spectating == old_rid:
+                        self.spectating = None
+            prev_n = cur.get("n") if cur else None
+            entry = dict(
+                r=rid, game=game, host=host, host_num=hv, players=players, state=state, n=rnd_n,
+                last_heard=now_m, discovered=(cur.get("discovered", now_m) if cur else now_m),
+            )
+            entry.update(extra)
+            if game == "race" and cur and cur.get("spec_t0") is not None and prev_n == rnd_n:
+                entry["spec_t0"] = cur["spec_t0"]
+            self.live[rid] = entry
+            srt = self.spec_rt.setdefault(rid, {})
+            if game == "race" and prev_n is not None and prev_n != rnd_n:
+                srt.clear()
+            if clean_res is not None and self.spectating == rid:
+                emit_res = dict(r=rid, res=clean_res)
+        if emit_res is not None:
+            self._emit("raceover", emit_res)
+        self._publish()
+
+    def _on_spectate_req(self, src: int, o: dict):
+        rid = o["r"]
+        if src == self.addr or not _valid_addr(src):
+            return
+        live_msg = pub_msg = None
+        with self.lock:
+            room = self.rooms.get(rid)
+            if not room or room["h"] != self.addr or room["state"] not in ("playing", "over"):
+                return
+            if src in (room.get("players") or []) and room["st"].get(src) == "joined":
+                return
+            now = self.mono()
+            key = (rid, src)
+            if now - self._spec_req_rx.get(key, -1e9) < SPEC_REQ_GAP:
+                self.stats["spectate_req_throttled"] += 1
+                return
+            self._spec_req_rx[key] = now
+            if len(self._spec_req_rx) > 128:
+                cutoff = now - 30.0
+                for k in [kk for kk, ts in self._spec_req_rx.items() if ts < cutoff]:
+                    self._spec_req_rx.pop(k, None)
+            live_msg = self._live_msg(room)
+            if room["g"] == "uno" and self.rt.get(rid, {}).get("uno") is not None:
+                pub_msg = self._uno_pub_msg(rid)
+        if live_msg is not None:
+            self._send(src, live_msg)
+        if pub_msg is not None:
+            self._send(src, pub_msg)
+
+    def _on_uno_pub(self, src: int, o: dict):
+        rid = o["r"]
+        if src == self.addr:
+            return
+        try:
+            _assert_no_private_uno(o)
+        except ValueError:
+            self.stats["gc_bad_uno_pub"] += 1
+            return
+        host = o.get("host")
+        hv = o.get("host_num", 0)
+        rnd = o.get("round")
+        ver = o.get("v", 0)
+        seats_in = o.get("seats")
+        top = o.get("discard_top")
+        deck_n = o.get("deck_count")
+        col = o.get("active_colour")
+        d = o.get("direction")
+        t_seat = o.get("turn_seat")
+        phase = o.get("phase", "play")
+        paused = o.get("paused")
+        pause_rem = o.get("pause_remaining")
+        turn_rem = o.get("turn_remaining")
+        winner = o.get("winner")
+        pts = o.get("round_points", 0)
+        round_over = o.get("round_over")
+        if (not _valid_addr(host) or host != src or type(hv) is not int or not (0 <= hv <= 10000)
+                or type(rnd) is not int or not (1 <= rnd <= 10000)
+                or type(ver) is not int or not (0 <= ver <= 1000000)
+                or not isinstance(seats_in, list) or not (2 <= len(seats_in) <= MAX_PLAYERS)
+                or type(top) is not int or not (0 <= top < len(UNO_CARDS))
+                or type(deck_n) is not int or not (0 <= deck_n <= len(UNO_CARDS))
+                or type(col) is not int or not (0 <= col <= 3)
+                or d not in (-1, 1)
+                or type(t_seat) is not int or not (0 <= t_seat < len(seats_in))
+                or phase not in ("play", "color", "over")
+                or type(paused) is not bool or type(round_over) is not bool
+                or type(pts) is not int or not (0 <= pts <= 2000)):
+            self.stats["gc_bad_uno_pub"] += 1
+            return
+        if pause_rem is not None and (not _is_num(pause_rem) or not (0.0 <= float(pause_rem) <= 120.0)):
+            self.stats["gc_bad_uno_pub"] += 1
+            return
+        if turn_rem is not None and (not _is_num(turn_rem) or not (0.0 <= float(turn_rem) <= 120.0)):
+            self.stats["gc_bad_uno_pub"] += 1
+            return
+        if winner is not None and (type(winner) is not int or not (0 <= winner < len(seats_in))):
+            self.stats["gc_bad_uno_pub"] += 1
+            return
+        clean_seats, seen_ids = [], set()
+        for s in seats_in:
+            if (not isinstance(s, dict) or not _valid_addr(s.get("id")) or s["id"] in seen_ids
+                    or type(s.get("card_count")) is not int or not (0 <= s["card_count"] <= len(UNO_CARDS))
+                    or type(s.get("called_uno")) is not bool or type(s.get("away")) is not bool
+                    or type(s.get("score")) is not int or not (0 <= s["score"] <= 1000000)):
+                self.stats["gc_bad_uno_pub"] += 1
+                return
+            seen_ids.add(s["id"])
+            clean_seats.append(dict(
+                id=s["id"],
+                name=_clean_label(s.get("name")) or self._name(s["id"]),
+                card_count=s["card_count"],
+                called_uno=s["called_uno"],
+                away=s["away"],
+                out=bool(s.get("out", False)),
+                score=s["score"],
+            ))
+        if host not in seen_ids:
+            self.stats["gc_bad_uno_pub"] += 1
+            return
+        raw_ev = o.get("last_event")
+        clean_ev = None
+        if raw_ev is not None:
+            ev = Uno.spectator_event(raw_ev)
+            if ev is None:
+                self.stats["gc_bad_uno_pub"] += 1
+                return
+            for sk in ("s", "by", "dealer"):
+                if sk in ev and (type(ev[sk]) is not int or not (0 <= ev[sk] < len(clean_seats))):
+                    self.stats["gc_bad_uno_pub"] += 1
+                    return
+            for ck in ("c", "top"):
+                if ck in ev and (type(ev[ck]) is not int or not (0 <= ev[ck] < len(UNO_CARDS))):
+                    self.stats["gc_bad_uno_pub"] += 1
+                    return
+            if "col" in ev and (type(ev["col"]) is not int or not (0 <= ev["col"] <= 3)):
+                self.stats["gc_bad_uno_pub"] += 1
+                return
+            if "scores" in ev and (not isinstance(ev["scores"], list) or len(ev["scores"]) != len(clean_seats)
+                                   or any(type(x) is not int or not (0 <= x <= 1000000) for x in ev["scores"])):
+                self.stats["gc_bad_uno_pub"] += 1
+                return
+            if "i" in ev and (type(ev["i"]) is not int or not (0 <= ev["i"] <= 1000000)):
+                self.stats["gc_bad_uno_pub"] += 1
+                return
+            if "why" in ev:
+                ev["why"] = _clean_label(ev["why"], 24)
+            clean_ev = ev
+        clean = dict(
+            r=rid, room_id=rid, host=host, host_num=hv, round=rnd, v=ver,
+            seats=clean_seats, discard_top=top, deck_count=deck_n, active_colour=col,
+            direction=d, turn_seat=t_seat, phase=phase, turn_remaining=turn_rem,
+            last_event=clean_ev, paused=paused, pause_remaining=pause_rem,
+            winner=winner, round_points=pts, round_over=round_over,
+        )
+        now_m = self.mono()
+        with self.lock:
+            if self._is_active_player(rid):
+                return
+            cur = self.live.get(rid)
+            if cur is not None:
+                cur_ids = {p["id"] for p in cur["players"]}
+                if host not in cur_ids or not self._claim_newer_live(cur, src, hv):
+                    self.stats["stale_live_claims"] += 1
+                    return
+            srt = self.spec_rt.setdefault(rid, {})
+            old = srt.get("uno_pub")
+            if old and int(old.get("host_num", 0)) == hv and (old.get("round", 0), old.get("v", -1)) >= (rnd, ver):
+                self.stats["uno_pub_stale"] += 1
+                return
+            players = [{"id": s["id"], "name": s["name"]} for s in clean_seats]
+            self.live[rid] = dict(
+                r=rid, game="uno", host=host, host_num=hv, players=players,
+                state="finished" if round_over else "running", n=rnd,
+                last_heard=now_m, discovered=(cur.get("discovered", now_m) if cur else now_m),
+            )
+            srt["uno_pub"] = clean
+        ui_pub = dict(clean)
+        if ui_pub.get("turn_remaining") is not None:
+            ui_pub["dl_at"] = time.time() + ui_pub["turn_remaining"]
+        if ui_pub.get("paused") and ui_pub.get("pause_remaining") is not None:
+            ui_pub["pause_until"] = time.time() + ui_pub["pause_remaining"]
+        self._emit("uno_pub", ui_pub)
+        self._publish()
 
     # ================================================================ clock sync
     def _pings_due(self, now: float):

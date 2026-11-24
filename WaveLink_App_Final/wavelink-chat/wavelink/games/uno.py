@@ -101,6 +101,7 @@ class Uno:
         self.vulnerable: int | None = None  # seat with one card that did not call UNO
         self.winner: int | None = None
         self.round_points = 0
+        self.uno_called: set[int] = set()
         self.events: list[dict] = []    # every event of the round, numbered by 'i'
         self._deal()
 
@@ -140,6 +141,8 @@ class Uno:
                 break
             self.hands[seat].append(c)
             got.append(c)
+        if len(self.hands[seat]) != 1:
+            self.uno_called.discard(seat)
         # the cards themselves are private: views show them to the drawer only
         self._ev(e="draw", s=seat, k=len(got), why=why, cards=got)
         return got
@@ -229,6 +232,7 @@ class Uno:
             color = int(color)
         self._close_uno_window(seat)
         self.hands[seat].remove(cid)
+        self.uno_called.discard(seat)
         self.discard.append(cid)
         self.drawn = None
         self.phase = "play"
@@ -236,6 +240,7 @@ class Uno:
         ev = self._ev(e="play", s=seat, c=cid, col=self.color, left=len(self.hands[seat]))
         if len(self.hands[seat]) == 1:
             if uno:
+                self.uno_called.add(seat)
                 self._ev(e="uno", s=seat)
                 if self.vulnerable == seat:
                     self.vulnerable = None
@@ -328,6 +333,7 @@ class Uno:
         self.scores[winner] += pts
         self.winner, self.round_points, self.phase = winner, pts, "over"
         self.vulnerable = None
+        self.uno_called.clear()
         self._ev(e="win", s=winner, pts=pts, scores=list(self.scores))
 
     # ------------------------------------------------------------------ host handover
@@ -339,6 +345,7 @@ class Uno:
         The event log is not part of it: the new host's views start a fresh one."""
         d = {k: getattr(self, k) for k in self.STATE_FIELDS}
         d["out"] = sorted(self.out)
+        d["uno_called"] = sorted(self.uno_called)
         return d
 
     @classmethod
@@ -348,6 +355,7 @@ class Uno:
             v = d[k]
             setattr(g, k, [list(h) for h in v] if k == "hands" else (list(v) if isinstance(v, list) else v))
         g.out = set(d.get("out", ()))
+        g.uno_called = set(d.get("uno_called", ()))
         g.rng = random.Random(seed if seed is not None else random.randrange(1 << 31))
         g.events = []
         return g
@@ -365,6 +373,7 @@ class Uno:
         self.out.add(seat)
         self.draw_pile[0:0] = self.hands[seat]
         self.hands[seat] = []
+        self.uno_called.discard(seat)
         if self.vulnerable == seat:
             self.vulnerable = None
         self._ev(e="left", s=seat)
@@ -372,6 +381,7 @@ class Uno:
             return
         if len(self.active) < 2:
             self.winner, self.round_points, self.phase = self.active[0], 0, "over"
+            self.uno_called.clear()
             self._ev(e="win", s=self.winner, pts=0, scores=list(self.scores))
             return
         if was_turn:
@@ -379,6 +389,30 @@ class Uno:
             self.turn = self._next(seat)
 
     # ------------------------------------------------------------------ views
+    SPECTATOR_EVENT_KINDS = frozenset(
+        {"deal", "play", "draw", "skip", "reverse", "uno", "caught", "pass", "timeout", "color", "shuffle", "left", "win"}
+    )
+    SPECTATOR_EVENT_KEYS = frozenset(
+        {"i", "e", "s", "by", "col", "left", "k", "why", "d", "dealer", "round", "pts", "scores"}
+    )
+
+    @classmethod
+    def spectator_event(cls, e: dict | None) -> dict | None:
+        """Strictly public event summary for spectators: zero hidden card or deck details."""
+        if not isinstance(e, dict):
+            return None
+        kind = e.get("e")
+        if kind not in cls.SPECTATOR_EVENT_KINDS:
+            return None
+        out = {k: e[k] for k in cls.SPECTATOR_EVENT_KEYS if k in e}
+        if kind == "play" and "c" in e:
+            out["c"] = e["c"]
+        if kind == "deal" and "top" in e:
+            out["top"] = e["top"]
+        if "scores" in out and isinstance(out["scores"], list):
+            out["scores"] = list(out["scores"])
+        return out
+
     def public_event(self, e: dict, seat: int) -> dict:
         """An event as seat may see it (other players' drawn cards stay hidden)."""
         if e.get("e") == "draw" and e.get("s") != seat:

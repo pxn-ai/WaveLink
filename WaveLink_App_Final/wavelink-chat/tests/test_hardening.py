@@ -19,7 +19,7 @@ import urllib.request
 import zlib
 
 from wavelink import tdma as T
-from wavelink.config import PhyConfig
+from wavelink.config import BROADCAST_ADDR, PhyConfig
 from wavelink.crypto import PLAIN
 from wavelink.mac import HDR, T_ACK, T_DATA, add_crc
 from wavelink.node import Node
@@ -193,6 +193,80 @@ def part1():
     check("biome survives rejoin and rematch",
           hub.rooms[rid_fixed]["biome"] == 3 and hub.rooms[rid_rand]["o"]["biome"] == 255,
           (hub.rooms[rid_fixed]["biome"], hub.rooms[rid_rand]["o"]))
+
+    # live discovery & spectator message validation + --key encryption
+    bad_lives = [
+        {"t": "live", "r": "bad!", "game": "race", "host": 1, "host_num": 0, "players": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}], "state": "running", "seed": 1, "biome": 0, "laps": 2, "start_time": 1.0},
+        {"t": "live", "r": "c1d2e3", "game": "race", "host": 9, "host_num": 0, "players": [{"id": 1, "name": "A"}, {"id": 9, "name": "B"}], "state": "running", "seed": 1, "biome": 0, "laps": 2, "start_time": 1.0},
+        {"t": "live", "r": "c1d2e3", "game": "race", "host": 1, "host_num": 0, "players": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}], "state": "running", "seed": 1, "biome": 255, "laps": 2, "start_time": 1.0},
+        {"t": "live", "r": "c1d2e3", "game": "race", "host": 1, "host_num": True, "players": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}], "state": "running", "seed": True, "biome": 1, "laps": 7, "start_time": 1.0},
+    ]
+    for m in bad_lives:
+        hub._handle(1, dict(m))
+    check("malformed or spoofed 'live' announcements are rejected",
+          "c1d2e3" not in hub.live and hub.stats.get("gc_bad_live", 0) >= 3,
+          (list(hub.live), hub.stats.get("gc_bad_live")))
+    valid_live = {
+        "t": "live", "r": "c1d2e3", "room_id": "c1d2e3", "game": "race", "host": 1, "host_num": 0,
+        "players": [{"id": 1, "name": "<img src=x onerror=alert(1)>\nA" + "z" * 60}, {"id": 3, "name": "Carol"}],
+        "state": "running", "seed": 42, "biome": 2, "laps": 3, "start_time": time.time(), "elapsed": 1.0,
+    }
+    hub._handle(1, dict(valid_live))
+    hub._handle(4, dict(valid_live, host=4, host_num=9, players=[{"id": 4, "name": "Mallory"}, {"id": 3, "name": "Carol"}]))
+    live_entry = hub.live.get("c1d2e3")
+    check("valid 'live' sanitizes player names and resists non-player host hijack",
+          live_entry is not None and live_entry["host"] == 1
+          and live_entry["players"][0]["name"].isprintable()
+          and len(live_entry["players"][0]["name"]) <= 32,
+          live_entry and (live_entry["host"], live_entry["players"][0]["name"]))
+
+    # uno_pub private-field rejection and bounds checking
+    bad_uno_pubs = [
+        {"t": "uno_pub", "r": "d4e5f6", "host": 1, "host_num": 0, "round": 1, "v": 1,
+         "seats": [{"id": 1, "name": "A", "card_count": 7, "called_uno": False, "away": False, "score": 0},
+                   {"id": 3, "name": "C", "card_count": 7, "called_uno": False, "away": False, "score": 0}],
+         "discard_top": 5, "deck_count": 90, "active_colour": 0, "direction": 1, "turn_seat": 0,
+         "phase": "play", "paused": False, "round_over": False, "hands": [[1, 2]]},
+        {"t": "uno_pub", "r": "d4e5f6", "host": 1, "host_num": 0, "round": 1, "v": 1,
+         "seats": [{"id": 1, "name": "A", "card_count": 7, "called_uno": False, "away": False, "score": 0},
+                   {"id": 3, "name": "C", "card_count": 7, "called_uno": False, "away": False, "score": 0}],
+         "discard_top": 5, "deck_count": 90, "active_colour": 0, "direction": 1, "turn_seat": 0,
+         "phase": "play", "paused": False, "round_over": False,
+         "last_event": {"i": 1, "e": "draw", "s": 0, "k": 1, "why": "draw", "cards": [10]}},
+        {"t": "uno_pub", "r": "d4e5f6", "host": 1, "host_num": 0, "round": 1, "v": 1,
+         "seats": [{"id": 1, "name": "A", "card_count": 7, "called_uno": False, "away": False, "score": 0},
+                   {"id": 3, "name": "C", "card_count": 7, "called_uno": False, "away": False, "score": 0}],
+         "discard_top": 999, "deck_count": 90, "active_colour": 9, "direction": 1, "turn_seat": 0,
+         "phase": "play", "paused": False, "round_over": False},
+    ]
+    for m in bad_uno_pubs:
+        hub._handle(1, m)
+    check("malformed 'uno_pub' or payloads with hand/deck/cards are dropped",
+          "d4e5f6" not in hub.spec_rt and hub.stats.get("gc_bad_uno_pub", 0) >= 3,
+          (list(hub.spec_rt), hub.stats.get("gc_bad_uno_pub")))
+
+    # spectate_req throttling
+    rid_uno_h = hub.create("uno", [1], {})
+    hub.rooms[rid_uno_h]["st"][1] = "joined"
+    hub.start_game(rid_uno_h)
+    bob.mac.out.clear()
+    hub._handle(3, {"t": "spectate_req", "r": rid_uno_h, "room_id": rid_uno_h})
+    n_after_1 = len(bob.mac.out.get(3, []))
+    hub._handle(3, {"t": "spectate_req", "r": rid_uno_h, "room_id": rid_uno_h})
+    check("spectate_req is rate-limited per requester",
+          n_after_1 == 2 and hub.stats.get("spectate_req_throttled", 0) >= 1,
+          (n_after_1, hub.stats.get("spectate_req_throttled")))
+
+    # --key refuses unencrypted code-0 broadcast live/uno_pub envelopes and accepts sealed ones
+    bcast_meta = {"snr_db": 20, "broadcast": True}
+    chub = carol.hub
+    carol._on_message(1, plain({"k": "gc", "u": "beef0000beef"}, json.dumps(valid_live).encode()), bcast_meta)
+    check("with --key unencrypted broadcast 'live' is refused", "c1d2e3" not in chub.live)
+    b_live_bytes = json.dumps(dict(valid_live, r="e7f8a9", room_id="e7f8a9")).encode()
+    mj = json.dumps({"k": "gc", "u": "beef1111beef"}).encode()
+    carol._on_message(1, carol.crypto.seal(struct.pack(">H", len(mj)) + mj + b_live_bytes, 1, BROADCAST_ADDR), bcast_meta)
+    check("... encrypted broadcast 'live' passes to hub",
+          chub._inbox.qsize() >= 1)
 
 
 # ============================================================================ 2. link layer
@@ -382,8 +456,11 @@ def part4():
         srv.shutdown()
     js = open(os.path.join(ROOT, "wavelink", "web", "static", "app.js"), encoding="utf-8").read()
     gj = open(os.path.join(ROOT, "wavelink", "web", "static", "games.js"), encoding="utf-8").read()
+    uj = open(os.path.join(ROOT, "wavelink", "web", "static", "uno.js"), encoding="utf-8").read()
+    rj = open(os.path.join(ROOT, "wavelink", "web", "static", "race.js"), encoding="utf-8").read()
     check("the page escapes names and room ids it puts into HTML",
-          "cancelled by ${esc(contactName" in js and 'data-r="${r.r}"' not in gj and "${r.o.laps} laps`" not in gj)
+          "cancelled by ${esc(contactName" in js and 'data-r="${r.r}"' not in gj and "${r.o.laps} laps`" not in gj
+          and 'data-r="${UNO.' not in uj and 'data-r="${RACE.' not in rj)
 
 
 PARTS = {1: part1, 2: part2, 3: part3, 4: part4}
