@@ -11,6 +11,7 @@ arrow keys (dispatched as key events) to follow the track and presses Space to u
 """
 import argparse
 import asyncio
+import base64
 import os
 import random
 import sys
@@ -52,7 +53,17 @@ AUTOPILOT = """
 
 async def shot(pg, name):
     os.makedirs(OUT, exist_ok=True)
-    await pg.screenshot(path=os.path.join(OUT, name))
+    path = os.path.join(OUT, name)
+    try:
+        cdp = getattr(pg, "_cdp", None)
+        if cdp is None:
+            cdp = await pg.context.new_cdp_session(pg)
+            pg._cdp = cdp
+        r = await cdp.send("Page.captureScreenshot", {"format": "png"})
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(r["data"]))
+    except Exception:
+        await pg.screenshot(path=path, animations="allow")
 
 
 async def wait_for(pg, js, timeout=30.0, what=""):
@@ -180,7 +191,12 @@ async def play_uno(pages, n):
 async def play_race(pages, n, laps=2, rematch=True, biome=1):
     rid = await make_room(pages, "race", laps, biome=biome)
     host = pages[0]
-    await wait_for(host, "!!document.querySelector('.lobby .primary:not([disabled])')", 40, "race lobby synced")
+    await wait_for(
+        host,
+        f"(() => {{ const b = document.querySelector('.lobby .primary:not([disabled])'); return !!(b && b.textContent.includes('{len(pages)} players')); }})()",
+        40,
+        "race lobby synced",
+    )
     title_ok = await host.evaluate("document.querySelector('.lobby.race h3')?.textContent.includes('Slot Rush')")
     assert title_ok, "Lobby title is not Slot Rush"
     await shot(host, f"race-{n}p-lobby.png")
@@ -240,12 +256,14 @@ async def play_race(pages, n, laps=2, rematch=True, biome=1):
             print(f"race 1: page reloaded at {d0:.0f} px raced; it resumed at {d1:.0f} px")
             assert d1 > d0 - 50, "a reloaded page put the car back on the grid"
             await g.evaluate(AUTOPILOT)
+        await asyncio.sleep(12)
+        for pg in pages:
+            await wait_for(pg, f"RACE.cars.filter((c) => c !== RACE.me && c.pkt).length >= {n - 1}", 20, "other cars seen")
         fps = [await pg.evaluate("RACE.fps || 0") for pg in pages]
         draw_ms = [await pg.evaluate("Math.round(RACE.drawMs * 10) / 10") for pg in pages]
         seen = [await pg.evaluate("RACE.cars.filter((c) => c !== RACE.me && c.pkt).length") for pg in pages]
         rates = [await pg.evaluate("""RACE.cars.filter((c) => c !== RACE.me && c.rx.length > 1)
               .map((c) => +((c.rx.length - 1) / ((c.rx[c.rx.length - 1] - c.rx[0]) / 1000)).toFixed(1))""") for pg in pages]
-        await asyncio.sleep(12)
         off = [await pg.evaluate("RACE.dbg ? [RACE.dbg.off, RACE.dbg.n, Math.round(RACE.dbg.worst)] : null") for pg in pages]
         corr = [await pg.evaluate("""(() => { const c = (RACE.dbg && RACE.dbg.corr || []).slice().sort((a, b) => a - b);
             return c.length ? [Math.round(c[c.length >> 1]), Math.round(c[Math.floor(c.length * 0.95)]), RACE.dbg.snaps || 0] : null; })()""") for pg in pages]
@@ -266,6 +284,55 @@ async def play_race(pages, n, laps=2, rematch=True, biome=1):
     for pg in pages:
         await pg.evaluate("setPref('raceCam', 'north')")
     await host.click(".race-results .gc-ghost")             # close the room
+    for pg in pages[1:]:
+        await wait_for(pg, f"(GC.room('{rid}') || {{}}).state === 'closed'", 20, "race room closed on guests")
+    for pg in pages:
+        await pg.evaluate(f"GC.post({{a: 'dismiss', r: '{rid}'}}).catch(() => 0).then(() => {{ GC.focus = null; GC.unmount(); GC.render(); }})")
+    return True
+
+
+async def verify_biomes(pages):
+    host = pages[0]
+    for pg in pages:
+        await pg.evaluate("""(async () => {
+          for (const r of (GC.snap?.rooms || [])) {
+            if (r.state === 'closed') try { await GC.post({a: 'dismiss', r: r.r}); } catch (e) {}
+          }
+          GC.focus = null; GC.unmount(); GC.render();
+        })()""")
+    for bm in (0, 2, 3, 4):
+        rid = await make_room(pages, "race", laps=2, biome=bm)
+        await wait_for(
+            host,
+            f"(() => {{ const b = document.querySelector('.lobby .primary:not([disabled])'); return !!(b && b.textContent.includes('{len(pages)} players')); }})()",
+            40,
+            f"biome {bm} lobby ready",
+        )
+        await host.click(".lobby .primary")
+        for pg in pages:
+            await wait_for(pg, f"RACE.root && RACE.rid === '{rid}' && RACE.biome === {bm}", 40, f"biome {bm} race mounted")
+        bname = await host.evaluate("RACE.B.name")
+        hud_ok = await host.evaluate("document.querySelector('.race-room .gc-title')?.textContent") or ""
+        assert "Slot Rush" in hud_ok and bname in hud_ok, f"HUD header missing Slot Rush / {bname}: {hud_ok}"
+        for pg in pages:
+            await pg.evaluate(AUTOPILOT)
+        await wait_for(host, "RACE.tg() > 1.5", 30, f"biome {bm} green light")
+        await host.evaluate("setPref('raceCam', 'north')")
+        await asyncio.sleep(0.25)
+        await shot(host, f"race-biome{bm}-north.png")
+        await host.keyboard.press("v")
+        await wait_for(host, "RACE.chaseOn", 5, f"chase camera active in biome {bm}")
+        await asyncio.sleep(0.35)
+        await shot(host, f"race-biome{bm}-chase.png")
+        await host.keyboard.press("v")
+        for pg in pages:
+            await pg.evaluate("clearInterval(window.__auto); setPref('raceCam', 'north')")
+        await host.evaluate(f"GC.post({{a: 'leave', r: '{rid}'}})")
+        for pg in pages[1:]:
+            await wait_for(pg, f"(GC.room('{rid}') || {{}}).state === 'closed'", 20, f"biome {bm} closed on guests")
+        for pg in pages:
+            await pg.evaluate(f"GC.post({{a: 'dismiss', r: '{rid}'}}).catch(() => 0).then(() => {{ GC.focus = null; GC.unmount(); GC.render(); }})")
+    print("Slot Rush biome QA: verified biomes 0, 2, 3, 4 (plus 1 in play_race) in north-up and chase cameras")
     return True
 
 
@@ -278,7 +345,11 @@ async def main():
     a = ap.parse_args()
     w, h = map(int, a.size.split("x"))
     async with async_playwright() as p:
-        b = await p.chromium.launch()
+        b = await p.chromium.launch(args=[
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
+        ])
         pages, errors = [], []
         for k in range(a.n):
             pg = await b.new_page(viewport={"width": w, "height": h})
@@ -292,6 +363,7 @@ async def main():
             await play_uno(pages, a.n)
         if a.only in (None, "race"):
             await play_race(pages, a.n)
+            await verify_biomes(pages)
         await b.close()
     if errors:
         print("page errors:", *errors[:10], sep="\n  ")

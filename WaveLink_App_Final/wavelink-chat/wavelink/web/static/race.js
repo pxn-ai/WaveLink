@@ -350,7 +350,7 @@ RACE.buildBiomeProps = function (T, seed, biomeId) {
         const rad = Math.hypot(sz, h) / 2 + 24;
         if (RACE.distToTrack(T, cx, cy) < R_TW + R_RUN + 36 + rad) continue;
         T.ics.push({
-          cx, cy, w: sz, h, rot: Math.floor(prng() * 4) * (Math.PI / 2),
+          cx, cy, w: sz, h, rot: prng() < 0.5 ? 0 : -Math.PI / 2,
           qfp: prng() < 0.72, tag: R_IC_TAGS[(icIdx++) % R_IC_TAGS.length], rad,
         });
       }
@@ -388,20 +388,31 @@ RACE.buildBiomeProps = function (T, seed, biomeId) {
       if (RACE.distToTrack(T, sx, sy) < R_TW + R_RUN + 18) continue;
       T.scrubs.push({ x: sx, y: sy, r: 6 + prng() * 11, n: 3 + Math.floor(prng() * 4), seed: prng() * 100 });
     }
-    // Cracked-earth tarmac edge polylines
+    // Cracked-earth tarmac edge polylines propagating inward onto the asphalt
     for (let i = 0; i < M; i += Math.round(130 / R_STEP)) {
-      const side = prng() < 0.5 ? -1 : 1;
-      const [ex, ey] = RACE.at(T, i, side * (R_TW - 2));
-      const a0 = Math.atan2(T.tx[i] * side, -T.ty[i] * side) + (prng() - 0.5) * 0.6;
+      const side = prng() < 0.5 ? -1 : 1, inSide = -side;
+      const [ex, ey] = RACE.at(T, i, side * (R_TW - 1));
+      const a0 = Math.atan2(T.tx[i] * inSide, -T.ty[i] * inSide) + (prng() - 0.5) * 0.7;
       const segs = [[ex, ey]];
       let px = ex, py = ey, a = a0;
       for (let s = 0; s < 4; s++) {
-        a += (prng() - 0.5) * 1.1;
-        px += Math.cos(a) * (10 + prng() * 14);
-        py += Math.sin(a) * (10 + prng() * 14);
+        a += (prng() - 0.5) * 0.9;
+        px += Math.cos(a) * (7 + prng() * 9);
+        py += Math.sin(a) * (7 + prng() * 9);
         segs.push([px, py]);
       }
-      T.cracks.push(segs);
+      let twig = null;
+      if (prng() < 0.55) {
+        let bx = segs[2][0], by = segs[2][1], ba = a0 + (prng() < 0.5 ? 0.65 : -0.65);
+        twig = [[bx, by]];
+        for (let s = 0; s < 2; s++) {
+          ba += (prng() - 0.5) * 0.6;
+          bx += Math.cos(ba) * (6 + prng() * 7);
+          by += Math.sin(ba) * (6 + prng() * 7);
+          twig.push([bx, by]);
+        }
+      }
+      T.cracks.push({ segs, twig });
     }
     // Circular white parabolic RF ground-station clusters
     for (let k = 0; k < 14; k++) {
@@ -430,14 +441,15 @@ RACE.buildBiomeProps = function (T, seed, biomeId) {
     // Translucent ice patches with jagged white fractures (both off-track and light patches on track)
     for (let k = 0; k < 85; k++) {
       const onTrack = k < 28;
+      const rx = onTrack ? 22 + prng() * 30 : 35 + prng() * 65, ry = rx * (0.5 + prng() * 0.45);
       let px, py;
       if (onTrack) {
         const i = Math.floor(prng() * M);
         [px, py] = RACE.at(T, i, (prng() - 0.5) * 2 * (R_TW - 12));
       } else {
         px = bx0 + prng() * (bx1 - bx0); py = by0 + prng() * (by1 - by0);
+        if (RACE.distToTrack(T, px, py) < R_TW + R_RUN + rx + 14) continue;
       }
-      const rx = onTrack ? 22 + prng() * 30 : 35 + prng() * 65, ry = rx * (0.5 + prng() * 0.45);
       const a = prng() * Math.PI;
       const fr = Array.from({ length: 3 }, () => {
         const ang0 = prng() * Math.PI * 2;
@@ -699,18 +711,30 @@ RACE.tile = function (tx, ty) {
       }
     }
   } else if (bm === 3) {
-    // Soft slate cliff shadows + off-track ice patches + star-shaped dark pine clusters
+    // Stepped alpine slate cliff shadows & snow crests + off-track ice patches + star-shaped pine clusters
     for (const cl of T.cliffs) {
-      if (!inBox(cl.cx - cl.r, cl.cy - cl.r, cl.cx + cl.r, cl.cy + cl.r, 10)) continue;
-      g.fillStyle = "rgba(85,110,140,0.22)";
+      if (!inBox(cl.cx - cl.r, cl.cy - cl.r, cl.cx + cl.r, cl.cy + cl.r, 14)) continue;
+      g.save(); g.translate(6, 6);
+      g.fillStyle = "rgba(75,100,130,0.22)";
       rTraceSmoothPoly(g, cl.pts, 1.0, cl.cx, cl.cy); g.fill();
-      g.fillStyle = "rgba(255,255,255,0.35)";
-      rTraceSmoothPoly(g, cl.pts, 0.78, cl.cx - 8, cl.cy - 8); g.fill();
+      g.restore();
+      g.fillStyle = "rgba(110,138,168,0.26)";
+      rTraceSmoothPoly(g, cl.pts, 0.86, cl.cx, cl.cy); g.fill();
+      g.save(); g.translate(-5, -5);
+      g.fillStyle = "rgba(248,250,252,0.65)";
+      rTraceSmoothPoly(g, cl.pts, 0.68, cl.cx, cl.cy); g.fill();
+      g.restore();
     }
     for (const p of T.ice) {
       if (p.onTrack || !inBox(p.x - p.rx, p.y - p.rx, p.x + p.rx, p.y + p.rx, 8)) continue;
-      g.save(); g.translate(p.x, p.y); g.rotate(p.a); g.scale(1, p.ry / p.rx);
+      g.save(); g.translate(p.x, p.y); g.rotate(p.a);
+      g.save(); g.scale(1, p.ry / p.rx);
       g.fillStyle = "rgba(147,197,253,0.42)"; g.beginPath(); g.arc(0, 0, p.rx, 0, Math.PI * 2); g.fill();
+      g.restore();
+      g.strokeStyle = "rgba(255,255,255,0.75)"; g.lineWidth = 1.4;
+      for (const f of p.fr) {
+        g.beginPath(); g.moveTo(f[0][0], f[0][1]); g.lineTo(f[1][0], f[1][1]); g.lineTo(f[2][0], f[2][1]); g.stroke();
+      }
       g.restore();
     }
     for (const cl of T.pines) {
@@ -803,24 +827,30 @@ RACE.tile = function (tx, ty) {
   }
   // Desert cracked-earth tarmac edges
   if (bm === 2) {
-    g.strokeStyle = "rgba(42, 30, 24, 0.72)"; g.lineWidth = 2.2;
-    for (const segs of T.cracks) {
-      if (!inBox(segs[0][0] - 40, segs[0][1] - 40, segs[0][0] + 40, segs[0][1] + 40, 10)) continue;
+    g.strokeStyle = "rgba(42, 30, 24, 0.72)"; g.lineWidth = 2.0; g.lineCap = "round"; g.lineJoin = "round";
+    for (const c of T.cracks) {
+      const segs = c.segs;
+      if (!inBox(segs[0][0] - 60, segs[0][1] - 60, segs[0][0] + 60, segs[0][1] + 60, 12)) continue;
       g.beginPath();
       segs.forEach((p, idx) => (idx ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
       g.stroke();
+      if (c.twig) {
+        g.lineWidth = 1.3;
+        g.beginPath();
+        c.twig.forEach((p, idx) => (idx ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+        g.stroke();
+        g.lineWidth = 2.0;
+      }
     }
   }
   // Carrier Peak translucent ice patches on track with jagged fracture lines
   if (bm === 3) {
     for (const p of T.ice) {
-      if (!inBox(p.x - p.rx, p.y - p.rx, p.x + p.rx, p.y + p.rx, 8)) continue;
+      if (!p.onTrack || !inBox(p.x - p.rx, p.y - p.rx, p.x + p.rx, p.y + p.rx, 8)) continue;
       g.save(); g.translate(p.x, p.y); g.rotate(p.a);
-      if (p.onTrack) {
-        g.save(); g.scale(1, p.ry / p.rx);
-        g.fillStyle = "rgba(147,197,253,0.22)"; g.beginPath(); g.arc(0, 0, p.rx, 0, Math.PI * 2); g.fill();
-        g.restore();
-      }
+      g.save(); g.scale(1, p.ry / p.rx);
+      g.fillStyle = "rgba(147,197,253,0.22)"; g.beginPath(); g.arc(0, 0, p.rx, 0, Math.PI * 2); g.fill();
+      g.restore();
       g.strokeStyle = "rgba(255,255,255,0.75)"; g.lineWidth = 1.4;
       for (const f of p.fr) {
         g.beginPath(); g.moveTo(f[0][0], f[0][1]); g.lineTo(f[1][0], f[1][1]); g.lineTo(f[2][0], f[2][1]); g.stroke();
@@ -922,6 +952,19 @@ RACE.sprites = function () {
     gr.addColorStop(0, "rgba(255,245,220,0.34)"); gr.addColorStop(1, "rgba(255,245,220,0)");
     g.fillStyle = gr; g.beginPath(); g.moveTo(0, 52); g.lineTo(260, 0); g.lineTo(260, 120); g.lineTo(0, 68); g.fill();
   });
+  RACE.dualBeamSpr = mk(260, 120, (g) => {
+    const gr = g.createLinearGradient(0, 0, 260, 0);
+    gr.addColorStop(0, "rgba(255,248,235,0.36)"); gr.addColorStop(1, "rgba(255,248,235,0)");
+    g.fillStyle = gr;
+    const y1 = 60 - (R_CAR.wid / 2 - 5), y2 = 60 + (R_CAR.wid / 2 - 5);
+    g.beginPath(); g.moveTo(0, y1 - 2); g.lineTo(260, 2); g.lineTo(260, 54); g.lineTo(0, y1 + 2); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(0, y2 - 2); g.lineTo(260, 66); g.lineTo(260, 118); g.lineTo(0, y2 + 2); g.closePath(); g.fill();
+  });
+  RACE.mistSpr = mk(64, 64, (g) => {
+    const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gr.addColorStop(0, "rgba(255,209,102,0.22)"); gr.addColorStop(1, "rgba(255,209,102,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  });
   RACE.warmBeamSpr = mk(270, 140, (g) => {
     const gr = g.createLinearGradient(0, 0, 270, 0);
     gr.addColorStop(0, "rgba(255,235,150,0.28)"); gr.addColorStop(1, "rgba(255,235,150,0)");
@@ -946,6 +989,7 @@ RACE.sprites = function () {
 function drawCar(ctx, car, biomeId) {
   const L = R_CAR.len, W = R_CAR.wid, col = car.col || R_SEAT[(car.s || 0) % 4];
   const t = performance.now() / 1000, braking = !!(car.fl & R_FLAG.brake), boosting = !!(car.fl & R_FLAG.boost);
+  const moving = boosting || Math.hypot(car.vx || car.dvx || 0, car.vy || car.dvy || 0) > 40;
   ctx.save();
   ctx.globalAlpha = car.gone ? 0.35 : 1;
 
@@ -953,12 +997,15 @@ function drawCar(ctx, car, biomeId) {
     // 0 — Cyber Street Coupe
     ctx.globalCompositeOperation = "lighter";
     ctx.drawImage(RACE.glowSpr[car.s % 4], -60, -45);
-    ctx.drawImage(RACE.beamSpr, 20, -60);
-    if (boosting) {
-      const f = 14 + Math.random() * 14;
+    ctx.drawImage(RACE.dualBeamSpr, 20, -60);
+    if (boosting || moving) {
+      const f = boosting ? 14 + Math.random() * 14 : 6 + 2 * Math.sin(t * 24);
+      ctx.save();
+      ctx.globalAlpha *= boosting ? 1 : 0.75;
       ctx.fillStyle = col;
       ctx.beginPath(); ctx.moveTo(-L / 2, -6); ctx.lineTo(-L / 2 - f, -4); ctx.lineTo(-L / 2, -2); ctx.fill();
       ctx.beginPath(); ctx.moveTo(-L / 2, 2); ctx.lineTo(-L / 2 - f, 4); ctx.lineTo(-L / 2, 6); ctx.fill();
+      ctx.restore();
     }
     ctx.globalCompositeOperation = "source-over";
     // Sleek wedge body
@@ -1017,7 +1064,7 @@ function drawCar(ctx, car, biomeId) {
   } else if (biomeId === 2) {
     // 2 — Baja Dune Buggy
     ctx.globalCompositeOperation = "lighter";
-    ctx.drawImage(RACE.warmBeamSpr, 14, -70);
+    ctx.drawImage(RACE.warmBeamSpr, 7, -70, 250, 140);
     ctx.globalCompositeOperation = "source-over";
     // Suspension struts & 4 oversized exposed wheel arches
     ctx.strokeStyle = "#5C534E"; ctx.lineWidth = 2;
@@ -1025,9 +1072,11 @@ function drawCar(ctx, car, biomeId) {
     ctx.moveTo(13, -W / 2 + 1); ctx.lineTo(13, W / 2 - 1);
     ctx.moveTo(-13, -W / 2 + 1); ctx.lineTo(-13, W / 2 - 1);
     ctx.stroke();
-    ctx.fillStyle = "#181514";
     for (const wx of [-15, 12]) for (const wy of [-W / 2, W / 2 - 5]) {
+      ctx.fillStyle = "#181514";
       ctx.beginPath(); ctx.roundRect(wx - 4, wy, 11, 5, 2); ctx.fill();
+      ctx.fillStyle = "#2b2725";
+      for (let tr = -2; tr <= 6; tr += 4) ctx.fillRect(wx + tr, wy + 0.5, 1.5, 4);
     }
     // Narrow central fuselage
     ctx.fillStyle = "#231F1D";
@@ -1047,21 +1096,26 @@ function drawCar(ctx, car, biomeId) {
     ctx.globalCompositeOperation = "lighter";
     ctx.drawImage(RACE.warmBeamSpr, 20, -70);
     ctx.globalCompositeOperation = "source-over";
-    // Red mudflaps at rear corners
+    // Tire edges peeking outside wheel arches & red mudflaps at rear corners
+    ctx.fillStyle = "#18181b";
+    ctx.fillRect(9, -W / 2 - 1.2, 9, 3); ctx.fillRect(9, W / 2 - 1.8, 9, 3);
+    ctx.fillRect(-16, -W / 2 - 1.2, 9, 3); ctx.fillRect(-16, W / 2 - 1.8, 9, 3);
     ctx.fillStyle = "#EF233C";
     ctx.fillRect(-L / 2 - 2, -W / 2 + 2, 4, 5); ctx.fillRect(-L / 2 - 2, W / 2 - 7, 4, 5);
     // Boxy flared-fender rally hatch
     ctx.fillStyle = "#F1F5F9";
     ctx.beginPath(); ctx.roundRect(-L / 2 + 1, -W / 2 + 1, L - 2, W - 2, 4); ctx.fill();
-    // Flared wheel arches
+    // Rear hatch spoiler lip & flared wheel arches
+    ctx.fillStyle = "#1E293B"; ctx.fillRect(-L / 2 + 1, -W / 2 + 2, 3, W - 4);
     ctx.fillStyle = col;
     ctx.fillRect(8, -W / 2, 11, 3); ctx.fillRect(8, W / 2 - 3, 11, 3);
     ctx.fillRect(-17, -W / 2, 11, 3); ctx.fillRect(-17, W / 2 - 3, 11, 3);
     // Rally stripe
-    ctx.fillRect(-L / 2 + 2, -3, L - 5, 6);
+    ctx.fillRect(-L / 2 + 4, -3, L - 7, 6);
     // Dark windshield + roof intake scoop
     ctx.fillStyle = "#1E293B"; ctx.fillRect(2, -W / 2 + 4, 10, W - 8);
     ctx.fillStyle = "#334155"; ctx.fillRect(-8, -4, 7, 8);
+    ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 1; ctx.strokeRect(-8, -4, 7, 8);
     // Front 4-lamp rally pod
     ctx.fillStyle = "#FFEB96";
     for (let k = 0; k < 4; k++) ctx.fillRect(L / 2 - 2, -7 + k * 4, 3, 2.6);
@@ -1252,7 +1306,7 @@ RACE.updateRoom = function (room) {
   if (nb !== RACE.biome && RACE.T) {
     RACE.biome = nb; RACE.B = BIOMES[nb];
     RACE.buildBiomeProps(RACE.T, room.seed, nb);
-    RACE.tiles = new Map();
+    RACE.tiles = new Map(); RACE.mini = null;
     const tEl = RACE.root?.querySelector(".gc-bar .gc-title");
     if (tEl) tEl.innerHTML = `Slot Rush <span style="opacity:.72;font-weight:500">· ${esc(RACE.B.name)} · ${RACE.laps} laps</span>`;
     if (typeof MUSIC !== "undefined") MUSIC.setHint(RACE.B.music);
@@ -1293,8 +1347,9 @@ RACE.toggleCam = function () {
   RACE.say(chase ? "Chase camera" : "North-up camera", 1.1);
 };
 RACE.camLabel = function () {
+  RACE._camPref = pref("raceCam");
   const b = RACE.root?.querySelector("#raceCam");
-  if (b) b.innerHTML = `Camera: ${pref("raceCam") === "chase" ? "chase" : "north up"} <kbd>V</kbd>`;
+  if (b) b.innerHTML = `Camera: ${RACE._camPref === "chase" ? "chase" : "north up"} <kbd>V</kbd>`;
 };
 // sounds only while the race is on screen
 RACE.sfx = (name, opt) => { if (GC.open) SFX.play(name, opt); };
@@ -1782,15 +1837,14 @@ RACE.drawWeather = function (g, dt, W, H) {
     }
     g.fill();
   } else if (kind === "mist") {
-    g.fillStyle = pal.particleCol; g.beginPath();
-    for (let i = 0; i < 90; i++) {
+    if (!RACE.mistSpr) RACE.sprites();
+    for (let i = 0; i < 42; i++) {
       const d = RACE.rain[i];
-      d.x += dt * (0.08 + 0.08 * d.z); d.y += dt * 0.02;
+      d.x += dt * (0.04 + 0.05 * d.z); d.y += dt * 0.008;
       if (d.x > 1) d.x -= 1; if (d.y > 1) d.y -= 1;
-      const x = d.x * W, y = d.y * H, r = 4 + 7 * d.z;
-      g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2);
+      const x = d.x * W, y = d.y * H, rx = 28 + 38 * d.z, ry = rx * 0.55;
+      g.drawImage(RACE.mistSpr, x - rx, y - ry, rx * 2, ry * 2);
     }
-    g.fill();
   }
 };
 
@@ -2189,6 +2243,7 @@ RACE.drawMini = function () {
 };
 
 RACE.drawHud = function (tg) {
+  if (RACE._camPref !== pref("raceCam")) RACE.camLabel();
   const me = RACE.me, h = RACE.hud, order = RACE.order(true), T = RACE.T;
   const rank = order.indexOf(me) + 1;
   h.pos.innerHTML = `<span class="big">${rank || "–"}</span><span class="of">/${order.length}</span>`;
@@ -2241,7 +2296,8 @@ RACE.showResults = function (res) {
 RACE.backdropStatic = function (w, h, bm = 0) {
   const c = document.createElement("canvas");
   c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h));
-  const g = c.getContext("2d"), hz = h * 0.42, pal = BIOMES[bm] || BIOMES[0];
+  const compact = h < 540 || w < 520;
+  const g = c.getContext("2d"), hz = h * (compact ? 0.30 : 0.42), pal = BIOMES[bm] || BIOMES[0];
   const skies = [
     ["#07080d", "#1b1424"],
     ["#031411", "#09372e"],
@@ -2293,17 +2349,22 @@ RACE.backdropStatic = function (w, h, bm = 0) {
       g.lineTo(w, hz); g.closePath(); g.fill();
     }
   } else {
-    // Sunset Coast setting sun + coastal ocean horizon + palm silhouettes
+    // Sunset Coast setting sun + coastal ocean horizon + curved palm silhouettes
     const sg = g.createRadialGradient(w * 0.5, hz * 0.78, 8, w * 0.5, hz * 0.78, h * 0.24);
     sg.addColorStop(0, "rgba(255,209,102,0.95)"); sg.addColorStop(0.45, "rgba(247,37,133,0.45)"); sg.addColorStop(1, "rgba(247,37,133,0)");
     g.fillStyle = sg; g.beginPath(); g.arc(w * 0.5, hz * 0.78, h * 0.24, 0, Math.PI * 2); g.fill();
-    g.fillStyle = "#14362D";
+    g.fillStyle = "#14362D"; g.strokeStyle = "#14362D"; g.lineWidth = 4.5; g.lineCap = "round";
     for (const px of [w * 0.14, w * 0.86]) {
-      g.fillRect(px - 3, hz - 52, 6, 52);
+      const dir = px < w * 0.5 ? 1 : -1, th = Math.min(54, hz * 0.52);
+      const tx0 = px + dir * 4, ty0 = hz - th;
+      g.beginPath(); g.moveTo(px, hz); g.quadraticCurveTo(px + dir * 8, hz - th * 0.52, tx0, ty0); g.stroke();
       for (let f = 0; f < 5; f++) {
-        const a = -Math.PI + (f * Math.PI) / 4;
-        g.beginPath(); g.moveTo(px, hz - 52); g.quadraticCurveTo(px + Math.cos(a) * 22, hz - 66, px + Math.cos(a) * 34, hz - 44 + Math.sin(a) * 10);
-        g.quadraticCurveTo(px + Math.cos(a) * 16, hz - 50, px, hz - 52); g.fill();
+        const a = -Math.PI * 0.92 + (f * Math.PI * 0.84) / 4;
+        const fx = tx0 + Math.cos(a) * 32, fy = ty0 + Math.sin(a) * 14 + 10;
+        g.beginPath(); g.moveTo(tx0, ty0);
+        g.quadraticCurveTo(tx0 + Math.cos(a) * 18, ty0 + Math.sin(a) * 18 - 8, fx, fy);
+        g.quadraticCurveTo(tx0 + Math.cos(a) * 14, ty0 + Math.sin(a) * 12, tx0, ty0);
+        g.fill();
       }
     }
   }
@@ -2333,11 +2394,12 @@ RACE.backdropStatic = function (w, h, bm = 0) {
 RACE.backdrop = function (g, w, h, t, biomeOpt = 0) {
   const bm = Number.isInteger(biomeOpt) && biomeOpt >= 0 && biomeOpt < BIOMES.length ? biomeOpt : 0;
   const pal = BIOMES[bm];
+  const compact = h < 540 || w < 520;
   const key = `${Math.round(w)}x${Math.round(h)}:${bm}`;
   if (!RACE.bd || RACE.bd.key !== key) RACE.bd = { key, img: RACE.backdropStatic(w, h, bm) };
   g.drawImage(RACE.bd.img, 0, 0, w, h);
-  const hz = h * 0.42;
-  g.font = `700 ${Math.round(h * 0.035)}px 'Chakra Petch', system-ui`; g.textAlign = "center";
+  const hz = h * (compact ? 0.30 : 0.42);
+  const sz = Math.round(h * 0.035);
   const signSets = [
     [[0.16, 0.2, "#FF2E88", "WALSH"], [0.8, 0.26, "#00E5FF", "SLOT RUSH"]],
     [[0.18, 0.22, "#D4AF37", "AD9361"], [0.8, 0.24, "#00FFC8", "ZYNQ-7020"]],
@@ -2345,9 +2407,9 @@ RACE.backdrop = function (g, w, h, t, biomeOpt = 0) {
     [[0.18, 0.22, "#FF6D00", "CARRIER"], [0.8, 0.24, "#7DD3FC", "PEAK"]],
     [[0.18, 0.22, "#FF7F50", "SUNSET"], [0.8, 0.24, "#48CAE4", "COAST"]],
   ];
-  (signSets[bm] || signSets[0]).forEach(([sx, sy, col, txt], k) => {
+  if (!compact) (signSets[bm] || signSets[0]).forEach(([sx, sy, col, txt], k) => {
     const on = Math.sin(t * 7.3 + k * 2.1) + Math.sin(t * 2.9 + k * 4.4) > -1.75;
-    const spr = RACE.glowText(txt, Math.round(h * 0.035), col, null, false);
+    const spr = RACE.glowText(txt, sz, col, null, false);
     g.save(); g.globalAlpha = on ? 1 : 0.3;
     g.drawImage(spr, sx * w - spr.width / 2, sy * h - spr.height / 2);
     g.globalCompositeOperation = "lighter";
@@ -2371,6 +2433,22 @@ RACE.backdrop = function (g, w, h, t, biomeOpt = 0) {
       g.moveTo(x + 2, y); g.arc(x, y, 1.5 + sp, 0, Math.PI * 2);
     }
     g.fill();
+  } else if (bm === 1) {
+    g.fillStyle = pal.particleCol; g.beginPath();
+    for (let k = 0; k < 80; k++) {
+      const sp = 0.5 + rr();
+      const x = (rr() * w + t * 110 * sp) % w, y = (rr() * h + t * 75 * sp) % h;
+      g.rect(x, y, 2.2, 2.2);
+    }
+    g.fill();
+  } else if (bm === 4) {
+    if (!RACE.mistSpr) RACE.sprites();
+    for (let k = 0; k < 28; k++) {
+      const sp = 0.4 + rr();
+      const x = (rr() * w + t * 36 * sp) % (w + 120) - 60, y = (rr() * h + t * 10 * sp) % (h + 60) - 30;
+      const rx = 26 + 34 * sp, ry = rx * 0.55;
+      g.drawImage(RACE.mistSpr, x - rx, y - ry, rx * 2, ry * 2);
+    }
   } else {
     g.strokeStyle = pal.particleCol; g.lineWidth = bm === 2 ? 1.4 : 1; g.beginPath();
     for (let k = 0; k < 150; k++) {
@@ -2383,11 +2461,13 @@ RACE.backdrop = function (g, w, h, t, biomeOpt = 0) {
     }
     g.stroke();
   }
-  const fade = g.createLinearGradient(0, h * 0.36, 0, h);
-  fade.addColorStop(0, "rgba(11,15,26,0.08)"); fade.addColorStop(1, "rgba(11,15,26,0.92)");
+  const fade = g.createLinearGradient(0, h * (compact ? 0.24 : 0.36), 0, h);
+  fade.addColorStop(0, compact ? "rgba(11,15,26,0.18)" : "rgba(11,15,26,0.08)");
+  fade.addColorStop(1, compact ? "rgba(11,15,26,0.94)" : "rgba(11,15,26,0.92)");
   g.fillStyle = fade; g.fillRect(0, 0, w, h);
 };
 
 if (document.fonts) document.fonts.load("700 20px 'Chakra Petch'").then(() => RACE.glowCache.clear()).catch(() => {});
 
 GC.mods.race = RACE;
+if (GC.open && GC.snap) GC.render();

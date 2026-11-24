@@ -91,6 +91,7 @@ GC.render = function () {
   const room = GC.current();
   const inGame = room && room.me_seat !== null && (room.state === "playing" || (room.state === "over" && room.g === "race"));
   if (inGame) {
+    if (!GC.mods[room.g]) return;
     if (GC.mounted?.r !== room.r) { GC.unmount(); GC.mounted = { r: room.r, g: room.g }; cancelAnimationFrame(GC.anim); }
     GC.mods[room.g].show(room, $("#gcBody"));
     return;
@@ -298,7 +299,8 @@ GC.now = (rid) => performance.now() / 1000 + (GC.clocks[rid]?.off ?? 0);
     if (GC.mounted && room && GC.mods[room.g]?.onKey && GC.mods[room.g].onKey(e)) { e.preventDefault(); return; }
     if (e.key === "Escape") { GC.show(false); e.preventDefault(); }
   });
-  GC.load();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => GC.load());
+  else GC.load();
 })();
 
 // app.js calls this when the station list changes: refresh the player pickers
