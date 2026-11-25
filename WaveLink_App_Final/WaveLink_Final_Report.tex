@@ -14,10 +14,10 @@
 %%  EDIT HERE: team, course and institution details
 %% ---------------------------------------------------------------------
 \newcommand{\TeamName}{Team WaveLink}
-\newcommand{\MemberA}{Member Name 1}  \newcommand{\IndexA}{Index No.}
-\newcommand{\MemberB}{Member Name 2}  \newcommand{\IndexB}{Index No.}
-\newcommand{\MemberC}{Member Name 3}  \newcommand{\IndexC}{Index No.}
-\newcommand{\MemberD}{Member Name 4}  \newcommand{\IndexD}{Index No.}
+\newcommand{\MemberA}{K. A. P. R. Kaluarachchi}  \newcommand{\IndexA}{240313D}
+\newcommand{\MemberB}{W.D.D.S.V. Rathnasiri}     \newcommand{\IndexB}{240559K}
+\newcommand{\MemberC}{R.R. Karunaratna}          \newcommand{\IndexC}{240334R}
+\newcommand{\MemberD}{M.G.A.S.Karunananda}       \newcommand{\IndexD}{240325P}
 \newcommand{\CourseCode}{EN2130}
 \newcommand{\CourseName}{Communication Design Project}
 \newcommand{\Department}{Department of Electronic and Telecommunication Engineering}
@@ -1821,8 +1821,8 @@ indicators map directly onto link-layer events (\cref{tab:ticks}).
 \caption{Choosing the photo quality}
 \end{subfigure}
 \caption{The WaveLink chat (screenshots of the running application). The header shows the live link:
-code, \EbNo, carrier offset and the current rung (here uncoded 16-QAM at 258\,kb/s: the screenshots were
-taken with the earlier Gold-code configuration, before 64-QAM was added).}\label{fig:chat}
+code, \EbNo, carrier offset and the current rung (here 32-chip Walsh codes and 64-QAM $\tfrac56$ at
+\SI{313}{kb/s}).}\label{fig:chat}
 \end{figure}
 
 \begin{table}[htbp]
@@ -1863,10 +1863,18 @@ the beacons. A station that sees an unknown hash requests the photo once; it the
 once per pair of stations, and again only when it changes. Eight colour themes, chat wallpapers with an
 editor, sound effects and synthesised background music complete the experience.
 
+\paragraph{Mobile layout and touch isolation.} On coarse-pointer mobile viewports
+(\code{@media} touch rules), the outer shell is locked to \SI{100}{dvh} with overscroll containment and
+synced dynamically to \code{visualViewport} height and offset, while keeping \SI{16}{px} composer inputs
+and CSS safe-area insets so virtual keyboards or rubber-banding never detach the header or composer.
+Interactive canvases (the wallpaper crop stage and Slot Rush spectator map) keep
+\code{touch-action: none} so two-finger pinch-to-zoom continues to work, while non-touch desktop styling
+and scrolling are left untouched.
+
 \section{Game center}\label{sec:games}
-The game center hosts two games for two to four stations (\cref{fig:games}). They illustrate two
-opposite traffic patterns: UNO needs reliable, ordered, secret messages; the race needs frequent,
-small, loss-tolerant updates.
+The game center hosts two games for two to four stations, plus read-only spectator mode for non-playing stations
+(\cref{fig:games}). They illustrate two opposite traffic patterns: UNO needs reliable, ordered, secret messages;
+Slot Rush needs frequent, small, loss-tolerant updates.
 
 \begin{figure}[htbp]
 \centering
@@ -1876,7 +1884,11 @@ small, loss-tolerant updates.
 \end{subfigure}\hfill
 \begin{subfigure}[b]{0.49\linewidth}\centering
 \includegraphics[width=\linewidth]{figures/race.jpg}
-\caption{Gold Code GP, a real-time street race with pickups}
+\caption{Slot Rush on PCB Speedway, with RF pickups and 120\,Hz physics}
+\end{subfigure}\\[6pt]
+\begin{subfigure}[b]{0.56\linewidth}\centering
+\includegraphics[width=\linewidth]{figures/race_spectator.jpg}
+\caption{Slot Rush spectator mode in free-pan/zoom Bird's-Eye view}
 \end{subfigure}
 \caption{The game center running over the radio network (screenshots).}\label{fig:games}
 \end{figure}
@@ -1888,19 +1900,31 @@ sends each player a fresh \emph{view} containing only that player's hand and the
 so a hand never leaves its owner's screen. A turn lasts at most \SI{30}{s}, after which the host plays a
 timeout move. If the host leaves the air, the next player in seat order takes over: every view carries
 a hidden copy of the table (kept in the station, never shown in the browser), and a host number
-carried in every message lets an old host that returns recognise that it has been replaced. The rules
-engine was verified with 300 random games.
+carried in every message lets an old host that returns recognise that it has been replaced. Non-playing
+stations discover the table via compact code-0 \code{live} announcements (\emph{Live Now}) and receive
+sanitised \code{uno\_pub} broadcasts strictly stripped of player hands, deck order and the hidden handover
+copy, while the host enforces seat-membership checks to reject intents from non-seated addresses. On
+coarse-pointer phones, UNO renders a swipe-scrollable card tray, tap-to-select/tap-to-play actions and a
+\SI{44}{px}-minimum button bar that hides desktop key hints. The rules engine was verified with 300 random games.
 
-\subsection{Gold Code GP: every station drives its own car}
-The race track and city are generated from a shared random seed, so nothing but the seed crosses the
-air. Each browser runs its own car's physics at 120 steps per second and posts the state to its
-station 20 times a second. The station places the newest state in its own slot as an unacknowledged
-datagram on the broadcast code: 28 bytes, plus 13 bytes per game event; with one event the frame is
-52 bytes and \SI{8.2}{ms} at QPSK $\tfrac12$. Events (a missile fired, a mine dropped, a hit) are repeated
-in the next four packets so that a single lost packet loses nothing. A hit is decided by the
-\emph{victim's} station, which knows exactly where its own car was. Other cars are drawn by dead
-reckoning along the track, and clocks are synchronised with datagram pings that keep the sample with
-the shortest round trip.
+\subsection{Slot Rush: every station drives its own car}
+The host picks one of five procedural RF-themed biomes (\emph{Neon Rain City}, \emph{PCB Speedway},
+\emph{AWGN Desert}, \emph{Carrier Peak} and \emph{Sunset Coast}, plus \emph{Random} resolved
+deterministically alongside the room seed), and every station generates the circuit and static scenery offline
+into \SI{512}{px} tiles with a \SI{2}{px} overlap---nothing but the seed and biome index crosses the air. Each
+biome configures local \SI{120}{Hz} vehicle handling multipliers and renders a custom Canvas~2D sprite sharing
+the exact same collision hitbox, leaving the on-air \code{DGRAM} protocol unchanged: each station posts its state
+20 times a second and transmits a 28-byte broadcast datagram once per cycle (+13 bytes per event, repeated
+four times so a lost packet loses nothing). Combat pickups (\emph{Carrier Seeker}, \emph{ISI Mine},
+\emph{RF Jammer}, \emph{Walsh Shield} and \emph{64-QAM Overdrive}) trigger \emph{victim-side} hit
+judgement on the station of the car that was hit. Pressing \code{V} cycles three camera modes
+(\emph{North-Up}, \emph{Chase} and \emph{Bird's-Eye}). Non-seated spectators join from \emph{Live Now} and
+listen passively to the existing code-0 \code{DGRAM} stream with zero extra steady-state RF airtime, never
+transmitting states or running local hit detection; they start in free-pan/pinch-zoom \emph{Bird's-Eye} view with
+click-to-follow and \emph{Auto-Chase}. On coarse-pointer phones, Slot Rush provides multi-touch driving
+controls (a left-thumb slide steering pad, gas/brake pedals, optional auto-gas, pickup and camera buttons) that
+auto-hide and zero all inputs when mobile chat or radio drawers open. Other cars are drawn by dead reckoning
+along the track, and clocks are synchronised with datagram pings keeping the shortest round trip.
 
 \section{Radio dashboard}\label{sec:dash}
 The graphical dashboard (\cref{fig:dash}), a bonus feature of the brief, exposes everything the radio
@@ -1987,9 +2011,9 @@ test\_tdma\_phy & Bursts on exact samples, receive indices, $D$ under drift, und
 test\_edge & 17 TD-CDMA edge-case scenarios on the simulated air & 93/93 checks\\
 test\_fake\_antsdr & 12 scenarios: full app on \code{cdma\_phy.grc} with emulated ANTSDRs & 57/58 checks$^\ast$\\
 test\_power & Power-control loop, flowgraph power tags, near--far with and without control & 22/22\\
-test\_hardening & Malformed frames and browser input, \code{-{}-key} enforcement, long ACK sections, restarts & 33/33\\
-test\_uno, test\_games & UNO rules (300 random games); game center over the simulated air & all pass\\
-ui\_features, ui\_games & Browser UI driven by Playwright on every station's page & 65/65; games played\\
+test\_hardening & Malformed frames and browser input, \code{-{}-key} enforcement, non-seated spectator isolation, long ACK sections, restarts & 42/42\\
+test\_uno, test\_games & UNO rules (300 random games); game center and read-only spectator mode over the simulated air & all pass\\
+ui\_features, ui\_games, ui\_mobile & Browser UI driven by Playwright across desktop, spectator and mobile touch viewports & 65/65; UNO, Slot Rush, spectators \& mobile pass\\
 \bottomrule
 \multicolumn{3}{@{}p{\linewidth}@{}}{\footnotesize $^\ast$ The one failure, a count in the timing-slip scenario, passed when that scenario was repeated (\cref{sec:fakeres}).}
 \end{tabularx}
@@ -2241,7 +2265,7 @@ size were shown in \cref{fig:delivery}.
 
 \begin{table}[htbp]
 \centering\small
-\caption{Gold Code GP race traffic under TD-CDMA (simulator).}\label{tab:race}
+\caption{Slot Rush race traffic under TD-CDMA (simulator).}\label{tab:race}
 \begin{tabular}{@{}lccc@{}}
 \toprule
  & \textbf{2 stations} & \textbf{3 stations} & \textbf{4 stations}\\
@@ -2596,18 +2620,17 @@ python3 -m wavelink run --id 1 --name Alice --uri fake: --port 8081
 \end{lstlisting}
 
 \chapter{Division of Work}\label{app:work}
-% EDIT: adjust this table to the way your team actually divided the work.
 \begin{table}[htbp]
 \centering\small
 \caption{Main responsibilities of the team members.}\label{tab:work}
-\begin{tabularx}{\linewidth}{@{}>{\bfseries\raggedright\arraybackslash}p{38mm}L@{}}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\raggedright\arraybackslash}p{48mm}L@{}}
 \toprule
 Member & Responsibility\\
 \midrule
-\MemberA & PHY signal processing and coding: Walsh and Gold codes, modem up to 64-QAM, LDPC and Golay codes, error-rate measurements, hardware gain tuning\\
-\MemberB & GNU Radio and hardware: the \code{cdma\_phy.grc} flowgraph and its Embedded Python blocks, ANTSDR set-up, mid-evaluation tools\\
-\MemberC & Link layer and medium access: ARQ, adaptive modulation and coding, power control, priority, TD-CDMA time slots, relaying, simulators\\
-\MemberD & Application and user interface: messaging, encryption, game center, radio dashboard, demonstration script\\
+\MemberA\newline{\normalfont\footnotesize\color{wlgrey}\IndexA} & PHY signal processing and coding: Walsh and Gold codes, modem up to 64-QAM, LDPC and Golay codes, error-rate measurements, hardware gain tuning\\
+\MemberB\newline{\normalfont\footnotesize\color{wlgrey}\IndexB} & GNU Radio and hardware: the \code{cdma\_phy.grc} flowgraph and its Embedded Python blocks, ANTSDR set-up, mid-evaluation tools\\
+\MemberC\newline{\normalfont\footnotesize\color{wlgrey}\IndexC} & Link layer and medium access: ARQ, adaptive modulation and coding, power control, priority, TD-CDMA time slots, relaying, simulators\\
+\MemberD\newline{\normalfont\footnotesize\color{wlgrey}\IndexD} & Application and user interface: messaging, encryption, game center (UNO, Slot Rush, spectator mode, mobile UI), radio dashboard, demonstration script\\
 \bottomrule
 \end{tabularx}
 \end{table}

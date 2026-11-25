@@ -1099,7 +1099,7 @@ def play(self, seat: int, cid: int, color: int | None = None, uno: bool = False)
             raise UnoError(f"Wild Draw Four only when you have no {COLORS[self.color]} card")
         ...</code></pre>
 
-  <h3>6.3 Gold Code GP: every station drives its own car</h3>
+  <h3>6.3 Slot Rush: every station drives its own car</h3>
   <figure class="panel">
     <div class="panel-head"><span class="t">One car's state, from the physics to the other screens</span><span class="k">data flow</span></div>
     <div class="panel-body"><div class="scroll-x"><div id="racefig"></div></div></div>
@@ -1107,7 +1107,10 @@ def play(self, seat: int, cid: int, color: int | None = None, uno: bool = False)
   </figure>
   <div class="prose">
     <ul>
-      <li><b>The track</b> is generated from the room's seed: a closed spline through 9–12 random points, redrawn if a corner is too tight or two parts come too close. Every station builds the same track and city without sending them.</li>
+      <li><b>Five procedural biomes &amp; vehicles</b>: the host selects among <em>Neon Rain City</em>, <em>PCB Speedway</em>, <em>AWGN Desert</em>, <em>Carrier Peak</em>, <em>Sunset Coast</em>, or <em>Random</em> (resolved alongside the room seed). Each biome applies local 120 Hz handling multipliers and its own Canvas 2D vehicle silhouette on the same collision hitbox, baked once into 512 px static tiles with a 2 px overlap.</li>
+      <li><b>The track</b> is generated from the room's seed: a closed spline through 9–12 random points, redrawn if a corner is too tight or two parts come too close. Every station builds the same track and scenery without sending them.</li>
+      <li><b>Cameras &amp; RF pickups</b>: press <code>V</code> (or mobile <em>Cam</em>) to cycle <em>North-Up → Chase → Bird's-Eye</em>. Holo caches deal RF-themed pickups (<em>Carrier Seeker</em>, <em>ISI Mine</em>, <em>RF Jammer</em>, <em>Walsh Shield</em>, <em>64-QAM Overdrive</em>).</li>
+      <li><b>Live Now &amp; Spectator Mode</b>: active hosts broadcast compact code-0 <code>live</code> room announcements. Non-seated stations click <em>Watch</em> to open free pan/pinch-zoom Bird's-Eye spectating over the existing code-0 <code>DGRAM</code> stream (zero extra steady-state RF airtime), or sanitized <code>uno_pub</code> UNO views stripped of hands, deck order, and the hidden handover table (the host rejects non-seated intents). Coarse-pointer mobile viewports add a lockable chat shell (<code>100dvh</code> + <code>visualViewport</code>) and dedicated UNO/Slot Rush touch controls.</li>
       <li><b>The packet</b> (<code>games/race.py</code>) is 28 bytes: room, seat, sequence, time since the green light, position, heading, velocity, yaw rate, distance raced, flags and the item; plus 13 bytes per event. With one event the frame is 52 bytes, 7.9 ms at QPSK ½.</li>
       <li><b>Events</b> (missile fired, mine dropped, EMP, hit, finish) ride in the state packets and are repeated in the next 4 packets, so one lost packet loses nothing; receivers drop the copies.</li>
       <li><b>Hits are decided by the victim's station</b>, which knows exactly where its car was: it simulates an incoming missile against its own position, checks mines as it drives over them, and checks an EMP against where it was when the EMP went off (it keeps 2 s of its positions). Then it broadcasts a <em>hit</em>.</li>
@@ -1392,7 +1395,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
       <tr><th><code>tests.test_ldpc</code>, <code>test_modem</code>, <code>test_profiles</code>, <code>test_bigfile</code></th><td>LDPC (all 51 lifting sizes, rate matching, AWGN curves) and Golay; PHY impairments, false alarms, multi-user, collisions; every modulation and code rate; a 1 MB file at 14 dB</td><td>pass; a 1 MB file at 14 dB: 178 kb/s on 16-QAM ¾, 2.9 times uncoded, no retransmission; at 31 dB with <code>--mod 64qam</code> 345 kb/s</td></tr>
       <tr><th><code>tests.test_link</code>, <code>test_power</code></th><td>The MAC over the simulated air with spread ALOHA (concurrency, priority, a lossy link); power control's loop, the blocks carrying each burst's power, near-far with and without it</td><td>pass; power control 22 of 22 checks (the blocks and the loop)</td></tr>
       <tr><th><code>tests.test_uno</code>, <code>test_games</code>, <code>test_features</code></th><td>Every UNO rule and 300 random games; a UNO round, a player leaving and a race over the air; profile pictures, cancelling from either end, clock offsets</td><td>pass; 300 random UNO games (108 cards every time); a 3-station UNO round and race</td></tr>
-      <tr><th><code>tests.ui_games</code>, <code>ui_features</code></th><td>Playwright drives every station's page: UNO, a race and a rematch, chat and the dashboard during the race, a page reload mid-race; themes, wallpaper editor, media quality, cancel, late messages, sounds, camera, the + tray</td><td>pass; 65 of 65 chat checks; UNO, race and rematch on 3 pages, the reloaded page carried on at its distance</td></tr>
+      <tr><th><code>tests.ui_games</code>, <code>ui_features</code>, <code>ui_mobile</code></th><td>Playwright drives every station's page: UNO, Slot Rush (all 5 biomes, 3 cameras) and rematch, Live Now spectator mode (race + UNO), chat and dashboard overlays, page reload mid-race; themes, wallpaper editor (incl. pinch-zoom), media quality, mobile viewport lock and touch controls</td><td>pass; 65 of 65 chat checks; 3-page UNO/Slot Rush, spectator &amp; mobile checks pass</td></tr>
       <tr><th><code>tests.test_gr_backend</code>, <code>scenario_api</code></th><td>The numpy PHY's GNU Radio backend against a stand-in GNU Radio; a full app scenario through the web API</td><td>pass (the API scenario now waits until the stations have heard each other)</td></tr>
     </tbody>
   </table></div>
@@ -1421,7 +1424,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
     <li><div><span class="layer">Errors, priority, encryption</span>Raise <code>--tx-atten</code> or move an antenna: CRC drops and retransmissions, the image still intact. Send an ⚡ urgent text behind a large image: it arrives first. Restart a station with another <code>--key</code>: the UI warns.</div></li>
     <li><div><span class="layer">Adaptive coding, big files</span>A multi-MB file Alice → Bob at "64-QAM uncoded" (375 kb/s on the air); move Bob's antenna away step by step and watch the rate step down; restart with <code>--fec off</code> at 12–14 dB to see the coding gain.</div></li>
     <li><div><span class="layer">Groups, relaying, leaving</span>A photo to Everyone counts 1/3, 2/3, ✓✓. Put Carol where Alice can't hear her: "via Bob". Close Dave's app (his slot is freed), then the lead's during a transfer (the next station takes over and the transfer goes on).</div></li>
-    <li><div><span class="layer">Games</span>Four-player UNO (each screen shows only its own hand), then a race; take one station off the air for 10 s: UNO pauses with a countdown, the race shows a ghost, both carry on when it is back. V switches the chase camera.</div></li>
+    <li><div><span class="layer">Games</span>Three-player UNO (each screen shows only its own hand; a 4th station watches via <em>Live Now</em> with zero leaked hands), then Slot Rush on PCB Speedway; take one station off the air for 10 s: UNO pauses with a countdown, Slot Rush shows a ghost, both carry on when back; cycle V through Chase and Bird's-Eye while a spectator watches over code-0 datagrams.</div></li>
   </ol>
 
   <h3 id="trouble">10.7 Troubleshooting</h3>
@@ -1495,7 +1498,7 @@ python3 -m wavelink run --id 1 --uri fake: --port 8081</code></pre><p>Fake ANTSD
     <div class="card"><h4>8 · More stations</h4><p>Add code lanes to the flowgraph (one copy of a lane per station); the Walsh family has 32 codes (the Gold family 33), and the numpy PHY already takes node ids up to 30.</p></div>
     <div class="card"><h4>9 · Analog power control</h4><p>Set the ANTSDR's attenuator per slot, so lower power also lowers the transmitter's noise floor and LO leakage.</p></div>
     <div class="card"><h4>10 · Cleaner network merges</h4><p>Let the yielding network stay silent until its stations have joined, so a merge never overlaps slots.</p></div>
-    <div class="card"><h4>11 · Games</h4><p>Hands encrypted per player, a replicated move log for host handover, spectators and computer players.</p></div>
+    <div class="card"><h4>11 · Games</h4><p>Hands encrypted per player, a replicated move log for host handover, and computer players.</p></div>
     <div class="card"><h4>12 · Fragments that fit an idle slot</h4><p>Cut a message of a few fragments into pieces that fit the sender's idle slot at its current rate (about 900 bytes with four stations at uncoded 64-QAM), or make idle slots one full frame long while four stations are on the air, so that a message of a few kilobytes starts at once instead of 1.4 s later.</p></div>
     <div class="card"><h4>13 · Grow the relay's slot with the sender's</h4><p>A sender knows when its message goes through a relay; its header could ask for the relay's airtime too, so both slots grow in one plan change, and its ACK timer could allow for the relay's queue. Relayed transfers would start 2–3 s sooner.</p></div>
   </div>

@@ -57,7 +57,7 @@ compiles it with `grcc`, runs it, and attaches its link layer and web UI to the 
 | Error correction (extra) | **LDPC** (3GPP 5G NR base graph 1) on every payload, soft-decision min-sum decoding; extended **Golay (24,12)** on the header. **2.9× goodput** on a 14 dB link, ~9 dB coding gain at rate ½ (section 2.2) |
 | ACK-based reliable delivery | Selective-repeat ARQ: cumulative + selective (SACK) acknowledgements, fast loss detection, timeouts, duplicate detection. With TD-CDMA the ACKs ride in the slot headers and a group message is acknowledged by every member |
 | Payloads: text, images, audio | Text with an emoji palette; photos at a chosen quality (480, 640 or 1280 px WebP/JPEG, or the original); voice notes or audio files at a chosen quality (Opus 12 or 24 kb/s, or as recorded); plus any file, each cancellable from either end |
-| Application | Chat with 1:1 chats, an "Everyone" group, delivery and read ticks, messages in the order they were sent, new-message highlights, profile pictures shared over the air, per-station themes, wallpapers and sounds (section 4.2), tic-tac-toe, and a **game center** with **UNO** and a real-time **street race with combat pickups**, each for 2–4 stations (section 4.1) |
+| Application | Chat with 1:1 chats, an "Everyone" group, delivery and read ticks, messages in the order they were sent, new-message highlights, profile pictures shared over the air, per-station themes, wallpapers and sounds, mobile layout/keyboard sync (section 4.2), tic-tac-toe, and a **game center** with **UNO** and **Slot Rush** (a 5-biome real-time street race with RF pickups, 3 cameras including Bird's-Eye, live read-only Spectator Mode, and mobile touch controls), each for 2–4 stations (section 4.1) |
 | **Bonus**: encryption | `--key <passphrase>` → AES-256-GCM, scrypt KDF, addresses authenticated as AAD; unencrypted messages refused |
 | **Bonus**: priority handling | 4 classes (control/ACK > urgent ⚡ > normal > bulk media); urgent text overtakes an image in the sender's next slot |
 | **Bonus**: graphical dashboard | Radio panel: constellation, spectrum, Eb/N0, chip SNR, CFO, counters, queues, links; the TD-CDMA slot plan, timing (TX → RX offset, clock drift, late bursts), the relay switch and routes, group-message ACKs per member |
@@ -707,28 +707,33 @@ timestamp, group, filename and mime type.
 ### 4.1 Game center (`wavelink/games/`)
 
 The gamepad button at the top of the chat list opens the game center. It has two games, each for 2, 3 or 4
-stations, played with the keyboard:
+stations, played with the keyboard on desktop or dedicated multi-touch / tap controls on mobile, plus live read-only
+spectating for non-playing stations:
 
 | | UNO | Slot Rush |
 |---|---|---|
-| Game | The card game, standard rules (no house rules) | A top-down street race through a rain-soaked night city, 2, 3 or 5 laps, with combat pickups |
-| Who decides | The host's station: it shuffles, deals, keeps every hand and checks every move | Each station drives its own car. A hit is decided by the station of the car that was hit |
-| On the air | Reliable game messages (ARQ), one view per player per move | One unacknowledged datagram per car per cycle, in its station's slot, on the broadcast code |
-| Look | Plum velvet table with brass trim, original card faces set in Lilita One | Sodium street lamps and neon on wet asphalt in the rain, Chakra Petch HUD |
+| Game | The card game, standard rules (no house rules) | A top-down race across 5 procedural RF-themed biomes (+ Random), 2, 3 or 5 laps, with RF combat pickups |
+| Who decides | The host's station: it shuffles, deals, keeps every hand and checks every move (and rejects non-seated intents) | Each station drives its own car. A hit is decided by the station of the car that was hit |
+| On the air | Reliable game messages (ARQ), one view per player per move; sanitized public state (`uno_pub`) for spectators | One unacknowledged 28-byte datagram per car per cycle (+13 B/event), in its station's slot, on the broadcast code; spectators listen passively with zero extra RF airtime |
+| Look | Plum velvet table with brass trim, original card faces set in Lilita One | 5 static 512 px-tiled biomes (`Neon Rain City`, `PCB Speedway`, `AWGN Desert`, `Carrier Peak`, `Sunset Coast`), custom per-biome vehicles, Chakra Petch HUD |
 
-**Rooms.** Pick players on a game's poster and press *Invite*. The others get an invitation (a toast, a dot on the
+**Rooms, Live Now & Spectator Mode.** Pick players on a game's poster (and biome/laps for Slot Rush) and press *Invite*. The others get an invitation (a toast, a dot on the
 gamepad icon and a card in the game center) and press *Join*; the host starts once at least one has joined (stations
 that haven't answered stay out). Invitations, answers, the lobby, the start and the end go as `gc` messages:
 reliable, sent at high priority so they overtake chat and file traffic, and not stored in the chat history. A player
-who leaves is announced and the game goes on without them. **Chat** in the game center's top bar (with the number of
-unread messages) opens a panel at the side: pick a chat, read, and send, while the game goes on behind it. Keys typed
-in the panel never reach the game (so typing "d" doesn't draw a UNO card); in the race your car rolls on without
+who leaves is announced and the game goes on without them. When a game is active, the host broadcasts compact public `gc` `live` announcements on broadcast code 0 (on start, host handover, rematch, every ~5 s, and in reply to a lightweight `spectate_req`; stale entries expire locally after ~10 s), populating a **Live Now** list with a one-click **Watch** button on any non-seated station:
+- **Slot Rush spectators** read the existing code-0 `DGRAM` stream directly—adding **zero extra steady-state RF airtime**, never transmitting car datagrams or running local hit detection, and never affecting finish timers or rematches. The spectator view starts in **Bird's-Eye** mode framing the whole track, with scroll/pinch zoom and drag/touch pan, `Full Track` (`F`), click/tap-to-follow on any car or leaderboard row, and an `Auto-Chase` (`V`) toggle.
+- **UNO spectators** receive code-0 `uno_pub` updates containing only public table state (card counts, discard top, active colour/direction, turn, scores, away status)—strictly stripped of all player hands, deck order, and the hidden host-handover copy. On the host, `hub.py` enforces seat-membership checks so any move or action intent from a non-seated address is rejected and ignored. Leaving spectator mode is local and never disrupts active players.
+**Chat** in the game center's top bar (with the number of
+unread messages) opens a panel at the side: pick a chat, read, and send, while the game or spectator view goes on behind it. Keys typed
+in the panel never reach the game or spectator camera (so typing "d" or "v" doesn't draw a UNO card or toggle follow); in the race your car rolls on without
 steering while you type, and the other stations keep hearing it. <kbd>Esc</kbd> closes the panel. The **+** button
 beside the panel's message box opens a tray with **Voice** (a voice note, recorded in the panel), **Camera**,
 **File**, **Emoji** and **Priority** (the next message, photo, file or voice note goes out urgent); whatever they
 send goes to the chat open in the panel, and their sheets (photo quality, camera) open over the game while it keeps
 running. **Radio** in the same bar opens the radio dashboard (live tiles, constellation, spectrum, links, queue) as a
-panel on the left, over the game; on a phone the dashboard and the chat panel take turns at the bottom of the screen.
+panel on the left, over the game; on a phone the dashboard and the chat panel take turns at the bottom of the screen,
+and mobile race/UNO touch controls auto-hide and release inputs whenever either drawer is open.
 Keys go to the game unless they are meant for something on top of it (a text box, the chat panel, the dashboard or a
 sheet). Closing the game center (<kbd>Esc</kbd>) keeps a running game going behind the chat; the gamepad icon brings
 it back.
@@ -760,14 +765,13 @@ know yet are recognised as older and it steps down.
   queue while the lane holds a window of file frames (up to 0.6 s). If the player's next view is ready by then, the
   host withdraws the old one and sends one view that carries the events of both, so only the newest state goes on
   the air and no event is lost.
-- Keys: <kbd>←</kbd>/<kbd>→</kbd> choose a card, <kbd>Enter</kbd> play, <kbd>D</kbd> draw, <kbd>P</kbd> keep the
+- Keys (desktop): <kbd>←</kbd>/<kbd>→</kbd> choose a card, <kbd>Enter</kbd> play, <kbd>D</kbd> draw, <kbd>P</kbd> keep the
   card you drew, <kbd>U</kbd> call UNO, <kbd>C</kbd> catch, <kbd>1</kbd>–<kbd>4</kbd> or <kbd>R</kbd><kbd>Y</kbd>
   <kbd>G</kbd><kbd>B</kbd> pick a colour, <kbd>N</kbd> deal the next round (host).
+- Mobile touch controls (`@media (hover: none) and (pointer: coarse)` only): horizontally scrollable fanned hand with scroll-snap, tap-to-select / tap-again-to-play cards, a `≥44 px` action bar (`Play`, `Draw`, `Keep`, `UNO!`, `Catch`, `Deal`), and a 2×2 Wild colour grid with desktop `<kbd>` badges hidden.
 
 **Slot Rush.**
-- The circuit is generated from the room's seed (a closed spline through 9–12 random points, rejected and redrawn
-  if a corner is too tight or two parts of the track come too close), so every station builds the same track and
-  city without sending them. A new track every race.
+- **Five procedural biomes & vehicles.** The host picks a biome on the room poster (`0` Neon Rain City, `1` PCB Speedway with copper traces and ZYNQ-7020 / AD9361 / LDPC ICs, `2` AWGN Desert dunes and salt-flat canyon, `3` Carrier Peak alpine switchbacks and relay towers, `4` Sunset Coast synthwave ocean highway, or `255` Random resolved deterministically by the host alongside the track seed). Every station bakes the exact same track and static biome scenery offline into 512 px tiles with a 2 px overlap. Each biome sets distinct local 120 Hz handling multipliers (acceleration, grip, drag, turn rate) and renders a matching Canvas 2D vehicle silhouette sharing the exact same collision hitbox—zero changes to the on-air packet format or network geometry.
 - Each station runs its own car's physics at 120 steps per second in the browser and posts the car's state to its
   station 20 times a second. The station keeps the last one (with the lap start, best lap and event counter), so a
   page reloaded mid-race opens straight into the race and the car carries on where it was, laps and pickup kept.
@@ -780,7 +784,7 @@ know yet are recognised as older and it steps down.
   time slots of its own on the broadcast code: seat *k* of *N* transmits at *S₀ + k·P/N + m·P* on the host's radio
   clock, with *P* = max(1/15 s, *N* × airtime × 1.7), so the cars' bursts never overlap and no station is
   transmitting (deaf) while another car's update is on the air: 15 updates a second with 2, 3 or 4 cars (with
-  `--key` the frame is 80 bytes, 11.4 ms: still 15 a second for 2–3 cars, 12.9 for four).
+  `--key` the frame is 80 bytes, 11.4 ms: still 15 a second for 2–3 cars, 12.9 for four). Spectators read the existing code-0 `DGRAM` broadcasts passively without transmitting anything.
 - **Clocks.** The countdown, the timestamps and finish times use the host's clock. Each other player measures its
   offset with datagram pings, keeping the sample with the shortest round trip; the host can only start the race once
   every player is synchronised. With spread ALOHA the same pings synchronise the radio clock the race's slots use.
@@ -794,19 +798,16 @@ know yet are recognised as older and it steps down.
   spinning, stunned, slow or sideways car gets a short straight-line guess instead. When a new state disagrees
   with the prediction, the difference is blended out along the track over 0.16 s. The sender also posts a smoothed
   yaw rate. The HUD shows, per car, the updates heard per second and the age of the last one.
-- **Camera.** North up (the car turns, the camera looks ahead of it) or chase (<kbd>V</kbd>, or the button in the
-  top bar, or Settings): the car stays at two thirds of the screen height pointing up and the city turns around it.
-  The camera follows the car's heading with a short lag (longer for a big turn, and it holds still while the car
-  spins after a hit). Names stay upright; the minimap stays north up and shows your car as an arrow. The static
-  city is drawn once into 512 px tiles with a 2 px overlap, so turned tiles leave no seams. Without a GPU, a turned
-  picture costs the browser more, so the canvas drops to 90, 80 or 70 % of the screen resolution while the frame
-  rate is under 45 and goes back up when there is time to spare.
+- **Camera.** Cycles `North-Up` → `Chase` → `Bird's-Eye` (<kbd>V</kbd>, top-bar button, Settings, or mobile `Cam` button):
+  - *North-Up:* the car turns and the camera looks ahead along its velocity.
+  - *Chase:* the car stays at two thirds of the screen height pointing up and the world turns around it, with a short heading lag (holding still while the car spins after a hit). Names stay upright and the minimap stays north up.
+  - *Bird's-Eye:* zoomed out to frame the entire track upright so the player sees every rival and pickup at once; spectators also get drag/touch panning, wheel/pinch zoom, click/tap-to-follow, `Full Track` (`F`), and `Auto-Chase` (`V`).
+  - The static world is drawn once into 512 px tiles with a 2 px overlap, so turned or zoomed tiles leave no seams. Without a GPU, a turned picture drops to 90, 80 or 70 % resolution while below 45 fps and restores when spare frame time returns.
 - **Sounds:** countdown beeps and the green light, an engine that follows speed and throttle, pickups, missile,
   mine, explosions, EMP, shield, boost and boost pads, scraping the rails, lap and finish (section 4.2).
-- **Pickups** come from holo caches on the track, weighted by position (the last car gets more missiles, the
-  leader more mines and shields): seeker missile (follows the track and locks on to the car ahead), plasma mine
-  (dropped behind you), EMP (stuns every car within 280 px for 1.4 s), shield (blocks the next hit), boost. Boost
-  pads on the track give a short boost too.
+- **Pickups** come from holo caches on the track, weighted by position (the last car gets more seekers, the
+  leader more mines and shields): **Carrier Seeker** (homing missile following the track onto the car ahead), **ISI Mine**
+  (dropped behind you), **RF Jammer** (stuns every car within 280 px for 1.4 s), **Walsh Shield** (hexagonal barrier blocking the next hit), and **64-QAM Overdrive** (speed boost). Boost pads on the track give a short surge too.
 - **Events** (missile fired, mine dropped, EMP, hit, finish) ride in the state packets and are repeated in the
   next 4 packets, so one lost packet loses nothing; receivers drop the copies.
 - **Hits are decided by the victim's station**, which knows exactly where its car was. It simulates the incoming
@@ -815,9 +816,10 @@ know yet are recognised as older and it steps down.
   every station shows the explosion and removes the projectile.
 - Each finish time goes to every station both as an event and as a reliable message. The host publishes the
   results when everyone has finished, 25 s after the first car finishes, or when fewer than two cars are left. The
-  host can start a rematch on a new track from the results.
-- Keys: arrows or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to drive, <kbd>Space</kbd> to use the pickup,
-  <kbd>V</kbd> to switch the camera.
+  host can start a rematch on a new track from the results (carrying a fresh seed and biome resolution if set to Random).
+- Keys (desktop): arrows or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to drive, <kbd>Space</kbd> to use the pickup,
+  <kbd>V</kbd> to cycle the camera.
+- Mobile touch controls (`@media (hover: none) and (pointer: coarse)` only): multi-touch HUD with a left-thumb horizontal slide steering pad (thumbstick nub + live steer fill), independent right-thumb **Brake** and **Gas** pedals, optional **Auto-Gas** toggle, contextual **Pickup** trigger, and **Cam** button—automatically hiding and resetting inputs whenever mobile Chat or Radio drawers open. Desktop UI leaves all touch overlays hidden (`display: none`).
 
 **Measured** (`tests/test_games.py`, numpy simulator, Es/N0 25 dB; TD-CDMA unless marked):
 
@@ -867,7 +869,7 @@ your own name or picture):
 | Chat wallpaper | seven patterns drawn in CSS from the palette (plain, Gold-code chips, QAM constellation, waves, rain, dusk, velvet) or your own photo, cropped, turned and adjusted in the wallpaper editor, with a fit (crop to fit, fit inside, stretch to fit, normal) and a dimmer | this station only (`data/node<N>/wallpaper.*`, and the original as `wallsrc.*`) |
 | Sounds | sound effects on or off, volume; background music (four built-in loops or your own MP3) with its own volume | profile.json; an uploaded MP3 stays on this station (`data/node<N>/music.*`) |
 | Photos and audio | choose the quality each time, or always send at a default | profile.json |
-| Slot Rush | north-up or chase camera | profile.json |
+| Slot Rush | north-up, chase, or bird's-eye camera | profile.json |
 | Buttons | Game center, Radio and Settings next to your name, or in a bar with their names at the bottom of the chat list | profile.json |
 
 Each station keeps its own settings, so two people at two stations can have different looks.
@@ -909,6 +911,8 @@ The empty screen shows the logo sending out waves over a slow aurora, with who i
 the compositor where they can (transform and opacity) and pause behind the game center; with every effect running
 an idle page keeps the main thread about 5 % busy in a headless browser without a GPU (under 1 % with them off).
 The switch in Settings, or the system's "reduce motion", stops all motion; the shading stays.
+
+**Mobile layout & viewport isolation** (scoped exclusively to touch/mobile viewports via `@media (hover: none) and (pointer: coarse)` and `max-width: 720px`, leaving desktop layouts unchanged): the outer shell locks to the visual viewport (`position: fixed; inset: 0; height: 100dvh; overscroll-behavior: none`) and syncs CSS variables `--app-height` and `--app-offset-top` from `window.visualViewport` so opening or closing the on-screen keyboard keeps the header and composer pinned with `env(safe-area-inset-*)` padding. Text inputs use `font-size: 16px` on touch screens to prevent iOS Safari focus auto-zoom, scrolling is confined to inner lists (`touch-action: pan-y; overscroll-behavior-y: contain`), and custom `touch-action: none` gestures remain enabled on the Wallpaper Editor crop canvas and Slot Rush spectator map for two-finger pinch-to-zoom.
 
 **Emoji palette** (the smiley in the composer): 1,167 emoji in nine groups, including a "Radio" group (📡 📶 🛰 …).
 Search by the Unicode names plus a few aliases ("lol", "fire", "antenna"), recently used first (kept in the
@@ -1210,10 +1214,7 @@ yet, and the files have not been opened in the GRC GUI on a lab PC.
     Bob's dashboard: they wait; on again: they continue.
 13. **Leaving.** Close Dave's app: his slot is freed after 3 cycles. Close the lead's app during a transfer: the next
     station takes over within half a second and the transfer goes on. Start it again: it joins as a member.
-14. **Game center.** Four-player UNO (point out that each screen shows only its own hand: the host holds the
-    deck), then a race; the car states ride in every station's slot. Take one station off the air for 10 s
-    (disconnect its antennas): it is *away*, UNO pauses with a countdown and the race shows its car as a ghost, and
-    it carries on when it is back. Press V on one station for the chase camera.
+14. **Game center.** Play 3-station UNO while the 4th station (or a phone) taps **Live Now → Watch** to spectate (point out that players see only their own hand while spectators see the sanitized public table with zero hands leaked, and can use touch swipe/tap on mobile). Then start **Slot Rush**, select **PCB Speedway** (one of 5 RF biomes), cycle <kbd>V</kbd> through `North-Up` → `Chase` → `Bird's-Eye` (and drive with the left-thumb steering pad / gas pedals on mobile), watch passively from the 4th station in free zoom/pan **Bird's-Eye** + `Auto-Chase` with zero extra RF airtime, and take one car off the air for 10 s to show the *away* countdown / frozen ghost and recovery.
 15. **Chat touches.** Give one station a photo as its picture: the others show it after its next beacon (one
     `prof` request each). Send a photo at HD, then a text right after: the text arrives first and the photo slides
     up into its place, marked late. Start a large file and stop it from the receiver's ✕.
@@ -1247,30 +1248,34 @@ python3 -m tests.test_tdma_phy     # the time slots' timing base: bursts on exac
 python3 -m tests.test_edge         # TD-CDMA edge cases on the simulated air (30-50 min; --quick is shorter;
                                    # or pick some: test_edge 3 9 12). Table below
 python3 -m tests.test_uno          # UNO rules engine: every rule, a player leaving, 300 random games (always 108 cards)
-python3 -m tests.test_games 3      # game center over the simulated air, 2-4 stations: a UNO round, a player leaving,
-                                   # a race (--transfer 400: a file transfer during UNO, --key: encrypted,
+python3 -m tests.test_games 3      # game center over the simulated air, 2-4 stations: UNO, a player leaving,
+                                   # a race, and Spectator Mode (0-DGRAM race spectator, zero-leak UNO + handover)
+                                   # (--transfer 400: a file transfer during UNO, --key: encrypted,
                                    # --mac aloha: the earlier link layer)
 python3 -m tests.test_features     # profile pictures over the air, cancelling a transfer on either end, clock offsets,
                                    # names and pictures passed on by a relay, long names in beacons
 python3 -m tests.test_power        # transmit power control: the link layer's loop, the flowgraph blocks carrying each
                                    # burst's power (stand-ins for GNU Radio), and near-far on the simulated air with
                                    # and without it, spread ALOHA (a few minutes; --quick skips the simulation)
-python3 -m wavelink sim --nodes 3 & python3 -m tests.ui_games 3   # optional, needs Playwright: UNO, a race and a
-                                   # rematch (chase camera), played with the keyboard on every station, a chat
-                                   # message sent from the race and the radio dashboard opened over it;
-                                   # screenshots in build/ui-shots/
+python3 -m wavelink sim --nodes 3 & python3 -m tests.ui_games 3   # optional, needs Playwright: UNO, a race across all
+                                   # 5 biomes (north-up, chase, bird's-eye), rematch, Live Now spectator flows (race +
+                                   # UNO), chat and radio dashboard over the game; screenshots in build/ui-shots/
 python3 -m wavelink sim --nodes 2 & python3 -m tests.ui_features   # optional, needs Playwright and Pillow: themes,
                                    # the wallpaper editor (crop, turn, adjust, four fits, editing again from the
                                    # original), pictures, emoji, photo/voice quality (fake microphone), cancel, a
                                    # late message, new-message arrow, sounds, buttons at the bottom, camera (fake
                                    # camera), background music, chatting during UNO, the + tray (voice, camera,
                                    # file, emoji, priority over the game), the radio dashboard in the game center:
-                                   # 65 checks
+                                   # 65/65 checks
+python3 -m wavelink sim --nodes 3 & python3 -m tests.ui_mobile     # optional, needs Playwright and Pillow: desktop
+                                   # non-touch guard + mobile portrait (390x844) and landscape (844x390) chat scroll
+                                   # / visualViewport lock, wallpaper pinch-zoom, Slot Rush active & spectator touch
+                                   # controls, and UNO swipe / tap-to-play / zero-overflow checks
 python3 -m tests.test_gr_backend   # numpy-PHY GNU Radio backend against a fake GR (API-shape test)
 python3 -m tests.test_tx_underrun  # mid-burst TX underruns on a fake ANTSDR with a busy interpreter, per TX buffer size
-python3 -m tests.test_hardening    # input checks (files, --key, chats, names, game states, zip bombs, replays),
-                                   # ACK sections > 255 bytes, malformed frames, restarts and stalled transfers on the
-                                   # simulated air, the web server's headers; about a minute (parts: 1 2 3 4)
+python3 -m tests.test_hardening    # input checks (files, --key, chats, names, game states, spectator seat-membership
+                                   # rejection, zip bombs, replays), ACK sections > 255 bytes, malformed frames,
+                                   # restarts and stalled transfers on the simulated air, web server headers (42/42 checks)
 python3 -m wavelink sim --nodes 3 & python3 -m tests.scenario_api   # full app scenario through the web API
                                    # (it waits until the stations have heard each other)
 ```
@@ -1482,8 +1487,8 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
   station, but a player who digs into their station's memory could read the other hands. With spread ALOHA, race datagrams share the broadcast code with beacons and
   occasionally collide with them, and on the GNU Radio PHY a game message can't overtake file frames already in its
   code lane (up to 0.6 s); with TD-CDMA neither happens. While file transfers stretch the TD-CDMA cycle, every
-  car is heard less often (4.1 updates a second at 242 ms, 2.1 at 472 ms, against 10 when idle). There is no
-  spectator mode, and no computer players. Not yet tested on `grc-sim` or the ANTSDRs.
+  car is heard less often (4.1 updates a second at 242 ms, 2.1 at 472 ms, against 10 when idle). There are no
+  computer players (live read-only spectating is supported for both UNO and Slot Rush). Not yet tested on `grc-sim` or the ANTSDRs.
 - **Message order.** The clock-offset estimate includes the shortest delivery time (tens of milliseconds, up to
   ~0.1 s with TD-CDMA) and follows a clock that is reset only after the old samples age out (5 minutes), so for a
   few minutes after a station's clock jumps its messages can be placed by up to the jump. Running NTP on the lab PCs
@@ -1492,14 +1497,14 @@ on a physical E200 yet, so expect to tune gains in the first lab session.
   new photo before its next beacon (up to 5 s). The wallpaper stays on its station. Voice-note re-encoding needs
   WebCodecs (Chrome, Edge, Firefox 130+); other browsers fall back to re-recording the clip in real time.
 
-## 10. Suggested split for a group of four
+## 10. Team members and work split
 
-| Member | Owns |
-|---|---|
-| A | PHY DSP and coding: `codes.py`, `modem.py`, `ldpc.py`, `golay.py`, BER/FER measurements, hardware gain tuning |
-| B | GNU Radio and hardware: `grc/cdma_phy.grc`, `grc_phy.py`, ANTSDR firmware/IPs, `tx`/`rx` mid-eval demo |
-| C | Link layer: `mac.py`, `tdma.py` (time slots, relaying), ARQ, adaptive modulation-and-coding table, power control, priority tests, the simulators |
-| D | Application and UI: `node.py`, `web/`, `games/` (game center), encryption, dashboard, demo script |
+| Member | Index No. | Owns |
+|---|---|---|
+| K. A. P. R. Kaluarachchi | 240313D | PHY DSP and coding: `codes.py`, `modem.py`, `ldpc.py`, `golay.py`, BER/FER measurements, hardware gain tuning |
+| W.D.D.S.V. Rathnasiri | 240559K | GNU Radio and hardware: `grc/cdma_phy.grc`, `grc_phy.py`, ANTSDR firmware/IPs, `tx`/`rx` mid-eval demo |
+| R.R. Karunaratna | 240334R | Link layer: `mac.py`, `tdma.py` (time slots, relaying), ARQ, adaptive modulation-and-coding table, power control, priority tests, the simulators |
+| M.G.A.S.Karunananda | 240325P | Application and UI: `node.py`, `web/`, `games/` (game center, Slot Rush, spectator mode, mobile touch UI), encryption, dashboard, demo script |
 
 ## Project layout
 
@@ -1543,7 +1548,7 @@ tools/
   make_logo.py   cuts the team logo out of its background: web/static/wavelink-*.png and assets/
   gen_emoji.py   builds web/static/emoji.js (the palette's emoji and names) from Unicode data
 tests/           LDPC, GRC flowgraph, GRC goodput, GRC cores + interop, modem, profiles, big file, link,
-                 TD-CDMA timing base, TD-CDMA edge cases, fake ANTSDRs, power control, TX underruns,
-                 GR backend, API scenario, UNO rules, game center (simulated air), game center in the browser,
-                 station features, chat features in the browser
+                 TD-CDMA timing base, TD-CDMA edge cases, fake ANTSDRs, power control, TX underruns, hardening,
+                 GR backend, API scenario, UNO rules, game center + spectators (simulated air), game center +
+                 spectators in the browser, mobile touch & viewport UI, station features, chat features in the browser
 ```
